@@ -25,6 +25,17 @@ class InteractionManager:
         """
         Bypasses physics and registers click offset.
         """
+        if hasattr(self.pet, 'behavior'):
+            self.pet.behavior.reset_inactivity()
+
+        # Interrupt active Gemini speech instantly if user clicks on the pet
+        if hasattr(self.pet, 'main_app') and hasattr(self.pet.main_app, 'gemini_client'):
+            if self.pet.main_app.gemini_client.is_speaking:
+                print("[Interaction] User clicked pet while Gemini speaking -> Triggering instant interruption.")
+                self.pet.main_app.gemini_client.is_speaking = False
+                self.pet.main_app.gemini_client.interrupted.emit()
+                return
+
         self.pet.physics.start_drag()
         self.last_global_pos = (global_x, global_y)
         self.last_time = time.time()
@@ -90,9 +101,12 @@ class InteractionManager:
             self.pet.say("Wheeeee! 💨", duration=2.5)
             self.pet.play_sound("fling")
         else:
-            # Gentle drop
+            # Gentle drop / simple click
             self.pet.physics.end_drag(0.0, 0.0)
-            self.pet.state_machine.change_state("fall")
+            if hasattr(self.pet, 'main_app') and self.pet.main_app:
+                self.pet.main_app.cycle_animation()
+            else:
+                self.pet.state_machine.change_state("fall")
 
         self.last_global_pos = None
 

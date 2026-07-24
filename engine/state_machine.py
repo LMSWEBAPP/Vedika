@@ -248,7 +248,7 @@ class WaitingState(State):
     def __init__(self, pet):
         super().__init__(pet)
         self.name = "waiting"
-        self.animation_name = "waiting"
+        self.animation_name = "waiting" if "waiting" in pet.sprite.animations else "idle"
         self.is_interruptible = True
 
 
@@ -256,8 +256,96 @@ class SleepState(State):
     def __init__(self, pet):
         super().__init__(pet)
         self.name = "sleep"
-        # If no sleep animation, reuse waiting animation
-        self.animation_name = "waiting"
+        self.animation_name = "sleep" if "sleep" in pet.sprite.animations else "waiting"
+        self.is_interruptible = True
+
+
+class ReadingState(State):
+    def __init__(self, pet):
+        super().__init__(pet)
+        self.name = "reading"
+        self.animation_name = "reading" if "reading" in pet.sprite.animations else "review"
+        self.is_interruptible = True
+
+
+class WorkingState(State):
+    def __init__(self, pet):
+        super().__init__(pet)
+        self.name = "working"
+        self.animation_name = "working" if "working" in pet.sprite.animations else "waiting"
+        self.is_interruptible = True
+
+
+class SearchingState(State):
+    def __init__(self, pet):
+        super().__init__(pet)
+        self.name = "searching"
+        self.animation_name = "searching" if "searching" in pet.sprite.animations else "review"
+        self.is_interruptible = True
+
+
+class KnockoutState(State):
+    def __init__(self, pet):
+        super().__init__(pet)
+        self.name = "knockout"
+        self.animation_name = "knockout" if "knockout" in pet.sprite.animations else "failed"
+        self.is_interruptible = False
+
+
+class MusicState(State):
+    def __init__(self, pet):
+        super().__init__(pet)
+        self.name = "music"
+        self.animation_name = "music" if "music" in pet.sprite.animations else "walk"
+        self.is_interruptible = True
+
+
+class DangerState(State):
+    def __init__(self, pet):
+        super().__init__(pet)
+        self.name = "danger"
+        self.animation_name = "danger" if "danger" in pet.sprite.animations else "failed"
+        self.is_interruptible = False
+
+
+class SpeakState(State):
+    def __init__(self, pet):
+        super().__init__(pet)
+        self.name = "speak"
+        self.animation_name = "speak" if "speak" in pet.sprite.animations else "wave"
+        self.is_interruptible = False
+
+    def update(self, dt):
+        anim = self.pet.sprite.current_animation
+        is_speaking = (
+            hasattr(self.pet, 'main_app') and 
+            hasattr(self.pet.main_app, 'gemini_client') and 
+            self.pet.main_app.gemini_client and 
+            self.pet.main_app.gemini_client.is_speaking
+        )
+        if is_speaking:
+            if anim and anim.is_finished:
+                anim.current_frame_index = 0
+                anim.elapsed_time = 0.0
+                anim.is_finished = False
+            return None
+
+        is_voice_active = (
+            hasattr(self.pet, 'main_app') and 
+            hasattr(self.pet.main_app, 'gemini_client') and 
+            self.pet.main_app.gemini_client and 
+            self.pet.main_app.gemini_client.is_active
+        )
+        if anim and anim.is_finished:
+            return "waiting" if is_voice_active else "idle"
+        return None
+
+
+class TypingState(State):
+    def __init__(self, pet):
+        super().__init__(pet)
+        self.name = "typing"
+        self.animation_name = "typing" if "typing" in pet.sprite.animations else "working"
         self.is_interruptible = True
 
 
@@ -275,7 +363,15 @@ class StateMachine:
             "review": ReviewState(pet),
             "failed": FailedState(pet),
             "waiting": WaitingState(pet),
-            "sleep": SleepState(pet)
+            "sleep": SleepState(pet),
+            "reading": ReadingState(pet),
+            "working": WorkingState(pet),
+            "searching": SearchingState(pet),
+            "knockout": KnockoutState(pet),
+            "music": MusicState(pet),
+            "danger": DangerState(pet),
+            "speak": SpeakState(pet),
+            "typing": TypingState(pet)
         }
         self.current_state = self.states["idle"]
         self.current_state.enter()
@@ -288,11 +384,10 @@ class StateMachine:
     def change_state(self, state_name):
         if state_name in self.states:
             # Prevent self-transitions to save on reload costs, unless forced
-            if self.current_state.name == state_name and state_name not in ["jump", "wave", "failed"]:
+            if self.current_state.name == state_name and state_name not in ["jump", "wave", "failed", "searching", "knockout", "danger", "speak"]:
                 return
             
             self.current_state.exit()
             self.current_state = self.states[state_name]
             self.current_state.enter()
-            # Reset speech/expressions if moving from active states
             print(f"[StateMachine] Transitioned: {self.current_state.name}")

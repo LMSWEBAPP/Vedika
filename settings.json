@@ -1,7 +1,8 @@
 {
-  "current_pet_id": "nezuko",
+  "current_pet_id": "cute_robo",
   "scale": 0.8,
   "always_on_top": true,
   "sound_enabled": true,
-  "static_mode": true
+  "static_mode": true,
+  "auto_activity_reaction": true
 }

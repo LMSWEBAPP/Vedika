@@ -8,6 +8,7 @@ from PySide6.QtGui import QCursor, Qt
 
 from engine.sprite import SpriteLoader
 from engine.pet import Pet
+from engine.activity_tracker import DesktopActivityTracker
 from ui.transparent_window import TransparentWindow
 
 class DesktopPetApp(QObject):
@@ -26,7 +27,11 @@ class DesktopPetApp(QObject):
         self.always_on_top = True
         self.sound_enabled = True
         self.static_mode = True  # Static animation mode default (stays in place)
+        self.auto_activity_reaction = True  # Auto-react to desktop foreground apps
         self.load_settings()
+
+        # Activity tracker
+        self.activity_tracker = DesktopActivityTracker(self)
 
         # Core references
         self.pet = None
@@ -79,10 +84,14 @@ class DesktopPetApp(QObject):
         # Connect signals for thread-safe UI updates
         self.gemini_client.say_requested.connect(self.pet.say)
         self.gemini_client.animation_requested.connect(self.set_active_animation)
+        self.gemini_client.open_url_requested.connect(self.open_url_by_gemini)
+        self.gemini_client.play_music_requested.connect(self.play_music_by_gemini)
+        self.gemini_client.stop_voice_requested.connect(self.pause_voice_by_gemini)
         self.gemini_client.session_activated.connect(self.on_gemini_session_activated)
         
         # Connect conversational state transitions
-        self.gemini_client.text_received.connect(self.on_gemini_speaking)
+        self.gemini_client.speaking_started.connect(self.on_gemini_speaking)
+        self.gemini_client.speaking_stopped.connect(self.on_gemini_speaking_stopped)
         self.gemini_client.turn_completed.connect(self.on_gemini_turn_completed)
         self.gemini_client.interrupted.connect(self.on_gemini_interrupted)
         self.gemini_client.thinking_started.connect(self.on_gemini_thinking)
@@ -148,6 +157,18 @@ class DesktopPetApp(QObject):
         height = sprite_cfg.get("height", 128)
         columns = sprite_cfg.get("columns", 12)
         rows = sprite_cfg.get("rows", 9)
+
+        # Auto-calculate frame width & height based on actual image dimensions and grid
+        if os.path.exists(spritesheet_path) and columns > 0 and rows > 0:
+            try:
+                from PIL import Image
+                with Image.open(spritesheet_path) as img:
+                    img_w, img_h = img.size
+                    if img_w > 0 and img_h > 0:
+                        width = img_w // columns
+                        height = img_h // rows
+            except Exception:
+                pass
 
         # Slice spritesheet frames
         frames, flipped = SpriteLoader.load_spritesheet(
@@ -224,6 +245,10 @@ class DesktopPetApp(QObject):
             # 1. Update Pet Core Engine (Physics, Anim, AI Behaviors)
             self.pet.update(dt)
 
+            # 1b. Update Desktop Activity Tracker (Foreground window detection)
+            if self.auto_activity_reaction and hasattr(self, 'activity_tracker'):
+                self.activity_tracker.update()
+
             # 2. Check and look toward global cursor positions when idle
             cursor = QCursor.pos()
             self.pet.interaction.handle_hover(cursor.x(), cursor.y())
@@ -240,6 +265,132 @@ class DesktopPetApp(QObject):
             # 4. Trigger redraw
             self.window.update()
 
+    def toggle_gemini_pause_f9(self):
+        """F9 Hotkey Handler: Toggles Pause / Resume (Mute / Unmute) with 0ms delay."""
+        client = self.gemini_client
+        if not client.is_active:
+            print("[F9 Hotkey] Starting Gemini Live Voice Chat...")
+            if self.pet:
+                self.pet.say("Voice Chat started! 🚀", duration=2.5)
+            client.start()
+            return
+
+        is_paused = client.toggle_pause()
+        if is_paused:
+            print("[F9 Hotkey] Paused Gemini Live Voice Chat.")
+            if self.pet:
+                self.pet.say("Voice Chat paused! Press F9 to resume. ⏸️", duration=2.5)
+        else:
+            print("[F9 Hotkey] Resumed Gemini Live Voice Chat.")
+            if self.pet:
+                self.pet.say("Voice Chat resumed! What's next? 🎙️", duration=2.5)
+
+    def toggle_gemini_start_stop_alt_v(self):
+        """Alt+V Hotkey Handler: Full Start / Stop (Connect / Disconnect) lifecycle."""
+        client = self.gemini_client
+        if client.is_active:
+            print("[Alt+V Hotkey] Stopping Gemini Live Voice Chat...")
+            if self.pet:
+                self.pet.say("Voice Chat stopped! 🛑", duration=2.5)
+            client.stop()
+        else:
+            print("[Alt+V Hotkey] Starting Gemini Live Voice Chat...")
+            if self.pet:
+                self.pet.say("Voice Chat starting... 🚀", duration=2.5)
+            client.start()
+
+    def pause_voice_by_gemini(self):
+        """Pauses voice chat when user asks to pause or stop voice chat via voice command."""
+        if hasattr(self, 'gemini_client') and self.gemini_client:
+            self.gemini_client.toggle_pause()
+            if self.pet:
+                self.pet.say("Voice Chat paused! Press F9 to resume. ⏸️", duration=2.5)
+
+    def open_vyomantha_website(self):
+        """Opens Vyomantha portal in default web browser and triggers pet speech response."""
+        self.open_url_by_gemini("https://vyomanta.vercel.app/")
+
+    def open_url_by_gemini(self, url):
+        """Opens any requested URL in default web browser and triggers pet speech response."""
+        if not url:
+            return
+        url_lower = url.lower()
+        if "vyomantha" in url_lower or "vyomanta" in url_lower or "study" in url_lower:
+            url = "https://vyomanta.vercel.app/"
+        elif not (url.startswith("http://") or url.startswith("https://")):
+            url = "https://" + url
+
+        from PySide6.QtGui import QDesktopServices
+        from PySide6.QtCore import QUrl
+        QDesktopServices.openUrl(QUrl(url))
+        if self.pet:
+            self.pet.say(f"Opening {url}! 🚀", duration=3.0)
+            speaking_anim = "speak" if "speak" in self.pet.sprite.animations else "wave"
+            self.set_active_animation(speaking_anim)
+
+    def play_music_by_gemini(self, query=""):
+        """
+        Plays requested music on YouTube using yt-dlp to resolve direct video link.
+        """
+        import random
+        from PySide6.QtGui import QDesktopServices
+        from PySide6.QtCore import QUrl
+        
+        if not query:
+            trending_queries = [
+                "best feel good telugu songs",
+                "trending hits telugu music",
+                "popular songs playlist 2026",
+                "chill lofi beats music"
+            ]
+            query = random.choice(trending_queries)
+
+        target_url = None
+
+        # Attempt to use yt_dlp for resolving exact YouTube video URL
+        try:
+            import yt_dlp
+            ydl_opts = {
+                'format': 'best',
+                'noplaylist': True,
+                'quiet': True,
+                'no_warnings': True,
+                'extract_flat': True,
+            }
+            search_query = f"ytsearch1:{query}"
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(search_query, download=False)
+                if info and 'entries' in info and len(info['entries']) > 0:
+                    first_entry = info['entries'][0]
+                    video_id = first_entry.get('id') or first_entry.get('url')
+                    if video_id:
+                        if video_id.startswith('http'):
+                            target_url = video_id
+                        else:
+                            target_url = f"https://www.youtube.com/watch?v={video_id}"
+                        title = first_entry.get('title', query)
+                        print(f"[YouTubeDL] Resolved '{query}' to direct video: {title} ({target_url})")
+        except Exception as e:
+            print(f"[YouTubeDL] Info extract notice: {e}")
+
+        # Fallback to search query results page if yt_dlp is unavailable or failed
+        if not target_url:
+            import urllib.parse
+            encoded = urllib.parse.quote(query)
+            target_url = f"https://www.youtube.com/results?search_query={encoded}"
+
+        QDesktopServices.openUrl(QUrl(target_url))
+        if self.pet:
+            display_name = query
+            self.pet.say(f"Playing {display_name}! 🎵", duration=3.0)
+            music_anim = "music" if "music" in self.pet.sprite.animations else "wave"
+            self.set_active_animation(music_anim)
+
+        # Pause Gemini Live Voice Chat so it won't speak over or record system music playback
+        if hasattr(self, 'gemini_client') and self.gemini_client.is_active:
+            self.gemini_client.interrupted.emit()
+            QTimer.singleShot(2500, self.gemini_client.stop)
+
     # --- Persistence Settings ---
     
     def load_settings(self):
@@ -253,6 +404,7 @@ class DesktopPetApp(QObject):
                     self.always_on_top = data.get("always_on_top", True)
                     self.sound_enabled = data.get("sound_enabled", True)
                     self.static_mode = data.get("static_mode", True)
+                    self.auto_activity_reaction = data.get("auto_activity_reaction", True)
             except Exception as e:
                 print(f"[!] Warning: Cannot read settings.json: {e}")
 
@@ -270,7 +422,8 @@ class DesktopPetApp(QObject):
             "scale": self.scale_factor,
             "always_on_top": self.always_on_top,
             "sound_enabled": self.sound_enabled,
-            "static_mode": self.static_mode
+            "static_mode": self.static_mode,
+            "auto_activity_reaction": self.auto_activity_reaction
         }
         
         try:
@@ -320,6 +473,9 @@ class DesktopPetApp(QObject):
 
     def set_active_animation(self, anim_name):
         """Sets the active animation dynamically."""
+        if self.pet and hasattr(self.pet, 'behavior'):
+            self.pet.behavior.reset_inactivity()
+
         is_voice_chat_active = hasattr(self, 'gemini_client') and self.gemini_client and self.gemini_client.is_active
 
         if self.static_mode:
@@ -330,6 +486,7 @@ class DesktopPetApp(QObject):
         else:
             state_mapping = {
                 "idle": "idle",
+                "walk": "walk_right",
                 "run_left": "walk_left",
                 "runningLeft": "walk_left",
                 "run_right": "walk_right",
@@ -340,9 +497,14 @@ class DesktopPetApp(QObject):
                 "jumping": "jump",
                 "failed": "failed",
                 "waiting": "waiting",
-                "review": "review"
+                "review": "review",
+                "reading": "reading",
+                "working": "working",
+                "searching": "searching",
+                "knockout": "knockout",
+                "sleep": "sleep"
             }
-            state_name = state_mapping.get(anim_name, "idle")
+            state_name = state_mapping.get(anim_name, anim_name if anim_name in self.pet.state_machine.states else "idle")
             self.pet.state_machine.change_state(state_name)
             if not is_voice_chat_active:
                 self.pet.say(f"State: {state_name}", duration=2.0)
@@ -365,31 +527,53 @@ class DesktopPetApp(QObject):
         if self.pet:
             self.pet.physics.vx = 0.0
             self.pet.physics.vy = 0.0
-            self.pet.state_machine.change_state("idle")
+            session_state = "typing" if "typing" in self.pet.sprite.animations else "working"
+            self.pet.state_machine.change_state(session_state)
             self.start_voice_failsafe()
 
     def on_gemini_thinking(self):
-        """Transition pet to thinking animation (review) when Gemini is generating."""
+        """Transition pet to Line 9 (searching) animation when Gemini Live API is processing."""
         if self.pet:
-            self.pet.state_machine.change_state("review")
+            thinking_state = "searching" if "searching" in self.pet.sprite.animations else "review"
+            self.pet.state_machine.change_state(thinking_state)
             self.start_voice_failsafe()
 
     def on_gemini_speaking(self):
-        """Transition pet to speaking animation (wave) when Gemini starts speaking."""
-        if self.pet and self.pet.state_machine.current_state.name != "wave":
-            self.pet.state_machine.change_state("wave")
+        """Transition pet to speak animation when Gemini starts outputting speech audio."""
+        if self.pet:
+            speaking_anim = "speak" if "speak" in self.pet.sprite.animations else "wave"
+            if self.static_mode:
+                self.pet.sprite.play(speaking_anim)
+            self.pet.state_machine.change_state(speaking_anim)
+            self.start_voice_failsafe()
+
+    def on_gemini_speaking_stopped(self):
+        """Transition pet to waiting or idle when speaker output finishes."""
+        if self.pet:
+            is_voice_active = hasattr(self, 'gemini_client') and self.gemini_client and self.gemini_client.is_active
+            target_state = "waiting" if is_voice_active else "idle"
+            if self.static_mode:
+                self.pet.sprite.play(target_state)
+            self.pet.state_machine.change_state(target_state)
             self.start_voice_failsafe()
 
     def on_gemini_turn_completed(self):
-        """Transition pet back to idle state once model stops speaking and wait for user."""
+        """Mark model turn completed; revert to waiting/idle if audio playback already finished."""
         if self.pet:
-            self.pet.state_machine.change_state("idle")
+            is_speaking = hasattr(self, 'gemini_client') and self.gemini_client and self.gemini_client.is_speaking
+            if not is_speaking:
+                is_voice_active = hasattr(self, 'gemini_client') and self.gemini_client and self.gemini_client.is_active
+                target_state = "waiting" if is_voice_active else "idle"
+                if self.static_mode:
+                    self.pet.sprite.play(target_state)
+                self.pet.state_machine.change_state(target_state)
             self.start_voice_failsafe()
 
     def on_gemini_interrupted(self):
-        """Immediately force pet to idle state when user interrupts."""
+        """Transition pet to Line 10 (failed) state when user interrupts."""
         if self.pet:
-            self.pet.state_machine.change_state("idle")
+            failed_state = "failed" if "failed" in self.pet.sprite.animations else "idle"
+            self.pet.state_machine.change_state(failed_state)
             self.start_voice_failsafe()
 
     def on_gemini_state_changed(self, status):

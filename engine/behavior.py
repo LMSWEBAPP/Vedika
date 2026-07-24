@@ -13,12 +13,20 @@ class BehaviorEngine:
             "failed": 0.05
         }
         self.check_timer = 0.0
+        self.inactivity_timer = 0.0
         self.evaluation_interval = 1.0  # Seconds between scheduler checks
 
     def load_probabilities(self, custom_probs):
         """Loads custom behavior weights from pet config."""
         if custom_probs:
             self.probabilities.update(custom_probs)
+
+    def reset_inactivity(self):
+        """Resets inactivity timer and wakes pet if sleeping."""
+        self.inactivity_timer = 0.0
+        if self.pet and hasattr(self.pet, 'state_machine'):
+            if self.pet.state_machine.current_state.name == "sleep":
+                self.pet.state_machine.change_state("idle")
 
     def update(self, dt):
         """
@@ -36,7 +44,15 @@ class BehaviorEngine:
             self.pet.main_app.gemini_client.is_active
         )
         if is_voice_active:
+            self.inactivity_timer = 0.0
             return
+
+        # Check for long-term inactivity -> sleep transition (after 25 seconds of no activity)
+        self.inactivity_timer += dt
+        if self.inactivity_timer >= 25.0:
+            if "sleep" in self.pet.sprite.animations and self.pet.state_machine.current_state.name != "sleep":
+                self.pet.state_machine.change_state("sleep")
+                return
 
         self.check_timer += dt
         if self.check_timer >= self.evaluation_interval:
