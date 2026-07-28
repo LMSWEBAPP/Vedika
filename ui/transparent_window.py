@@ -256,6 +256,38 @@ class TransparentWindow(QWidget):
         barge_act.triggered.connect(self.toggle_voice_barge_in)
         menu.addAction(barge_act)
 
+        # 3e. Tutor Language submenu
+        lang_menu = menu.addMenu("Tutor Language")
+        lang_menu.setStyleSheet(menu.styleSheet())
+        languages = [
+            ("🌐 Multilingual (Auto)", "all"),
+            ("🇮🇳 Telugu (తెలుగు)", "telugu"),
+            ("🇮🇳 Hindi (हिंदी)", "hindi"),
+            ("🇬🇧 English", "english")
+        ]
+        curr_lang = getattr(client, "tutor_language", "all")
+        for label, val in languages:
+            action = QAction(label, self, checkable=True)
+            action.setChecked(curr_lang == val)
+            action.triggered.connect(lambda checked, v=val: self.change_tutor_language(v))
+            lang_menu.addAction(action)
+
+        # 3f. Tutor Subject submenu
+        subj_menu = menu.addMenu("Tutor Subject")
+        subj_menu.setStyleSheet(menu.styleSheet())
+        subjects = [
+            ("🎓 All Subjects", "all"),
+            ("📐 Mathematics", "math"),
+            ("🔬 Science", "science"),
+            ("📚 Languages & Reading", "languages")
+        ]
+        curr_subj = getattr(client, "tutor_subject", "all")
+        for label, val in subjects:
+            action = QAction(label, self, checkable=True)
+            action.setChecked(curr_subj == val)
+            action.triggered.connect(lambda checked, v=val: self.change_tutor_subject(v))
+            subj_menu.addAction(action)
+
         # 4. Change Pet submenu (Plugin scanner list)
         pet_menu = menu.addMenu("Switch Companion")
         pet_menu.setStyleSheet(menu.styleSheet())
@@ -324,6 +356,28 @@ class TransparentWindow(QWidget):
         if self.pet:
             self.pet.say(f"Voice Interruption {status_text}! 🎙️", duration=2.5)
         print(f"[TransparentWindow] Voice Interruption toggled: {checked}")
+
+    def change_tutor_language(self, lang):
+        """Sets the academic voice tutor target language."""
+        client = self.main_app.gemini_client
+        client.tutor_language = lang
+        self.main_app.save_settings()
+        lang_labels = {"all": "Multilingual", "telugu": "Telugu", "hindi": "Hindi", "english": "English"}
+        name = lang_labels.get(lang, lang.title())
+        if self.pet:
+            self.pet.say(f"Tutor Language set to {name}! 🌐", duration=2.5)
+        print(f"[TransparentWindow] Changed tutor language to {lang}")
+
+    def change_tutor_subject(self, subj):
+        """Sets the academic voice tutor focus subject."""
+        client = self.main_app.gemini_client
+        client.tutor_subject = subj
+        self.main_app.save_settings()
+        subj_labels = {"all": "All Subjects", "math": "Mathematics", "science": "Science", "languages": "Languages & Reading"}
+        name = subj_labels.get(subj, subj.title())
+        if self.pet:
+            self.pet.say(f"Tutor Subject set to {name}! 🎓", duration=2.5)
+        print(f"[TransparentWindow] Changed tutor subject to {subj}")
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Tab:

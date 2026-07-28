@@ -3,3 +3,4 @@ Pillow
 numpy
 google-genai
 pyaudio
+yt-dlp

@@ -95,6 +95,7 @@ class DesktopPetApp(QObject):
         self.gemini_client.turn_completed.connect(self.on_gemini_turn_completed)
         self.gemini_client.interrupted.connect(self.on_gemini_interrupted)
         self.gemini_client.thinking_started.connect(self.on_gemini_thinking)
+        self.gemini_client.user_sentiment_detected.connect(self.on_gemini_sentiment_detected)
         self.gemini_client.state_changed.connect(self.on_gemini_state_changed)
         
         # Failsafe timer for stuck voice states (network/event drops)
@@ -405,6 +406,9 @@ class DesktopPetApp(QObject):
                     self.sound_enabled = data.get("sound_enabled", True)
                     self.static_mode = data.get("static_mode", True)
                     self.auto_activity_reaction = data.get("auto_activity_reaction", True)
+                    if hasattr(self, "gemini_client") and self.gemini_client:
+                        self.gemini_client.tutor_language = data.get("tutor_language", "all")
+                        self.gemini_client.tutor_subject = data.get("tutor_subject", "all")
             except Exception as e:
                 print(f"[!] Warning: Cannot read settings.json: {e}")
 
@@ -423,7 +427,9 @@ class DesktopPetApp(QObject):
             "always_on_top": self.always_on_top,
             "sound_enabled": self.sound_enabled,
             "static_mode": self.static_mode,
-            "auto_activity_reaction": self.auto_activity_reaction
+            "auto_activity_reaction": self.auto_activity_reaction,
+            "tutor_language": getattr(self.gemini_client, "tutor_language", "all") if hasattr(self, "gemini_client") else "all",
+            "tutor_subject": getattr(self.gemini_client, "tutor_subject", "all") if hasattr(self, "gemini_client") else "all"
         }
         
         try:
@@ -575,6 +581,27 @@ class DesktopPetApp(QObject):
             failed_state = "failed" if "failed" in self.pet.sprite.animations else "idle"
             self.pet.state_machine.change_state(failed_state)
             self.start_voice_failsafe()
+
+    def on_gemini_sentiment_detected(self, user_text, sentiment):
+        """Reacts visually and emotionally via pet state machine when user sentiment is detected."""
+        if not self.pet:
+            return
+        label = sentiment.get("label")
+        emoji = sentiment.get("emoji", "")
+        print(f"[DesktopPetApp] Student sentiment detected: {label} ({emoji})")
+
+        if label == "Struggling / Confused":
+            failed_state = "failed" if "failed" in self.pet.sprite.animations else "idle"
+            self.pet.state_machine.change_state(failed_state)
+            self.pet.say(f"Don't worry, let's break it down! {emoji}", duration=3.0)
+        elif label == "Happy / Confident":
+            happy_state = "jump" if "jump" in self.pet.sprite.animations else "wave"
+            self.pet.state_machine.change_state(happy_state)
+            self.pet.say(f"Awesome! Great job! {emoji}", duration=3.0)
+        elif label == "Curious / Inquisitive":
+            curious_state = "reading" if "reading" in self.pet.sprite.animations else ("review" if "review" in self.pet.sprite.animations else "searching")
+            self.pet.state_machine.change_state(curious_state)
+            self.pet.say(f"Great question! {emoji}", duration=2.5)
 
     def on_gemini_state_changed(self, status):
         """Cleanly disable failsafe timer and revert to idle when voice chat stops."""

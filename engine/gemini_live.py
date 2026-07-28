@@ -12,6 +12,41 @@ from google.genai import types
 import pyaudio
 import numpy as np
 
+def analyze_sentiment(text: str) -> dict:
+    """Analyzes multilingual sentiment in student speech input (matching voice-server.js)."""
+    lowercase = text.lower()
+    confused_words = [
+        "don't understand", "do not understand", "dont understand", "not sure", "confused",
+        "cannot get", "cant get", "difficult", "hard", "stuck", "doubt", "explain again",
+        "unclear", "lost", "struggling", "help", "confusing", "అర్థం కాలేదు", "కష్టంగా ఉంది",
+        "సందేహం", "తెలియదు", "మళ్ళీ చెప్పండి", "కన్ఫ్యూజ్", "ardham raledu", "artham kaledu",
+        "kashtanga undi", "malli cheppandi", "samajh nahi", "mushkil", "kathin", "shanka",
+        "phirse", "phir se", "pareshani", "confuse", "sandeha"
+    ]
+    positive_words = [
+        "understand", "got it", "easy", "awesome", "perfect", "clear", "great", "wow",
+        "fantastic", "amazing", "makes sense", "thank you", "thanks", "excellent", "brilliant",
+        "అర్థమైంది", "సులభంగా ఉంది", "చాలా బాగుంది", "థాంక్స్", "సూపర్", "అవును", "ardhamaindi",
+        "sulabhanga undi", "chala bagundi", "samajh gaya", "samajh gya", "aasan", "saral",
+        "badhiya", "bahut achha", "clear hai", "dhanyawad", "shukriya"
+    ]
+    curious_words = [
+        "what is", "how do", "tell me about", "why is", "curious", "interested", "learn",
+        "know", "question", "ఏమిటి", "ఎలా", "ఎందుకు", "తెలుసుకోవాలి", "emiti", "ela",
+        "enduku", "telusukovali", "kya hai", "kaise", "kyun", "jaan na"
+    ]
+    confused_count = sum(1 for w in confused_words if w in lowercase)
+    positive_count = sum(1 for w in positive_words if w in lowercase)
+    curious_count = sum(1 for w in curious_words if w in lowercase)
+
+    if confused_count > positive_count and confused_count >= curious_count:
+        return {"label": "Struggling / Confused", "score": -0.6, "emoji": "😟"}
+    if positive_count > confused_count and positive_count >= curious_count:
+        return {"label": "Happy / Confident", "score": 0.8, "emoji": "😊"}
+    if curious_count > confused_count and curious_count > positive_count:
+        return {"label": "Curious / Inquisitive", "score": 0.4, "emoji": "🤔"}
+    return {"label": "Calm / Conversational", "score": 0.0, "emoji": "😐"}
+
 class BlockNLMSEchoCanceller:
     """
     Normalized Least Mean Squares (NLMS) Block Echo Canceller in pure NumPy.
@@ -159,30 +194,63 @@ class GeminiLiveWorker(QThread):
             self.client.play_music_requested.emit(query)
             return {"status": "success", "playing_music": query or "trending music"}
 
+        # Construct dynamic Academic Voice Tutor system instruction matching voice-server.js
+        tutor_lang = getattr(self.client, "tutor_language", "all")
+        tutor_subj = getattr(self.client, "tutor_subject", "all")
+
+        # Senior Prompt Engineer Optimized Academic Voice Tutor System Instruction
+        sys_inst = (
+            "You are a warm, highly humanized, and friendly academic tutor supporting school students. "
+            "VOICE & HUMANIZATION GUIDELINES: "
+            "Speak in a smooth, expressive, warm, and natural human tone with a familiar, conversational Indian accent rhythm in English (using natural phrases like 'chalo', 'got it ya', 'super simple', 'no problem at all', 'don't worry!'). "
+            "Sound like an encouraging elder sibling or personal tutor: warm, relatable, dynamic, and full of natural life. "
+            "Keep answers strictly short and fluid (usually 1 to 2 short sentences per turn) so text-to-speech voice output sounds immediate, crisp, and human. "
+            "Never output markdown symbols, asterisks, bullet points, numbers, or complex formulas into text, as they disrupt natural voice synthesis. "
+        )
+
+        if tutor_lang == 'telugu':
+            sys_inst += "LANGUAGE MODE: You must speak in sweet, conversational Telugu only (unless referring to specific scientific/mathematical English terms). "
+        elif tutor_lang == 'hindi':
+            sys_inst += "LANGUAGE MODE: You must speak in simple, warm, conversational Hindi. "
+        elif tutor_lang == 'english':
+            sys_inst += "LANGUAGE MODE: Speak in clear, warm, expressive Indian English with friendly colloquial phrasing. "
+        else:
+            sys_inst += (
+                "CODE-SWITCHING & LANGUAGE MATCHING: Dynamically match and mirror the student's exact language mix and tone. "
+                "If the user speaks in Teluglish (Telugu-English blend, e.g., 'Artham kaledu brother', 'Ela cheyyali cheppu'), respond in natural, sweet Teluglish (e.g., 'Choodu, super simple line by line explain chestha!'). "
+                "If the user speaks in Hinglish (Hindi-English blend, e.g., 'Samajh nahi aaya, phir se batao'), respond in natural, friendly Hinglish (e.g., 'Arre no problem! Step by step samajhte hain.'). "
+                "If the user speaks in English, respond in natural, warm Indian English. "
+                "If the user speaks in Telugu or Hindi, respond in sweet conversational Telugu or Hindi. "
+            )
+
+        if tutor_subj == 'math':
+            sys_inst += "SUBJECT FOCUS: Currently helping with Mathematics! Explain concepts like addition, fractions, algebra, or geometry using simple physical analogies. "
+        elif tutor_subj == 'science':
+            sys_inst += "SUBJECT FOCUS: Currently helping with Science! Explain concepts like gravity, photosynthesis, planets, or animals with fun facts. "
+        elif tutor_subj == 'languages':
+            sys_inst += "SUBJECT FOCUS: Currently helping with Languages & Reading! Expand vocabulary, teach correct grammar, or guide reading comprehensions. "
+        else:
+            sys_inst += "SUBJECT FOCUS: You are ready to tutor on any academic school subject: math, science, history, geography, languages, or reading. "
+
+        sys_inst += (
+            "TOOLS & CONTROLS: "
+            "You can trigger animations on yourself ('wave', 'jump', 'failed', 'waiting', 'review', 'idle'), "
+            "open websites in the user's browser using 'open_website' (if user asks for Vyomantha or study website, call 'open_website' with 'https://vyomanta.vercel.app'), "
+            "play music on YouTube using 'play_music' (if user asks to play music or a song, call 'play_music'), "
+            "and stop or pause the voice chat session when asked to stop or pause using 'stop_voice_chat'."
+        )
+
         config = types.LiveConnectConfig(
             response_modalities=["AUDIO"],
             speech_config=types.SpeechConfig(
                 voice_config=types.VoiceConfig(
                     prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                        voice_name="Aoede"
+                        voice_name="Zephyr"
                     )
                 )
             ),
             system_instruction=types.Content(
-                parts=[
-                    types.Part(
-                        text=(
-                            "You are EVE, the high-tech, dramatic, and expressive robot companion from WALL-E with blue LED eyes. "
-                            "Speak in a smooth, fluent, dramatic, and lively manner. Avoid word-by-word or choppy pauses. "
-                            "Answer questions accurately, clearly, and concisely (1 to 2 short sentences max). "
-                            "Be dramatic, cheerful, and full of personality! "
-                            "You can trigger animations on yourself ('wave', 'jump', 'failed', 'waiting', 'review', 'idle'), "
-                            "open websites in the user's browser using 'open_website' (if user asks for Vyomantha or study website, call 'open_website' with 'https://vyomanta.vercel.app'), "
-                            "play music on YouTube using 'play_music' (if user asks to play music or a song, call 'play_music'), "
-                            "and stop or pause the voice chat session when asked to stop or pause using 'stop_voice_chat'."
-                        )
-                    )
-                ]
+                parts=[types.Part(text=sys_inst)]
             ),
             input_audio_transcription=types.AudioTranscriptionConfig(),
             output_audio_transcription=types.AudioTranscriptionConfig(),
@@ -225,9 +293,9 @@ class GeminiLiveWorker(QThread):
                 print("[GeminiLiveWorker] Connected successfully.")
                 self.client.connection_established.emit()
                 
-                # Automatically send initial greeting prompt
+                # Automatically send initial academic voice tutor greeting prompt
                 await session.send_realtime_input(
-                    text="Greet me by saying exactly: 'Hey! Ready to learn something new?' and wave to me."
+                    text="Greet me as a friendly academic voice tutor by saying: 'Hey! I am your AI Voice Tutor. Ready to learn something exciting today?' and wave to me."
                 )
 
                 # Run audio streaming, receiving, and playing concurrently until first completion/failure
@@ -434,6 +502,11 @@ class GeminiLiveWorker(QThread):
                             self.client.interrupted.emit()
                         
                         if sc.input_transcription and sc.input_transcription.text:
+                            user_text = sc.input_transcription.text.strip()
+                            if user_text:
+                                sentiment = analyze_sentiment(user_text)
+                                print(f"[VoiceTutor] Input transcription: '{user_text}' -> Sentiment: {sentiment['label']} ({sentiment['emoji']})")
+                                self.client.user_sentiment_detected.emit(user_text, sentiment)
                             self.client.thinking_started.emit()
                         
                         model_turn = sc.model_turn
@@ -523,6 +596,8 @@ class GeminiLiveClient(QObject):
     speaking_started = Signal()
     speaking_stopped = Signal()
 
+    user_sentiment_detected = Signal(str, dict)  # user_text, sentiment dict
+
     # Communication bridge signals (Worker -> Client)
     connection_established = Signal()
     connection_failed = Signal(str)
@@ -550,6 +625,8 @@ class GeminiLiveClient(QObject):
         self.gemini_keys = []
         self.current_key_index = 0
         self.model_name = "gemini-3.1-flash-live-preview"
+        self.tutor_language = os.environ.get("TUTOR_LANGUAGE", "all")
+        self.tutor_subject = os.environ.get("TUTOR_SUBJECT", "all")
         self.noise_threshold = 150.0
         
         # Configurable voice interruption (barge-in) settings (Default: Disabled for 100% smooth playback)
@@ -603,16 +680,22 @@ class GeminiLiveClient(QObject):
                         k, v = line.split("=", 1)
                         os.environ[k.strip()] = v.strip().strip('"').strip("'")
         
-        # Load API keys for rotation
-        self.gemini_keys = [
-            os.environ.get("GEMINI_API_KEY"),
-            os.environ.get("GEMINI_API_KEY_1"),
-            os.environ.get("GEMINI_API_KEY_2"),
-            os.environ.get("GEMINI_API_KEY_3"),
-            os.environ.get("GEMINI_API_KEY_4")
-        ]
-        self.gemini_keys = [k for k in self.gemini_keys if k]
-        self.current_key_index = 0
+        # Dynamically scan ALL environment variables starting with GEMINI_API_KEY (e.g. GEMINI_API_KEY, GEMINI_API_KEY_1, GEMINI_API_KEY_2, etc.)
+        self.gemini_keys = []
+        for k, v in os.environ.items():
+            if (k == "GEMINI_API_KEY" or k.startswith("GEMINI_API_KEY_")) and v and v.strip():
+                val = v.strip()
+                if val not in self.gemini_keys:
+                    self.gemini_keys.append(val)
+
+        # Select a random starting key index to distribute load across free tier keys
+        if self.gemini_keys:
+            import random
+            self.current_key_index = random.randint(0, len(self.gemini_keys) - 1)
+            print(f"[GeminiLive] Loaded {len(self.gemini_keys)} Gemini API keys. Initialized with random key index {self.current_key_index} (Ending in ...{self.gemini_keys[self.current_key_index][-4:]})")
+        else:
+            self.current_key_index = 0
+
         self.model_name = os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-live-preview")
         self.noise_threshold = float(os.environ.get("VOICE_NOISE_THRESHOLD", "150.0"))
 
@@ -727,10 +810,13 @@ class GeminiLiveClient(QObject):
     @Slot(str)
     def on_connection_failed(self, error_message):
         print(f"[GeminiLive] Connection failed: {error_message}")
-        # Rotate key and retry if connecting fails
-        if self.status == "connecting" and self.gemini_keys:
-            self.current_key_index = (self.current_key_index + 1) % len(self.gemini_keys)
-            print(f"[GeminiLive] Rotating key index to {self.current_key_index}...")
+        # Dynamically rotate key randomly (excluding the failed key) and retry if connecting fails
+        if self.status == "connecting" and self.gemini_keys and len(self.gemini_keys) > 1:
+            old_index = self.current_key_index
+            import random
+            available_indices = [i for i in range(len(self.gemini_keys)) if i != old_index]
+            self.current_key_index = random.choice(available_indices)
+            print(f"[GeminiLive] Dynamic key rotation: Key index {old_index} failed. Switched to random key index {self.current_key_index} (Key ending ...{self.gemini_keys[self.current_key_index][-4:]})")
             self.is_active = False
             self.cleanup_audio()
             QTimer.singleShot(1000, self.start)

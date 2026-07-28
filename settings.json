@@ -4,5 +4,7 @@
   "always_on_top": true,
   "sound_enabled": true,
   "static_mode": true,
-  "auto_activity_reaction": true
+  "auto_activity_reaction": true,
+  "tutor_language": "all",
+  "tutor_subject": "all"
 }

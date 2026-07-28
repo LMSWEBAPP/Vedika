@@ -6,24 +6,31 @@ require('dotenv').config();
 
 const PORT = parseInt(process.env.PORT || '5001', 10);
 
-const GEMINI_KEYS = [
-  process.env.GEMINI_API_KEY,
-  process.env.GEMINI_API_KEY_1,
-  process.env.GEMINI_API_KEY_2,
-  process.env.GEMINI_API_KEY_3,
-  process.env.GEMINI_API_KEY_4
-].filter(Boolean);
+function getGeminiKeys() {
+  const keys = [];
+  for (const k in process.env) {
+    if ((k === 'GEMINI_API_KEY' || k.startsWith('GEMINI_API_KEY_')) && process.env[k] && process.env[k].trim()) {
+      const val = process.env[k].trim();
+      if (!keys.includes(val)) {
+        keys.push(val);
+      }
+    }
+  }
+  return keys;
+}
 
 let connectionCount = 0;
 
 function getGeminiClient() {
-  if (GEMINI_KEYS.length === 0) {
+  const keys = getGeminiKeys();
+  if (keys.length === 0) {
     throw new Error('GEMINI_API_KEY environment variable is required.');
   }
-  // Rotate key round-robin based on incoming connection count to distribute concurrent free-tier session load
-  const apiKey = GEMINI_KEYS[connectionCount % GEMINI_KEYS.length];
+  // Random load-balanced key selection across available GEMINI_API_KEY_* keys
+  const randomIndex = Math.floor(Math.random() * keys.length);
+  const apiKey = keys[randomIndex];
   connectionCount++;
-  console.log(`[VoiceWS] Routing connection using Gemini Key index ${(connectionCount - 1) % GEMINI_KEYS.length}`);
+  console.log(`[VoiceWS] Load-balanced connection #${connectionCount} using random Gemini Key index ${randomIndex} (Total keys: ${keys.length}, Key ending ...${apiKey.slice(-4)})`);
   return new GoogleGenAI({ apiKey, httpOptions: { headers: { 'User-Agent': 'aistudio-build' } } });
 }
 
@@ -91,20 +98,22 @@ wss.on('connection', async (clientWs, request) => {
   const subject = searchParams.get('subject') || 'all';
 
   let systemInstruction =
-    'You are a friendly, patient, and highly expert academic tutor supporting school students. ' +
-    'Your goal is to guide students and encourage their curiosity. ' +
-    'Keep answers extremely conversational and concise (usually strictly 1 to 3 sentences maximum) so that it is easy and comfortable to listen to of the speech delivery. ' +
-    'Do not output long formulas or dense blocks of texts. Break it down or offer to explain details when they ask. ';
+    'You are a warm, highly humanized, and friendly academic tutor supporting school students. ' +
+    'VOICE & HUMANIZATION GUIDELINES: ' +
+    'Speak in a smooth, expressive, warm, and natural human tone with a familiar, conversational Indian accent rhythm in English (using natural phrases like "chalo", "got it ya", "super simple", "no problem at all", "don\'t worry!"). ' +
+    'Sound like an encouraging elder sibling or personal tutor: warm, relatable, dynamic, and full of natural life. ' +
+    'Keep answers strictly short and fluid (usually 1 to 2 short sentences per turn) so text-to-speech voice output sounds immediate, crisp, and human. ' +
+    'Never output markdown symbols, asterisks, bullet points, numbers, or complex formulas into text, as they disrupt natural voice synthesis. ';
 
-  if (language === 'telugu') systemInstruction += 'You must speak in Telugu only (unless referring to specific scientific/mathematical English terms). Frame your explanations sweetly in Telugu.';
-  else if (language === 'hindi') systemInstruction += 'You must speak in Hindi. Use simple, easily understandable Hindi terms with a helpful academic tutoring style.';
-  else if (language === 'english') systemInstruction += 'Please speak in clear, expressive English. Keep explanations simplified and kid-friendly.';
-  else systemInstruction += 'You are multilingual. Support Telugu, Hindi, and English. Respond in the exact language the student speaks to you, or blend them naturally if they use a blend.';
+  if (language === 'telugu') systemInstruction += 'LANGUAGE MODE: You must speak in sweet, conversational Telugu only (unless referring to specific scientific/mathematical English terms).';
+  else if (language === 'hindi') systemInstruction += 'LANGUAGE MODE: You must speak in simple, warm, conversational Hindi.';
+  else if (language === 'english') systemInstruction += 'LANGUAGE MODE: Speak in clear, warm, expressive Indian English with friendly colloquial phrasing.';
+  else systemInstruction += 'CODE-SWITCHING & LANGUAGE MATCHING: Dynamically match and mirror the student\'s exact language mix and tone. If the user speaks in Teluglish (Telugu-English blend, e.g., "Artham kaledu brother", "Ela cheyyali cheppu"), respond in natural, sweet Teluglish (e.g., "Choodu, super simple line by line explain chestha!"). If the user speaks in Hinglish (Hindi-English blend, e.g., "Samajh nahi aaya, phir se batao"), respond in natural, friendly Hinglish (e.g., "Arre no problem! Step by step samajhte hain."). If the user speaks in English, respond in natural, warm Indian English. If the user speaks in Telugu or Hindi, respond in sweet conversational Telugu or Hindi.';
 
-  if (subject === 'math') systemInstruction += ' Currently helping with Mathematics! Help explain concepts like addition, fractions, algebra, or geometry using simple physical analogies.';
-  else if (subject === 'science') systemInstruction += ' Currently helping with Science! Help explain concepts like gravity, photosynthesis, planets, or animals with fun, exciting facts.';
-  else if (subject === 'languages') systemInstruction += ' Currently helping with Languages & Reading! Help expand vocabulary, teach correct grammar, or guide reading comprehensions with interesting sentences.';
-  else systemInstruction += ' You are ready to tutor on any academic school subject: math, science, history, geography, languages, or reading.';
+  if (subject === 'math') systemInstruction += ' SUBJECT FOCUS: Currently helping with Mathematics! Explain concepts like addition, fractions, algebra, or geometry using simple physical analogies.';
+  else if (subject === 'science') systemInstruction += ' SUBJECT FOCUS: Currently helping with Science! Explain concepts like gravity, photosynthesis, planets, or animals with fun facts.';
+  else if (subject === 'languages') systemInstruction += ' SUBJECT FOCUS: Currently helping with Languages & Reading! Expand vocabulary, teach correct grammar, or guide reading comprehensions.';
+  else systemInstruction += ' SUBJECT FOCUS: You are ready to tutor on any academic school subject: math, science, history, geography, languages, or reading.';
 
   const sessionId = searchParams.get('sessionId');
   const userId = searchParams.get('userId');
