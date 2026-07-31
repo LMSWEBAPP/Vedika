@@ -30,13 +30,12 @@ class BehaviorEngine:
 
     def update(self, dt):
         """
-        Periodically checks and triggers state choices.
+        Periodically checks inactivity timer and sleep transitions.
         """
-        # If static, currently being dragged, or physics is not grounded, skip behavior choices
-        if self.pet.physics.is_static or self.pet.physics.is_dragging or not self.pet.physics.is_grounded:
+        if self.pet.physics.is_dragging or not self.pet.physics.is_grounded:
             return
 
-        # Suspend random autonomous behavior transitions if Gemini voice chat is active
+        # Suspend sleep/inactivity checks if Gemini voice chat is active
         is_voice_active = (
             hasattr(self.pet, 'main_app') and 
             hasattr(self.pet.main_app, 'gemini_client') and 
@@ -47,12 +46,21 @@ class BehaviorEngine:
             self.inactivity_timer = 0.0
             return
 
-        # Check for long-term inactivity -> sleep transition (after 25 seconds of no activity)
-        self.inactivity_timer += dt
-        if self.inactivity_timer >= 25.0:
-            if "sleep" in self.pet.sprite.animations and self.pet.state_machine.current_state.name != "sleep":
-                self.pet.state_machine.change_state("sleep")
-                return
+        # Track inactivity when pet is in idle state
+        curr_state = self.pet.state_machine.current_state.name
+        if curr_state in ("idle", "waiting", "sleep"):
+            self.inactivity_timer += dt
+            if self.inactivity_timer >= 30.0 and curr_state != "sleep":
+                if "sleep" in self.pet.sprite.animations:
+                    print("[BehaviorEngine] Pet entering sleep animation after 30s desktop inactivity.")
+                    self.pet.state_machine.change_state("sleep")
+                    return
+        else:
+            self.inactivity_timer = 0.0
+
+        # Skip random state hopping choices in static mode
+        if self.pet.physics.is_static:
+            return
 
         self.check_timer += dt
         if self.check_timer >= self.evaluation_interval:

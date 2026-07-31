@@ -83,15 +83,15 @@ class InteractionManager:
 
     def handle_release(self):
         """
-        Releases the pet. If velocity is high, triggers a fling!
+        Releases the pet without changing the active animation.
         """
         if not self.pet.physics.is_dragging:
             return
 
         speed = math.sqrt(self.drag_vx**2 + self.drag_vy**2)
 
-        # Threshold to qualify as a throw (e.g. 200 pixels/sec)
-        if speed > 250.0:
+        # Threshold to qualify as a throw in physics/wandering mode
+        if speed > 250.0 and not self.pet.physics.is_static:
             # Cap maximum throw velocity to avoid losing pet off screen
             cap_vx = max(-1200.0, min(1200.0, self.drag_vx))
             cap_vy = max(-1000.0, min(1000.0, self.drag_vy))
@@ -101,12 +101,8 @@ class InteractionManager:
             self.pet.say("Wheeeee! 💨", duration=2.5)
             self.pet.play_sound("fling")
         else:
-            # Gentle drop / simple click
+            # Simple click or drag drop - preserve current active animation
             self.pet.physics.end_drag(0.0, 0.0)
-            if hasattr(self.pet, 'main_app') and self.pet.main_app:
-                self.pet.main_app.cycle_animation()
-            else:
-                self.pet.state_machine.change_state("fall")
 
         self.last_global_pos = None
 

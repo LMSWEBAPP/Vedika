@@ -143,28 +143,44 @@ class GeminiLiveWorker(QThread):
             pass
 
     def cleanup_pyaudio(self):
-        try:
-            if self.mic_stream:
+        if self.mic_stream:
+            try:
                 self.mic_stream.stop_stream()
+            except Exception:
+                pass
+            try:
                 self.mic_stream.close()
-                self.mic_stream = None
-            if self.speaker_stream:
+            except Exception:
+                pass
+            self.mic_stream = None
+
+        if self.speaker_stream:
+            try:
                 self.speaker_stream.stop_stream()
+            except Exception:
+                pass
+            try:
                 self.speaker_stream.close()
-                self.speaker_stream = None
-            if self.pya:
+            except Exception:
+                pass
+            self.speaker_stream = None
+
+        if self.pya:
+            try:
                 self.pya.terminate()
-                self.pya = None
-        except Exception as e:
-            print(f"[GeminiLiveWorker] Error cleaning up pyaudio: {e}")
+            except Exception:
+                pass
+            self.pya = None
 
     def stop(self):
-        # Gracefully stop the event loop from outside
+        # Gracefully stop asyncio tasks threadsafe
         if self.loop and self.loop.is_running():
             def _cancel_and_stop():
-                for t in asyncio.all_tasks(self.loop):
-                    t.cancel()
-                self.loop.stop()
+                try:
+                    for t in asyncio.all_tasks(self.loop):
+                        t.cancel()
+                except Exception:
+                    pass
             self.loop.call_soon_threadsafe(_cancel_and_stop)
 
     async def _main(self):
@@ -233,11 +249,13 @@ class GeminiLiveWorker(QThread):
             sys_inst += "SUBJECT FOCUS: You are ready to tutor on any academic school subject: math, science, history, geography, languages, or reading. "
 
         sys_inst += (
-            "TOOLS & CONTROLS: "
-            "You can trigger animations on yourself ('wave', 'jump', 'failed', 'waiting', 'review', 'idle'), "
-            "open websites in the user's browser using 'open_website' (if user asks for Vyomantha or study website, call 'open_website' with 'https://vyomanta.vercel.app'), "
-            "play music on YouTube using 'play_music' (if user asks to play music or a song, call 'play_music'), "
-            "and stop or pause the voice chat session when asked to stop or pause using 'stop_voice_chat'."
+            "TOOLS & IMMEDIATE ACTIONS: "
+            "1. When the user asks to play a song, music, video, or study material (e.g., 'play a good song', 'play music', 'play a video', 'play study video', 'open study website'): "
+            "DO NOT ask clarifying questions ('which song?', 'what genre?'). DO NOT give long conversational explanations. "
+            "IMMEDIATELY call 'play_music' or 'open_website' tool function on your VERY FIRST turn with a short confirmation like 'Sure! Playing it right now!'. "
+            "2. If the user asks for Vyomantha or study portal, call 'open_website' with 'https://vyomanta.vercel.app'. "
+            "3. If the user asks to stop or pause voice chat, call 'stop_voice_chat' immediately. "
+            "4. You can also trigger pet visual animations on yourself ('wave', 'jump', 'failed', 'waiting', 'review', 'idle')."
         )
 
         config = types.LiveConnectConfig(
@@ -313,6 +331,8 @@ class GeminiLiveWorker(QThread):
                 for t in pending:
                     t.cancel()
                 await asyncio.gather(*pending, return_exceptions=True)
+        except asyncio.CancelledError:
+            print("[GeminiLiveWorker] Live API session cancelled gracefully.")
         except Exception as e:
             print(f"[GeminiLiveWorker] Session error: {e}")
             if self.client and self.client.is_active:
@@ -726,6 +746,7 @@ class GeminiLiveClient(QObject):
         pass
 
         self.worker_thread = GeminiLiveWorker(self)
+        self.worker_thread.finished.connect(self.worker_thread.deleteLater)
         self.worker_thread.start()
 
     @Slot()
@@ -746,10 +767,18 @@ class GeminiLiveClient(QObject):
 
     @Slot()
     def stop(self):
-        if not self.is_active:
+        if getattr(self, "_is_stopping", False):
+            return
+        if not self.is_active and self.status == "disconnected":
             return
             
+        self._is_stopping = True
         self.is_active = False
+        self.is_speaking = False
+        self.turn_completed_received = False
+        
+        if hasattr(self, "mic_enable_timer"):
+            self.mic_enable_timer.stop()
         
         # Unblock the input and output queue readers
         if self.worker_thread and self.worker_thread.loop:
@@ -766,14 +795,17 @@ class GeminiLiveClient(QObject):
                 pass
         
         if self.worker_thread:
-            self.worker_thread.stop()
-            self.worker_thread.wait()
+            try:
+                self.worker_thread.stop()
+            except Exception as e:
+                print(f"[GeminiLiveClient] Worker thread stop notice: {e}")
             self.worker_thread = None
             
         self.cleanup_audio()
         self.status = "disconnected"
         self.state_changed.emit("disconnected")
         self.say_requested.emit("Voice chat stopped.", 2.5)
+        self._is_stopping = False
 
     def cleanup_audio(self):
         if self.audio_source:
@@ -833,9 +865,12 @@ class GeminiLiveClient(QObject):
     def send_audio_chunk(self, chunk):
         if self.is_active and self.worker_thread and self.worker_thread.loop and self.worker_thread.async_queue:
             try:
-                self.worker_thread.loop.call_soon_threadsafe(
-                    self.worker_thread.async_queue.put_nowait, chunk
-                )
+                if self.worker_thread.loop.is_running():
+                    self.worker_thread.loop.call_soon_threadsafe(
+                        self.worker_thread.async_queue.put_nowait, chunk
+                    )
+            except (RuntimeError, AttributeError):
+                pass
             except Exception as e:
                 print(f"[GeminiLive] Error queueing audio chunk threadsafe: {e}")
 
@@ -862,10 +897,13 @@ class GeminiLiveClient(QObject):
 
         if self.worker_thread and self.worker_thread.loop and self.worker_thread.audio_out_queue:
             try:
-                self.turn_completed_received = False
-                self.worker_thread.loop.call_soon_threadsafe(
-                    self.worker_thread.audio_out_queue.put_nowait, audio_bytes
-                )
+                if self.worker_thread.loop.is_running():
+                    self.turn_completed_received = False
+                    self.worker_thread.loop.call_soon_threadsafe(
+                        self.worker_thread.audio_out_queue.put_nowait, audio_bytes
+                    )
+            except (RuntimeError, AttributeError):
+                pass
             except Exception as e:
                 print(f"[GeminiLive] Error queueing audio chunk to speaker: {e}")
 
@@ -891,6 +929,8 @@ class GeminiLiveClient(QObject):
 
     @Slot()
     def enable_mic_after_speaking(self):
+        if not self.is_active:
+            return
         print("[GeminiLive] Microphone re-enabled after speaking (Failsafe timeout).")
         self.turn_completed_received = False
         if self.is_speaking:

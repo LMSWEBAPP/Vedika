@@ -35,7 +35,7 @@ class DesktopActivityTracker:
     Monitors active foreground window to trigger matching pet animations
     (typing, reading, music, speak) with 0ms latency and 0 cloud API costs.
     """
-    def __init__(self, main_app, check_interval=1.5):
+    def __init__(self, main_app, check_interval=0.1):
         self.main_app = main_app
         self.check_interval = check_interval
         self.last_check_time = 0.0
@@ -44,16 +44,16 @@ class DesktopActivityTracker:
 
         # Activity classification keywords
         self.coding_keywords = [
-            "visual studio code", "vscode", "cursor", "pycharm",
-            "sublime", "intellij", "eclipse", "antigravity",
-            "atom", "neovim", "vim", "code", "terminal", "powershell", "cmd.exe"
-        ]
-        self.browser_keywords = [
-            "chrome", "edge", "firefox", "brave", "vivaldi", "opera", "safari"
+            "visual studio code", "vscode", "antigravity", "cursor",
+            "pycharm", "sublime text", "intellij", "eclipse", "neovim"
         ]
         self.music_keywords = [
-            "spotify", "youtube", "apple music", "soundcloud",
-            "vlc", "media player", "music", "groove"
+            "youtube", "youtube.com", "spotify", "twitch", "netflix",
+            "vlc", "media player", "groove", "soundCloud"
+        ]
+        self.reading_keywords = [
+            "chrome", "edge", "firefox", "brave", "vivaldi", "opera", "safari",
+            "pdf", "acrobat", "foxit", "sumatra", "evince", "okular", "reader"
         ]
         self.chat_keywords = [
             "discord", "slack", "telegram", "whatsapp", "signal"
@@ -70,33 +70,30 @@ class DesktopActivityTracker:
             
         t_lower = title.lower()
 
-        # Check Coding / IDE (Antigravity, VS Code, Cursor, PyCharm, etc.) FIRST to prevent file path false positives
-        for kw in self.coding_keywords:
-            if kw in t_lower:
-                # Dynamic sub-cycle for active IDE sessions: rotates strictly between typing and reading
-                now_mod = int(time.time()) // 7
-                ide_states = ["typing", "reading"]
-                return ide_states[now_mod % len(ide_states)]
-
-        # Check File Explorer / File Manager -> Searching animation (Line 9)
-        for kw in self.explorer_keywords:
-            if kw in t_lower:
-                return "searching"
-
-        # Check Music / Media -> Music animation (Line 2)
+        # Check Music / Video / Media FIRST to ensure YouTube video title overrides browser reading
         for kw in self.music_keywords:
             if kw in t_lower:
                 return "music"
 
-        # Check Browsing / Reading -> Reading animation (Line 7)
-        for kw in self.browser_keywords:
+        # Check Coding / IDE (Antigravity, VS Code, Cursor, PyCharm, etc.) -> Typing animation
+        for kw in self.coding_keywords:
             if kw in t_lower:
-                return "reading"
+                return "typing"
 
-        # Check Chat / Messaging -> Speak animation (Line 5)
+        # Check File Explorer / File Manager -> Searching animation
+        for kw in self.explorer_keywords:
+            if kw in t_lower:
+                return "searching"
+
+        # Check Chat / Messaging -> Speak animation
         for kw in self.chat_keywords:
             if kw in t_lower:
                 return "speak"
+
+        # Check Browsing / Reading / PDF -> Reading animation
+        for kw in self.reading_keywords:
+            if kw in t_lower:
+                return "reading"
 
         return "idle"
 
@@ -119,19 +116,29 @@ class DesktopActivityTracker:
             self.main_app.gemini_client.is_active
         )
 
-        # Automatically pause voice chat if user opens/focuses system music or media apps (YouTube, Spotify, VLC, etc.)
+        # Instantly disconnect voice chat (0ms delay, no talking) when YouTube or media video playback is detected
         if is_voice_chat_active and category == "music":
-            print(f"[ActivityTracker] System media playback detected ('{title[:40]}...') -> Pausing Gemini Live voice chat.")
-            self.main_app.gemini_client.interrupted.emit()
+            print(f"[ActivityTracker] System media playback detected ('{title[:40]}...') -> Instantly disconnecting Gemini Live voice chat.")
             self.main_app.gemini_client.stop()
             if self.main_app.pet:
-                self.main_app.pet.say("Pausing voice chat for music playback! 🎵", duration=2.5)
+                music_anim = "music" if "music" in self.main_app.pet.sprite.animations else "idle"
+                self.main_app.set_active_animation(music_anim)
             return
 
+        curr_anim_name = self.main_app.pet.sprite.current_animation.name if self.main_app.pet.sprite.current_animation else ""
+        curr_state_name = self.main_app.pet.state_machine.current_state.name if self.main_app.pet.state_machine.current_state else ""
+
+        # If voice chat is active and pet is currently speaking or thinking/searching, preserve speech/search animation
         if is_voice_chat_active:
+            if curr_state_name in ("speak", "searching") or curr_anim_name in ("speak", "searching"):
+                return
+
+        # Preserve sleep animation if pet went to sleep while idle
+        if curr_anim_name == "sleep" and category == "idle":
             return
 
-        if category != self.current_category:
+        # Instantly switch animation when foreground application category changes
+        if category != self.current_category or curr_anim_name != category:
             self.current_category = category
             print(f"[ActivityTracker] Active Window: '{title[:40]}...' -> Triggering animation: {category}")
             self.main_app.set_active_animation(category)

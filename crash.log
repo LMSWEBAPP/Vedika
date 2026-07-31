@@ -1,0 +1,10 @@
+
+--- Crash Log [Fri Jul 31 11:26:57 2026] ---
+Traceback (most recent call last):
+  File "E:\vyomantha\desktop_pet_geminilive_api\main.py", line 27, in <module>
+    class DesktopPetApp(QObject):
+  File "E:\vyomantha\desktop_pet_geminilive_api\main.py", line 322, in DesktopPetApp
+    @Slot(str)
+     ^^^^
+NameError: name 'Slot' is not defined
+
