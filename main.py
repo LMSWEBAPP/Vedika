@@ -85,7 +85,7 @@ class DesktopPetApp(QObject):
         self.window.show()
 
         # Initial welcome greeting on launch
-        self.pet.say("Hey, ready to learn something new?", duration=4.5)
+        self.pet.say("Hi, I am Vedika, what's going on?", duration=4.5)
 
         # Initialize Gemini Live voice-to-voice client
         from engine.gemini_live import GeminiLiveClient
