@@ -3,8 +3,17 @@ import sys
 import json
 import time
 import traceback
+
+if sys.platform == "win32":
+    try:
+        import io
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+
 from PySide6.QtWidgets import QApplication
-from PySide6.QtCore import QTimer, QThread, QObject, Slot, QUrl
+from PySide6.QtCore import QTimer, QThread, QObject, Slot, Signal, QUrl
 from PySide6.QtGui import QCursor, Qt
 from PySide6.QtWebSockets import QWebSocket
 
@@ -26,8 +35,11 @@ from engine.activity_tracker import DesktopActivityTracker
 from ui.transparent_window import TransparentWindow
 
 class DesktopPetApp(QObject):
+    yt_resolved_signal = Signal(str)
+
     def __init__(self):
         super().__init__()
+        self.yt_resolved_signal.connect(self._on_yt_resolved_open_media)
         self.app = QApplication(sys.argv)
         
         # Scan for companion plugins in assets/
@@ -407,18 +419,53 @@ class DesktopPetApp(QObject):
 
     @Slot(str)
     def _do_open_url(self, target_url):
-        """Safely launches URL in default browser using Python stdlib webbrowser."""
+        """Safely launches URL in default browser using a detached subprocess group on Windows to prevent DDE IPC crashes when Chrome is already running."""
         if not target_url:
             return
-        print(f"[Main] Opening URL in web browser: {target_url}")
-        try:
-            import webbrowser
-            webbrowser.open(target_url)
-        except Exception as e:
-            print(f"[Main] Error opening URL: {e}")
+        print(f"[Browser Launcher] Preparing browser launch for target URL: {target_url}")
+
+        import subprocess
+        import threading
+        import sys
+
+        def _async_browser_launch(url):
+            try:
+                if sys.platform == "win32":
+                    DETACHED_PROCESS = 0x00000008
+                    CREATE_NEW_PROCESS_GROUP = 0x00000200
+                    print(f"[Browser Launcher] Spawning detached Windows Shell launcher for: {url}")
+                    subprocess.Popen(
+                        ['cmd.exe', '/c', 'start', '', url],
+                        shell=False,
+                        creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+                    )
+                else:
+                    import webbrowser
+                    webbrowser.open(url)
+                print(f"[Browser Launcher] Browser launch command dispatched successfully.")
+            except Exception as e:
+                print(f"[Browser Launcher] Primary browser launch failed ({e}), using fallback.")
+                try:
+                    import webbrowser
+                    webbrowser.open(url)
+                except Exception as ex:
+                    print(f"[Browser Launcher] Fallback browser launch error: {ex}")
+
+        threading.Thread(target=_async_browser_launch, args=(target_url,), daemon=True).start()
+
+    def is_media_url(self, url):
+        """Checks if URL points to YouTube, Spotify, song, music, or streaming video media."""
+        if not url:
+            return False
+        url_lower = url.lower()
+        media_keywords = [
+            "youtube.com", "youtu.be", "spotify.com", "soundcloud.com",
+            "twitch.tv", "netflix.com", "vimeo.com", "music", "song", "video"
+        ]
+        return any(kw in url_lower for kw in media_keywords)
 
     def open_url_by_gemini(self, url):
-        """Opens requested URL. Speaks announcement first, then disconnects voice chat and opens URL."""
+        """Opens requested URL. Disconnects voice chat ONLY for YouTube/songs/media, preserving voice chat for general websites."""
         if not url:
             return
         url_lower = url.lower()
@@ -427,29 +474,55 @@ class DesktopPetApp(QObject):
         elif not (url.startswith("http://") or url.startswith("https://")):
             url = "https://" + url
 
+        is_media = self.is_media_url(url)
+        self.pending_browser_open = True
+
         from PySide6.QtCore import QTimer
+        QTimer.singleShot(3500, lambda: setattr(self, 'pending_browser_open', False))
 
         if self.pet:
-            self.pet.say(f"Opening link! 🚀", duration=2.5)
-            speaking_anim = "speak" if "speak" in self.pet.sprite.animations else "wave"
+            msg = "Playing video! 🎵" if is_media else "Opening website! 🚀"
+            self.pet.say(msg, duration=2.5)
+            speaking_anim = "music" if (is_media and "music" in self.pet.sprite.animations) else ("speak" if "speak" in self.pet.sprite.animations else "wave")
             self.set_active_animation(speaking_anim)
 
         def _launch_link():
-            if hasattr(self, 'gemini_client') and self.gemini_client and self.gemini_client.is_active:
-                print("[Main] Disconnecting Gemini Live Voice Chat before opening link.")
+            if is_media and hasattr(self, 'gemini_client') and self.gemini_client and self.gemini_client.is_active:
+                print(f"[Main] Media/Song URL detected ({url}) -> Disconnecting Gemini Live Voice Chat.")
                 self.gemini_client.stop()
+            elif not is_media:
+                print(f"[Main] Standard website detected ({url}) -> Keeping Gemini Live Voice Chat ACTIVE.")
             self._do_open_url(url)
 
-        QTimer.singleShot(2500, _launch_link)
+        QTimer.singleShot(1500 if not is_media else 2500, _launch_link)
+
+    @Slot(str)
+    def _on_yt_resolved_open_media(self, target_url):
+        """Safely executed on Qt Main Thread when background YouTube resolution completes."""
+        print(f"[Main] YouTube URL resolved -> Executing media launch on Qt Main Thread: {target_url}")
+        if hasattr(self, 'gemini_client') and self.gemini_client:
+            self.gemini_client.is_paused = True
+            if self.gemini_client.is_active:
+                print("[Main] Disconnecting Gemini Live Voice Chat on Qt main thread before opening music/video.")
+                self.gemini_client.stop()
+        self._do_open_url(target_url)
 
     def play_music_by_gemini(self, query=""):
         """
-        Plays requested music/video on YouTube using yt-dlp to resolve direct video link.
-        Speaks announcement first, then disconnects voice chat and opens video URL.
+        Plays requested music/video on YouTube using yt-dlp asynchronously.
+        Immediately mutes mic input at 0ms delay to prevent acoustic feedback loops.
         """
         import random
+        import threading
         from PySide6.QtCore import QTimer
-        
+
+        # Immediately pause mic at 0ms delay to stop speaker feedback
+        if hasattr(self, 'gemini_client') and self.gemini_client:
+            self.gemini_client.is_paused = True
+
+        self.pending_browser_open = True
+        QTimer.singleShot(3500, lambda: setattr(self, 'pending_browser_open', False))
+
         generic_phrases = ["", "a good song", "good song", "a song", "song", "music", "play music", "play a song", "something good", "a video", "video", "study video"]
         if not query or query.strip().lower() in generic_phrases:
             trending_queries = [
@@ -460,55 +533,49 @@ class DesktopPetApp(QObject):
             ]
             query = random.choice(trending_queries)
 
-        target_url = None
-
-        # Attempt to use yt_dlp for resolving exact YouTube video URL
-        try:
-            import yt_dlp
-            ydl_opts = {
-                'format': 'best',
-                'noplaylist': True,
-                'quiet': True,
-                'no_warnings': True,
-                'extract_flat': True,
-            }
-            search_query = f"ytsearch1:{query}"
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(search_query, download=False)
-                if info and 'entries' in info and len(info['entries']) > 0:
-                    first_entry = info['entries'][0]
-                    video_id = first_entry.get('id') or first_entry.get('url')
-                    if video_id:
-                        if video_id.startswith('http'):
-                            target_url = video_id
-                        else:
-                            target_url = f"https://www.youtube.com/watch?v={video_id}"
-                        title = first_entry.get('title', query)
-                        print(f"[YouTubeDL] Resolved '{query}' to direct video: {title} ({target_url})")
-        except Exception as e:
-            print(f"[YouTubeDL] Info extract notice: {e}")
-
-        # Fallback to search query results page if yt_dlp is unavailable or failed
-        if not target_url:
-            import urllib.parse
-            encoded = urllib.parse.quote(query)
-            target_url = f"https://www.youtube.com/results?search_query={encoded}"
-
-        # 1. First speak announcement to student
         if self.pet:
             display_name = query
             self.pet.say(f"Playing {display_name}! 🎵", duration=2.5)
             music_anim = "music" if "music" in self.pet.sprite.animations else "wave"
             self.set_active_animation(music_anim)
 
-        # 2. Then after 2.5s (when speech completes), disconnect voice chat and launch video
-        def _launch_video():
-            if hasattr(self, 'gemini_client') and self.gemini_client and self.gemini_client.is_active:
-                print("[Main] Disconnecting Gemini Live Voice Chat before opening video.")
-                self.gemini_client.stop()
-            self._do_open_url(target_url)
+        def _async_yt_lookup_and_play():
+            target_url = None
+            try:
+                import yt_dlp
+                ydl_opts = {
+                    'format': 'best',
+                    'noplaylist': True,
+                    'quiet': True,
+                    'no_warnings': True,
+                    'extract_flat': True,
+                }
+                search_query = f"ytsearch1:{query}"
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(search_query, download=False)
+                    if info and 'entries' in info and len(info['entries']) > 0:
+                        first_entry = info['entries'][0]
+                        video_id = first_entry.get('id') or first_entry.get('url')
+                        if video_id:
+                            if video_id.startswith('http'):
+                                target_url = video_id
+                            else:
+                                target_url = f"https://www.youtube.com/watch?v={video_id}"
+                            title = first_entry.get('title', query)
+                            print(f"[YouTubeDL] Resolved '{query}' to direct video: {title} ({target_url})")
+            except Exception as e:
+                print(f"[YouTubeDL] Info extract notice: {e}")
 
-        QTimer.singleShot(2500, _launch_video)
+            if not target_url:
+                import urllib.parse
+                encoded = urllib.parse.quote(query)
+                target_url = f"https://www.youtube.com/results?search_query={encoded}"
+
+            # Emit PySide6 Signal across threads -> delivers to _on_yt_resolved_open_media on Qt Main Thread
+            self.yt_resolved_signal.emit(target_url)
+
+        # Run yt_dlp lookup in background daemon thread
+        threading.Thread(target=_async_yt_lookup_and_play, daemon=True).start()
 
     # --- Persistence Settings ---
     

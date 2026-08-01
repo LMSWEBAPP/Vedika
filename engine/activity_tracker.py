@@ -118,6 +118,10 @@ class DesktopActivityTracker:
         if not self.enabled or not self.main_app.pet:
             return
 
+        # Debounce activity tracking during pending browser open to prevent state thrashing
+        if getattr(self.main_app, 'pending_browser_open', False):
+            return
+
         now = time.time()
         if now - self.last_check_time < self.check_interval:
             return
@@ -132,13 +136,21 @@ class DesktopActivityTracker:
             self.main_app.gemini_client.is_active
         )
 
-        # Instantly disconnect voice chat (0ms delay, no talking) when YouTube or media video playback is detected
-        if is_voice_chat_active and category == "music":
-            print(f"[ActivityTracker] System media playback detected ('{title[:40]}...') -> Instantly disconnecting Gemini Live voice chat.")
+        user_explicit_voice = (
+            is_voice_chat_active and 
+            getattr(self.main_app.gemini_client, 'user_explicitly_started_voice', False)
+        )
+
+        clean_title = (title[:40].encode('ascii', 'replace').decode('ascii')) if title else ""
+
+        # Safely disable speaker and mic streams and stop voice chat when laptop sound/YouTube media is detected (unless user explicitly activated voice chat)
+        if is_voice_chat_active and category == "music" and not user_explicit_voice:
+            print(f"[ActivityTracker] System media playback detected ('{clean_title}...') -> Disabling speaker & mic hardware and stopping voice chat.")
             self.main_app.gemini_client.stop()
             if self.main_app.pet:
                 music_anim = "music" if "music" in self.main_app.pet.sprite.animations else "idle"
                 self.main_app.set_active_animation(music_anim)
+                self.main_app.pet.say("Media detected 🎵 Muting voice chat. Press Alt+V to restart!", duration=3.0)
             return
 
         curr_anim_name = self.main_app.pet.sprite.current_animation.name if self.main_app.pet.sprite.current_animation else ""
@@ -156,5 +168,5 @@ class DesktopActivityTracker:
         # Instantly switch animation when foreground application category changes
         if category != self.current_category or curr_anim_name != category:
             self.current_category = category
-            print(f"[ActivityTracker] Active Window: '{title[:40]}...' -> Triggering animation: {category}")
+            print(f"[ActivityTracker] Active Window: '{clean_title}...' -> Triggering animation: {category}")
             self.main_app.set_active_animation(category)

@@ -112,6 +112,7 @@ class GeminiLiveWorker(QThread):
         self.flush_speaker = False
         self.last_interruption_time = 0.0
         self.aec = BlockNLMSEchoCanceller()
+        self._stopping_audio = False
 
     def run(self):
         self.loop = asyncio.new_event_loop()
@@ -125,6 +126,7 @@ class GeminiLiveWorker(QThread):
         except Exception as e:
             print(f"[GeminiLiveWorker] Worker thread loop stopped with: {e}")
         finally:
+            self._stopping_audio = True
             self.cleanup_pyaudio()
             self.cancel_all_pending_tasks()
             self.loop.close()
@@ -143,9 +145,13 @@ class GeminiLiveWorker(QThread):
             pass
 
     def cleanup_pyaudio(self):
+        """Safely disables speaker and mic streams FIRST to prevent PortAudio C crashes on Windows when laptop sound/media plays."""
+        self._stopping_audio = True
+
         if self.mic_stream:
             try:
-                self.mic_stream.stop_stream()
+                if hasattr(self.mic_stream, 'is_active') and self.mic_stream.is_active():
+                    self.mic_stream.stop_stream()
             except Exception:
                 pass
             try:
@@ -156,7 +162,8 @@ class GeminiLiveWorker(QThread):
 
         if self.speaker_stream:
             try:
-                self.speaker_stream.stop_stream()
+                if hasattr(self.speaker_stream, 'is_active') and self.speaker_stream.is_active():
+                    self.speaker_stream.stop_stream()
             except Exception:
                 pass
             try:
@@ -171,9 +178,11 @@ class GeminiLiveWorker(QThread):
             except Exception:
                 pass
             self.pya = None
+        print("[GeminiLiveWorker] Speaker and microphone hardware disabled cleanly.")
 
     def stop(self):
-        # Gracefully stop asyncio tasks threadsafe
+        """Safely signals the worker thread's asyncio loop to cancel tasks and stop thread execution."""
+        self._stopping_audio = True
         if self.loop and self.loop.is_running():
             def _cancel_and_stop():
                 try:
@@ -181,7 +190,14 @@ class GeminiLiveWorker(QThread):
                         t.cancel()
                 except Exception:
                     pass
-            self.loop.call_soon_threadsafe(_cancel_and_stop)
+                try:
+                    self.loop.stop()
+                except Exception:
+                    pass
+            try:
+                self.loop.call_soon_threadsafe(_cancel_and_stop)
+            except Exception:
+                pass
 
     async def _main(self):
         api_key = self.client.gemini_keys[self.client.current_key_index]
@@ -207,6 +223,8 @@ class GeminiLiveWorker(QThread):
 
         def play_music(query: str = "") -> dict:
             """Plays music or a requested song on YouTube in the default browser when user asks to play music or a song."""
+            # Immediately mute microphone input at 0ms latency to prevent acoustic feedback!
+            self.client.is_paused = True
             self.client.play_music_requested.emit(query)
             return {"status": "success", "playing_music": query or "trending music"}
 
@@ -344,7 +362,7 @@ class GeminiLiveWorker(QThread):
                     text="Greet me by saying exactly: 'Hi, I am Vedika, what's going on?' and wave to me."
                 )
 
-                # Run audio streaming, receiving, and playing concurrently until first completion/failure
+                # Run audio streaming, receiving, and playing concurrently until session is stopped
                 tasks = [
                     asyncio.create_task(self.send_audio_loop()),
                     asyncio.create_task(self.receive_loop()),
@@ -352,13 +370,21 @@ class GeminiLiveWorker(QThread):
                     asyncio.create_task(self.play_audio_loop())
                 ]
                 
-                done, pending = await asyncio.wait(
-                    tasks, return_when=asyncio.FIRST_COMPLETED
-                )
-                
-                for t in pending:
-                    t.cancel()
-                await asyncio.gather(*pending, return_exceptions=True)
+                while self.client.is_active and not getattr(self, "_stopping_audio", False):
+                    done, pending = await asyncio.wait(
+                        tasks, return_when=asyncio.FIRST_COMPLETED, timeout=1.0
+                    )
+                    if not self.client.is_active or getattr(self, "_stopping_audio", False):
+                        break
+                    for t in done:
+                        err = t.exception()
+                        if err and not isinstance(err, asyncio.CancelledError):
+                            print(f"[GeminiLiveWorker] Task notice: {err}")
+
+                for t in tasks:
+                    if not t.done():
+                        t.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
         except asyncio.CancelledError:
             print("[GeminiLiveWorker] Live API session cancelled gracefully.")
         except Exception as e:
@@ -402,16 +428,24 @@ class GeminiLiveWorker(QThread):
         try:
             n = 0
             speaking_sustained_counter = 0
-            while self.client.is_active and self.mic_stream:
-                # Mute mic audio when session is paused
-                if getattr(self.client, "is_paused", False):
+            while self.client.is_active and self.mic_stream and not getattr(self, "_stopping_audio", False):
+                # Mute mic audio when session is paused or audio is stopping
+                if getattr(self.client, "is_paused", False) or getattr(self, "_stopping_audio", False):
                     await asyncio.sleep(0.05)
                     continue
 
-                # Read microphone bytes from PyAudio in a background thread to prevent loop blocking
-                data = await asyncio.to_thread(
-                    self.mic_stream.read, 1024, exception_on_overflow=False
-                )
+                if not self.mic_stream:
+                    break
+
+                try:
+                    # Read microphone bytes from PyAudio in a background thread to prevent loop blocking
+                    data = await asyncio.to_thread(
+                        self.mic_stream.read, 1024, exception_on_overflow=False
+                    )
+                except Exception as ex:
+                    print(f"[GeminiLiveWorker] Mic stream read gracefully stopped: {ex}")
+                    break
+
                 if not data:
                     await asyncio.sleep(0.01)
                     continue
@@ -486,14 +520,14 @@ class GeminiLiveWorker(QThread):
     async def play_audio_loop(self):
         try:
             n = 0
-            while self.client.is_active and self.speaker_stream:
-                # Pause audio output when session is paused
-                if getattr(self.client, "is_paused", False):
+            while self.client.is_active and self.speaker_stream and not getattr(self, "_stopping_audio", False):
+                # Pause audio output when session is paused or audio is stopping
+                if getattr(self.client, "is_paused", False) or getattr(self, "_stopping_audio", False):
                     await asyncio.sleep(0.05)
                     continue
 
                 chunk = await self.audio_out_queue.get()
-                if chunk is None:
+                if chunk is None or getattr(self, "_stopping_audio", False):
                     break
                 
                 # Check for thread-safe interruption flush request
@@ -513,8 +547,15 @@ class GeminiLiveWorker(QThread):
                 # Push far-end reference audio to Block-NLMS Echo Canceller
                 self.aec.push_reference(chunk)
 
-                # Play audio chunk asynchronously to prevent event loop blocking
-                await asyncio.to_thread(self.speaker_stream.write, chunk)
+                if not self.speaker_stream:
+                    break
+
+                try:
+                    # Play audio chunk asynchronously to prevent event loop blocking
+                    await asyncio.to_thread(self.speaker_stream.write, chunk)
+                except Exception as ex:
+                    print(f"[GeminiLiveWorker] Speaker stream write gracefully stopped: {ex}")
+                    break
                 
                 # Thread-safely trigger client timer
                 self.client.mic_timer_trigger.emit(2500)
@@ -751,9 +792,12 @@ class GeminiLiveClient(QObject):
 
     @Slot()
     def start(self):
-        if self.is_active:
+        if self.is_active or getattr(self, "_is_starting", False) or getattr(self, "_is_stopping", False):
+            print("[GeminiLiveClient] Start ignored: session state transition in progress.")
             return
 
+        self._is_starting = True
+        self.is_paused = False  # Reset mute state on every new start!
         self.status = "connecting"
         self.state_changed.emit("connecting")
         
@@ -762,22 +806,19 @@ class GeminiLiveClient(QObject):
             self.say_requested.emit("Error: GEMINI_API_KEY not found in .env file", 3.0)
             self.status = "error"
             self.state_changed.emit("error")
+            self._is_starting = False
             return
             
         self.is_active = True
+        self.user_explicitly_started_voice = True
         self.is_speaking = False
         self.turn_completed_received = False
         self.input_audio_buffer.clear()
-        
-        # Play flush timer removed; PyAudio handles streaming playback natively
-        pass
-        
-        # Empty any old stale audio elements (handled naturally as asyncio.Queue starts empty)
-        pass
 
         self.worker_thread = GeminiLiveWorker(self)
-        self.worker_thread.finished.connect(self.worker_thread.deleteLater)
+        self.worker_thread.finished.connect(self._on_worker_thread_finished)
         self.worker_thread.start()
+        self._is_starting = False
 
     @Slot()
     def toggle_pause(self):
@@ -804,39 +845,39 @@ class GeminiLiveClient(QObject):
             
         self._is_stopping = True
         self.is_active = False
+        self.is_paused = False  # Reset mute state on stop!
+        self.user_explicitly_started_voice = False
         self.is_speaking = False
         self.turn_completed_received = False
         
         if hasattr(self, "mic_enable_timer"):
             self.mic_enable_timer.stop()
         
-        # Unblock the input and output queue readers
-        if self.worker_thread and self.worker_thread.loop:
-            try:
-                if self.worker_thread.async_queue:
-                    self.worker_thread.loop.call_soon_threadsafe(
-                        self.worker_thread.async_queue.put_nowait, None
-                    )
-                if self.worker_thread.audio_out_queue:
-                    self.worker_thread.loop.call_soon_threadsafe(
-                        self.worker_thread.audio_out_queue.put_nowait, None
-                    )
-            except Exception:
-                pass
-        
         if self.worker_thread:
-            try:
-                self.worker_thread.stop()
-                self.worker_thread.quit()
-                self.worker_thread.wait(1000)
-            except Exception as e:
-                print(f"[GeminiLiveClient] Worker thread stop notice: {e}")
+            w_thread = self.worker_thread
             self.worker_thread = None
+            w_thread.stop()
+            w_thread.quit()
+        else:
+            self._is_stopping = False
             
         self.cleanup_audio()
         self.status = "disconnected"
         self.state_changed.emit("disconnected")
         self.say_requested.emit("Voice chat stopped.", 2.5)
+
+    @Slot()
+    def _on_worker_thread_finished(self):
+        """Slot executed on Qt Main Thread when worker QThread finishes cleanly."""
+        print("[GeminiLiveClient] Worker thread finished cleanly.")
+        self._is_stopping = False
+        sender = self.sender()
+        if sender:
+            try:
+                sender.finished.disconnect(self._on_worker_thread_finished)
+            except Exception:
+                pass
+            sender.deleteLater()
         self._is_stopping = False
 
     def cleanup_audio(self):
