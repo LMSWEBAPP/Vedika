@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: lms-voice-server
+    env: node
+    buildCommand: npm install
+    startCommand: node voice-server.js
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: PORT
+        value: "10000"

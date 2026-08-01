@@ -1,7 +1,10 @@
 import os
 from PIL import Image
-from PySide6.QtGui import QImage, QPixmap, QTransform
+from PySide6.QtGui import QImage, QPixmap, QTransform, QImageReader
 from PySide6.QtCore import Qt
+
+# Increase Qt QImage allocation limit to 1024 MB (1 GB) for high-resolution companion spritesheets
+QImageReader.setAllocationLimit(1024)
 
 class SpriteLoader:
     @staticmethod

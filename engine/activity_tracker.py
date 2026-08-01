@@ -44,12 +44,18 @@ class DesktopActivityTracker:
 
         # Activity classification keywords
         self.coding_keywords = [
-            "visual studio code", "vscode", "antigravity", "cursor",
+            "visual studio code", "vscode", "vs code", "visual studio", "antigravity", "cursor",
             "pycharm", "sublime text", "intellij", "eclipse", "neovim"
         ]
         self.music_keywords = [
             "youtube", "youtube.com", "spotify", "twitch", "netflix",
             "vlc", "media player", "groove", "soundCloud"
+        ]
+        self.chemistry_keywords = [
+            "chemistry", "chem", "phet", "chemdraw", "molview", "virtual lab", "experiment"
+        ]
+        self.maths_keywords = [
+            "math", "geogebra", "desmos", "calculator", "symbolab", "matlab", "octave", "mathematica"
         ]
         self.reading_keywords = [
             "chrome", "edge", "firefox", "brave", "vivaldi", "opera", "safari",
@@ -74,6 +80,16 @@ class DesktopActivityTracker:
         for kw in self.music_keywords:
             if kw in t_lower:
                 return "music"
+
+        # Check Chemistry / Virtual Lab -> Chemistry animation
+        for kw in self.chemistry_keywords:
+            if kw in t_lower:
+                return "chemistry"
+
+        # Check Maths / Calculator -> Maths animation
+        for kw in self.maths_keywords:
+            if kw in t_lower:
+                return "maths"
 
         # Check Coding / IDE (Antigravity, VS Code, Cursor, PyCharm, etc.) -> Typing animation
         for kw in self.coding_keywords:

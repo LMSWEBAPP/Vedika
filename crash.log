@@ -8,3 +8,11 @@ Traceback (most recent call last):
      ^^^^
 NameError: name 'Slot' is not defined
 
+
+--- Crash Log [Fri Jul 31 23:02:47 2026] ---
+Traceback (most recent call last):
+  File "C:\Users\seshu\desktop-pet\main.py", line 239, in game_loop
+    def game_loop(self):
+    
+KeyboardInterrupt
+

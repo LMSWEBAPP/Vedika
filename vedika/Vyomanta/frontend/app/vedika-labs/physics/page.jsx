@@ -1,0 +1,32 @@
+'use client';
+
+import dynamic from 'next/dynamic';
+import { Loader2 } from 'lucide-react';
+
+const PhysicsLab = dynamic(
+  () => import('@/components/labs/PhysicsLab'),
+  {
+    ssr: false,
+    loading: () => (
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '100vh',
+        background: '#07080F',
+        color: '#5B8CF8',
+        gap: 12
+      }}>
+        <Loader2 size={36} style={{ animation: 'spin 1s linear infinite' }} />
+        <span style={{ fontSize: 14, fontWeight: 700, fontFamily: 'sans-serif' }}>
+          Loading 3D Physics Simulator Environment...
+        </span>
+      </div>
+    )
+  }
+);
+
+export default function PhysicsLabPage() {
+  return <PhysicsLab />;
+}

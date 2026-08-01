@@ -230,9 +230,24 @@ nextApp.prepare().then(() => {
       }, 1500);
     }
 
+    const clientRole = searchParams.get('role') || 'generic';
+    wss.clients.add(clientWs);
+
     clientWs.on('message', async (buffer) => {
       try {
         const msg = JSON.parse(buffer.toString());
+        
+        // Broadcast local bridge events (WEBAPP_STATE_UPDATE, PUZZLE_STUCK, NAVIGATE_WEBAPP, TRIGGER_HINT, PET_ACTION_REQUESTED)
+        const relayTypes = ['WEBAPP_STATE_UPDATE', 'PUZZLE_STUCK', 'NAVIGATE_WEBAPP', 'TRIGGER_HINT', 'PET_ACTION_REQUESTED'];
+        if (relayTypes.includes(msg.type) || relayTypes.includes(msg.event)) {
+          const payloadStr = JSON.stringify(msg);
+          for (const client of wss.clients) {
+            if (client !== clientWs && client.readyState === 1) {
+              client.send(payloadStr);
+            }
+          }
+        }
+
         if (msg.setup) {
           if (setupTimeout) { clearTimeout(setupTimeout); setupTimeout = null; }
           await connectGemini(msg.setup);

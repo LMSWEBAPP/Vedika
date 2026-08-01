@@ -1,0 +1,64 @@
+FROM frappe/bench:latest
+
+# Switch to root to install system dependencies
+USER root
+RUN apt-get update && apt-get install -y redis-server mariadb-client ca-certificates && rm -rf /var/lib/apt/lists/*
+
+# Switch to frappe user
+USER frappe
+WORKDIR /home/frappe
+
+# Initialize the bench during the build phase (no Redis/DB required for file prep)
+RUN bench init --skip-redis-config-generation frappe-bench
+
+WORKDIR /home/frappe/frappe-bench
+
+# Clone and install Payments & LMS apps at build time
+RUN git clone https://github.com/frappe/payments.git apps/payments --depth 1 \
+    && rm -f apps/payments/package.json \
+    && ./env/bin/pip install -e ./apps/payments \
+    && ./env/bin/pip cache purge
+
+RUN git clone https://github.com/frappe/lms.git apps/lms --depth 1 \
+    && rm -rf apps/lms/frontend apps/lms/package.json \
+    && ./env/bin/pip install -e ./apps/lms \
+    && ./env/bin/pip cache purge
+
+# Configure apps registry file
+RUN printf "frappe\npayments\nlms\n" > sites/apps.txt
+
+# Copy and execute schema patching script to clean DocTypes at build time
+COPY --chown=frappe:frappe backend/patch_schemas.py /home/frappe/frappe-bench/patch_schemas.py
+RUN python3 /home/frappe/frappe-bench/patch_schemas.py && rm /home/frappe/frappe-bench/patch_schemas.py
+
+# Copy and execute statement time patching script to bypass SET STATEMENT queries
+COPY --chown=frappe:frappe backend/patch_statement_time.py /home/frappe/frappe-bench/patch_statement_time.py
+RUN python3 /home/frappe/frappe-bench/patch_statement_time.py && rm /home/frappe/frappe-bench/patch_statement_time.py
+
+# Copy and execute API patching script to add Google OAuth endpoint
+COPY --chown=frappe:frappe backend/patch_api.py /home/frappe/frappe-bench/patch_api.py
+RUN python3 /home/frappe/frappe-bench/patch_api.py && rm /home/frappe/frappe-bench/patch_api.py
+
+# Remove Redis/Watch/Socketio from Procfile so they don't spawn redundantly
+RUN sed -i '/redis/d' ./Procfile \
+    && sed -i '/watch/d' ./Procfile \
+    && sed -i '/socketio/d' ./Procfile
+
+# Build assets during the build phase (saves runtime CPU and RAM)
+RUN bench build
+
+# Copy startup orchestration scripts as root
+USER root
+COPY --chown=frappe:frappe backend/dummy_server.py /home/frappe/dummy_server.py
+COPY --chown=frappe:frappe backend/create_students.py /home/frappe/create_students.py
+COPY --chown=frappe:frappe backend/grant_question_perm.py /home/frappe/grant_question_perm.py
+COPY --chown=frappe:frappe backend/queue_worker.py /home/frappe/queue_worker.py
+COPY --chown=frappe:frappe backend/init-render-web.sh /home/frappe/init-render-web.sh
+RUN chmod +x /home/frappe/init-render-web.sh
+
+USER frappe
+WORKDIR /home/frappe
+EXPOSE 8000
+
+# Run startup script
+CMD ["/home/frappe/init-render-web.sh"]

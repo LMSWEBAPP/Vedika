@@ -4,8 +4,9 @@ import json
 import time
 import traceback
 from PySide6.QtWidgets import QApplication
-from PySide6.QtCore import QTimer, QThread, QObject, Slot
+from PySide6.QtCore import QTimer, QThread, QObject, Slot, QUrl
 from PySide6.QtGui import QCursor, Qt
+from PySide6.QtWebSockets import QWebSocket
 
 def log_uncaught_exception(exc_type, exc_value, exc_tb):
     err_msg = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
@@ -99,6 +100,8 @@ class DesktopPetApp(QObject):
         self.gemini_client.play_music_requested.connect(self.play_music_by_gemini)
         self.gemini_client.stop_voice_requested.connect(self.pause_voice_by_gemini)
         self.gemini_client.session_activated.connect(self.on_gemini_session_activated)
+        self.gemini_client.navigate_webapp_requested.connect(self.on_navigate_webapp_requested)
+        self.gemini_client.trigger_hint_requested.connect(self.on_trigger_hint_requested)
         
         # Connect conversational state transitions
         self.gemini_client.speaking_started.connect(self.on_gemini_speaking)
@@ -109,6 +112,9 @@ class DesktopPetApp(QObject):
         self.gemini_client.user_sentiment_detected.connect(self.on_gemini_sentiment_detected)
         self.gemini_client.state_changed.connect(self.on_gemini_state_changed)
         
+        # Initialize local WebSocket bridge to Vedika AI Tutor WebApp
+        self.init_websocket_bridge()
+
         # Failsafe timer for stuck voice states (network/event drops)
         self.voice_failsafe_timer = QTimer()
         self.voice_failsafe_timer.setSingleShot(True)
@@ -318,6 +324,86 @@ class DesktopPetApp(QObject):
     def open_vyomantha_website(self):
         """Opens Vyomantha portal in default web browser and triggers pet speech response."""
         self.open_url_by_gemini("https://vyomanta.vercel.app/")
+
+    def init_websocket_bridge(self):
+        """Initializes PySide6 QWebSocket bridge connecting Desktop Pet to local Vedika WebApp event server."""
+        try:
+            self.ws_bridge = QWebSocket()
+            self.ws_bridge.textMessageReceived.connect(self.on_ws_bridge_message)
+            self.ws_bridge.disconnected.connect(self.on_ws_bridge_disconnected)
+            self.connect_ws_bridge()
+        except Exception as e:
+            print(f"[Main] WebSocket Bridge Init Notice: {e}")
+
+    def connect_ws_bridge(self):
+        """Connects to local WebSocket server on ws://localhost:3000/api/ws?role=pet."""
+        if hasattr(self, 'ws_bridge'):
+            url = QUrl("ws://localhost:3000/api/ws?role=pet")
+            self.ws_bridge.open(url)
+
+    @Slot()
+    def on_ws_bridge_disconnected(self):
+        """Re-establishes WebSocket connection if local server restarts."""
+        QTimer.singleShot(5000, self.connect_ws_bridge)
+
+    @Slot(str)
+    def on_ws_bridge_message(self, message_str):
+        """Handles incoming real-time WebApp context updates and proactive student hints."""
+        try:
+            data = json.loads(message_str)
+            msg_type = data.get("type") or data.get("event")
+            payload = data.get("payload", {})
+
+            if msg_type == "WEBAPP_STATE_UPDATE":
+                if hasattr(self, 'gemini_client') and self.gemini_client:
+                    self.gemini_client.active_webapp_context = payload
+                
+                activity = payload.get("activity")
+                if activity and self.pet:
+                    is_speaking = hasattr(self, 'gemini_client') and self.gemini_client and self.gemini_client.is_speaking
+                    if not is_speaking:
+                        if activity == "dsa_puzzle":
+                            self.set_active_animation("typing")
+                        elif activity == "chemistry_lab":
+                            self.set_active_animation("chemistry")
+                        elif activity == "math_tutor":
+                            self.set_active_animation("maths")
+                        elif activity == "reading":
+                            self.set_active_animation("reading")
+
+            elif msg_type == "PUZZLE_STUCK":
+                puzzle_title = payload.get("puzzleTitle", "this problem")
+                self.set_active_animation("explaining")
+                if self.pet:
+                    self.pet.say(f"I notice you've been working on {puzzle_title}! Press Alt+V if you'd like a hint! 💡", duration=6.0)
+
+        except Exception as e:
+            print(f"[WS Bridge] Message parse error: {e}")
+
+    @Slot(str)
+    def on_navigate_webapp_requested(self, route):
+        """Handles voice-triggered webapp route navigation."""
+        print(f"[Main] Voice requested navigation to route: {route}")
+        if hasattr(self, 'ws_bridge') and self.ws_bridge.isValid():
+            self.ws_bridge.sendTextMessage(json.dumps({
+                "type": "NAVIGATE_WEBAPP",
+                "payload": {"route": route}
+            }))
+        target_url = f"https://vyomanta.vercel.app{route}" if route.startswith("/") else route
+        self.open_url_by_gemini(target_url)
+
+    @Slot(int)
+    def on_trigger_hint_requested(self, hint_level=1):
+        """Handles voice-triggered hint dispatching."""
+        print(f"[Main] Voice requested hint dispatching (level {hint_level}).")
+        if hasattr(self, 'ws_bridge') and self.ws_bridge.isValid():
+            self.ws_bridge.sendTextMessage(json.dumps({
+                "type": "TRIGGER_HINT",
+                "payload": {"hint_level": hint_level}
+            }))
+        self.set_active_animation("explaining")
+        if self.pet:
+            self.pet.say("Here's a hint for your problem! 💡", duration=4.0)
 
     @Slot(str)
     def _do_open_url(self, target_url):
@@ -540,7 +626,7 @@ class DesktopPetApp(QObject):
             state_name = state_mapping.get(anim_name, anim_name if anim_name in self.pet.state_machine.states else "idle")
             self.pet.state_machine.change_state(state_name)
 
-    def start_voice_failsafe(self, ms=60000):
+    def start_voice_failsafe(self, ms=180000):
         if hasattr(self, "gemini_client") and self.gemini_client and self.gemini_client.is_active:
             if hasattr(self, "voice_failsafe_timer"):
                 self.voice_failsafe_timer.start(ms)
@@ -550,7 +636,7 @@ class DesktopPetApp(QObject):
             self.voice_failsafe_timer.stop()
 
     def on_voice_failsafe_timeout(self):
-        print("[Engine] Inactivity timeout: 1 minute of silence reached. Automatically stopping voice chat.")
+        print("[Engine] Inactivity timeout: 3 minutes of silence reached. Automatically stopping voice chat.")
         if hasattr(self, "gemini_client") and self.gemini_client and self.gemini_client.is_active:
             self.gemini_client.stop()
 

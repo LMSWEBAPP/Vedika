@@ -210,6 +210,18 @@ class GeminiLiveWorker(QThread):
             self.client.play_music_requested.emit(query)
             return {"status": "success", "playing_music": query or "trending music"}
 
+        def navigate_webapp(route: str) -> dict:
+            """Navigates the Vedika LMS WebApp to a specific route or page (e.g. '/courses', '/labs/chemistry', '/playground', '/resources', '/puzzles')."""
+            if hasattr(self.client, 'navigate_webapp_requested'):
+                self.client.navigate_webapp_requested.emit(route)
+            return {"status": "success", "navigated_route": route}
+
+        def trigger_puzzle_hint(hint_level: int = 1) -> dict:
+            """Triggers a helpful hint on the student's active coding problem or puzzle in the Vedika WebApp."""
+            if hasattr(self.client, 'trigger_hint_requested'):
+                self.client.trigger_hint_requested.emit(hint_level)
+            return {"status": "success", "hint_level": hint_level}
+
         # Construct dynamic Academic Voice Tutor system instruction matching voice-server.js
         tutor_lang = getattr(self.client, "tutor_language", "all")
         tutor_subj = getattr(self.client, "tutor_subject", "all")
@@ -248,14 +260,30 @@ class GeminiLiveWorker(QThread):
         else:
             sys_inst += "SUBJECT FOCUS: You are ready to tutor on any academic school subject: math, science, history, geography, languages, or reading. "
 
+        # Real-time WebApp context injection
+        webapp_ctx = getattr(self.client, "active_webapp_context", {})
+        if webapp_ctx:
+            sys_inst += "\nREAL-TIME STUDENT VEDIKA WEBAPP CONTEXT:\n"
+            if webapp_ctx.get("activeRoute"):
+                sys_inst += f"- Active Page Route: {webapp_ctx.get('activeRoute')}\n"
+            if webapp_ctx.get("puzzleTitle"):
+                sys_inst += f"- Current Coding Problem: '{webapp_ctx.get('puzzleTitle')}'\n"
+            if webapp_ctx.get("puzzleDescription"):
+                sys_inst += f"- Problem Description: '{webapp_ctx.get('puzzleDescription')}'\n"
+            if webapp_ctx.get("codeSnippet"):
+                sys_inst += f"- Student's Current Code Attempt:\n```python\n{webapp_ctx.get('codeSnippet')[:400]}\n```\n"
+            if webapp_ctx.get("labTitle"):
+                sys_inst += f"- Active Virtual Lab Experiment: '{webapp_ctx.get('labTitle')}'\n"
+
         sys_inst += (
             "TOOLS & IMMEDIATE ACTIONS: "
-            "1. When the user asks to play a song, music, video, or study material (e.g., 'play a good song', 'play music', 'play a video', 'play study video', 'open study website'): "
-            "DO NOT ask clarifying questions ('which song?', 'what genre?'). DO NOT give long conversational explanations. "
-            "IMMEDIATELY call 'play_music' or 'open_website' tool function on your VERY FIRST turn with a short confirmation like 'Sure! Playing it right now!'. "
-            "2. If the user asks for Vyomantha or study portal, call 'open_website' with 'https://vyomanta.vercel.app'. "
-            "3. If the user asks to stop or pause voice chat, call 'stop_voice_chat' immediately. "
-            "4. You can also trigger pet visual animations on yourself ('wave', 'jump', 'failed', 'waiting', 'review', 'idle')."
+            "1. When the user asks to play a song, music, video, or study material: "
+            "IMMEDIATELY call 'play_music' or 'open_website' tool function on your VERY FIRST turn. "
+            "2. If the user asks to open or navigate to any page or course (e.g. 'open chemistry lab', 'go to dsa practice', 'open playground'), call 'navigate_webapp' with the route. "
+            "3. If the user asks for a hint on their current puzzle, call 'trigger_puzzle_hint'. "
+            "4. If the user asks for Vyomantha or study portal, call 'open_website' with 'https://vyomanta.vercel.app'. "
+            "5. If the user asks to stop or pause voice chat, call 'stop_voice_chat' immediately. "
+            "6. You can also trigger pet visual animations on yourself ('wave', 'jump', 'failed', 'waiting', 'review', 'idle')."
         )
 
         config = types.LiveConnectConfig(
@@ -275,7 +303,7 @@ class GeminiLiveWorker(QThread):
             realtime_input_config=types.RealtimeInputConfig(
                 turn_coverage="TURN_INCLUDES_ONLY_ACTIVITY",
             ),
-            tools=[play_animation, open_website, play_music, stop_voice_chat]
+            tools=[play_animation, open_website, play_music, stop_voice_chat, navigate_webapp, trigger_puzzle_hint]
         )
 
         try:
@@ -612,6 +640,8 @@ class GeminiLiveClient(QObject):
     open_url_requested = Signal(str)  # url string
     play_music_requested = Signal(str)  # query string
     stop_voice_requested = Signal()  # stop signal
+    navigate_webapp_requested = Signal(str)  # route string
+    trigger_hint_requested = Signal(int)  # hint level
     session_activated = Signal()
     speaking_started = Signal()
     speaking_stopped = Signal()
@@ -797,6 +827,8 @@ class GeminiLiveClient(QObject):
         if self.worker_thread:
             try:
                 self.worker_thread.stop()
+                self.worker_thread.quit()
+                self.worker_thread.wait(1000)
             except Exception as e:
                 print(f"[GeminiLiveClient] Worker thread stop notice: {e}")
             self.worker_thread = None

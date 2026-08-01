@@ -1,0 +1,103 @@
+:root {
+  /* Default: Light Theme (Soft Pastel style) */
+  --bg: #F4F7FB;
+  --s1: #FFFFFF;
+  --s2: #E9EFF6;
+  --s3: #DDE7F2;
+  --border: rgba(91, 140, 248, 0.12);
+  
+  --accent: #4F83F6;        /* Soft Pastel Blue */
+  --accent-tint: rgba(79, 131, 246, 0.1);
+  --green: #34B69E;         /* Soft Pastel Green */
+  --purple: #8B5CF6;        /* Soft Pastel Violet */
+  --amber: #EC9A29;         /* Soft Pastel Amber */
+  --red: #F43F5E;           /* Soft Pastel Red/Pink */
+  
+  --text: #1E293B;
+  --muted: #475569;
+  --dim: #64748B;
+}
+
+[data-theme="dark"] {
+  /* Dark Theme (Soft Pastel Accent style) */
+  --bg: #090B14;
+  --s1: #0F1322;
+  --s2: #161D30;
+  --s3: #1E263D;
+  --border: rgba(255, 255, 255, 0.08);
+  
+  --accent: #729DF8;        /* Bright Pastel Blue */
+  --accent-tint: rgba(114, 157, 248, 0.12);
+  --green: #42D1B2;         /* Bright Pastel Green */
+  --purple: #A782F8;        /* Bright Pastel Violet */
+  --amber: #F7B878;         /* Bright Pastel Amber */
+  --red: #F77282;           /* Bright Pastel Red/Pink */
+  
+  --text: #E2E8F0;
+  --muted: #94A3B8;
+  --dim: #475569;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--bg);
+}
+
+body, button, input, textarea, select {
+  font-family: var(--font-outfit), 'Segoe UI', sans-serif;
+  color: var(--text);
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+@keyframes pulse-glow {
+  0% { box-shadow: 0 0 15px 2px rgba(155, 110, 248, 0.2); }
+  50% { box-shadow: 0 0 30px 5px rgba(155, 110, 248, 0.4); }
+  100% { box-shadow: 0 0 15px 2px rgba(155, 110, 248, 0.2); }
+}
+
+/* Code block custom padding */
+.tutor-code-block .cm-editor {
+  padding: 20px !important;
+}
+.tutor-code-block .cm-scroller {
+  overflow: visible !important;
+}
+
+/* Hide scrollbars utility class */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+/* Sleek custom scrollbars globally */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(120, 120, 120, 0.3);
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}
