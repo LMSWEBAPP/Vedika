@@ -2,13 +2,22 @@
 
 import { motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, FlaskConical, Dna, Atom } from 'lucide-react';
+import { ArrowRight, FlaskConical, Dna, Atom, Calculator } from 'lucide-react';
 import { T } from '@/lib/lms-data';
 
 export default function VedikaLabsHub() {
   const router = useRouter();
 
   const cards = [
+    {
+      id: 'math',
+      title: 'Math Lab',
+      description: 'Draw & solve equations on smart whiteboard, plot real-time 2D/3D graphs with dynamic sliders, ask AI math tutor, and explore visual Pythagoras & Calculus visualizers.',
+      gradient: 'linear-gradient(135deg, #8B5CF6 0%, #EC4899 100%)',
+      btnText: 'Enter Math Lab',
+      Icon: Calculator,
+      url: '/vedika-labs/math'
+    },
     {
       id: 'physics',
       title: 'Physics Lab',

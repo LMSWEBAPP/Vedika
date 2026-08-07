@@ -5,7 +5,6 @@ import CodeMirror from '@uiw/react-codemirror';
 import { python } from '@codemirror/lang-python';
 import { html } from '@codemirror/lang-html';
 import { usePyodide } from '@/hooks/usePyodide';
-import { useDesktopPetBridge } from '@/hooks/useDesktopPetBridge';
 import {
   Play, Pause, Square, Trash2, CheckCircle, Loader2, Sparkles,
   ChevronLeft, ChevronRight, BookOpen, AlertCircle, X, Award, Zap,
@@ -316,22 +315,6 @@ export default function CodePuzzle() {
   const isDraggingMainRef = useRef(false);
   const isDraggingLeftRef = useRef(false);
   const containerRef = useRef(null);
-
-  // Desktop Pet Bi-Directional Bridge
-  const { sendStateUpdate, notifyStuck } = useDesktopPetBridge();
-
-  // Broadcast active puzzle & code changes to Desktop Pet
-  useEffect(() => {
-    if (category === 'programming' && activePuzzle) {
-      sendStateUpdate({
-        activity: 'dsa_puzzle',
-        puzzleTitle: activePuzzle.title,
-        puzzleDescription: activePuzzle.description,
-        codeSnippet: code,
-        language: 'python'
-      });
-    }
-  }, [activePuzzle, code, category, sendStateUpdate]);
 
   // Sync starter code when active puzzle changes
   useEffect(() => {

@@ -392,16 +392,32 @@ class DesktopPetApp(QObject):
         except Exception as e:
             print(f"[WS Bridge] Message parse error: {e}")
 
+    def get_vyomanta_base_url(self):
+        """Returns active base URL for Vyomanta (defaults to localhost:3000 if connected or configured, otherwise vercel app)."""
+        env_url = os.getenv("VYOMANTA_BASE_URL")
+        if env_url:
+            return env_url.rstrip("/")
+        if os.getenv("USE_LOCALHOST", "").lower() in ("true", "1", "yes"):
+            return "http://localhost:3000"
+        if hasattr(self, 'ws_bridge') and self.ws_bridge and self.ws_bridge.isValid():
+            return "http://localhost:3000"
+        return "https://vyomanta.vercel.app"
+
     @Slot(str)
     def on_navigate_webapp_requested(self, route):
         """Handles voice-triggered webapp route navigation."""
+        if not route:
+            route = "/"
+        if not route.startswith("/") and not route.startswith("http://") and not route.startswith("https://"):
+            route = "/" + route
         print(f"[Main] Voice requested navigation to route: {route}")
         if hasattr(self, 'ws_bridge') and self.ws_bridge.isValid():
             self.ws_bridge.sendTextMessage(json.dumps({
                 "type": "NAVIGATE_WEBAPP",
                 "payload": {"route": route}
             }))
-        target_url = f"https://vyomanta.vercel.app{route}" if route.startswith("/") else route
+        base_url = self.get_vyomanta_base_url()
+        target_url = f"{base_url}{route}" if route.startswith("/") else route
         self.open_url_by_gemini(target_url)
 
     @Slot(int)
@@ -468,11 +484,17 @@ class DesktopPetApp(QObject):
         """Opens requested URL. Disconnects voice chat ONLY for YouTube/songs/media, preserving voice chat for general websites."""
         if not url:
             return
-        url_lower = url.lower()
-        if "vyomantha" in url_lower or "vyomanta" in url_lower or "study" in url_lower:
-            url = "https://vyomanta.vercel.app/"
+        base_url = self.get_vyomanta_base_url()
+        url_lower = url.lower().strip()
+        if url_lower in ("vyomantha", "vyomanta", "study", "vyomantha website", "vyomanta website", "https://vyomanta.vercel.app", "https://vyomanta.vercel.app/", "http://localhost:3000", "http://localhost:3000/"):
+            url = f"{base_url}/"
+        elif url.startswith("/"):
+            url = f"{base_url}{url}"
         elif not (url.startswith("http://") or url.startswith("https://")):
-            url = "https://" + url
+            if "vyomanta.vercel.app" in url_lower or "vyomanta" in url_lower or "vyomantha" in url_lower or "localhost" in url_lower:
+                url = "https://" + url if "." in url else f"{base_url}/{url.lstrip('/')}"
+            else:
+                url = "https://" + url
 
         is_media = self.is_media_url(url)
         self.pending_browser_open = True

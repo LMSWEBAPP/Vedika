@@ -1,0 +1,161 @@
+' ==============================================================================
+' C4 MODEL PLANTUML SPECIFICATION - VEDIKA AI TUTOR & DESKTOP PET ECOSYSTEM
+' Target Extension: C4X / C4-PlantUML
+' ==============================================================================
+
+@startuml C4_System_Context
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+
+LAYOUT_WITH_LEGEND()
+
+title System Context Diagram (Level 1) - Vedika AI Tutor & Desktop Pet Companion
+
+Person(student, "Student / Learner", "Interacts with Desktop Pet overlay and Vedika LMS WebApp to study science, math, and DSA coding.")
+Person(admin, "Course Administrator", "Manages course syllabus, quizzes, and learning materials via the Admin Console.")
+
+System(desktop_pet, "Desktop Pet Overlay Companion", "PySide6 Python desktop overlay providing frameless mascot, desktop activity tracker, real-time Gemini Live voice AI, and IPC event relay.")
+System(local_bridge, "Local Event Bridge & Gateway", "Node.js WebSocket gateway (`ws://localhost:3000/api/ws`) bridging local desktop events and web sessions.")
+System(vedika_webapp, "Vedika AI Tutor WebApp (Vyomanta)", "Next.js 14 LMS platform (`vyomanta.vercel.app`) with 3D Virtual Science Labs, Pyodide WASM sandbox, and RAG search.")
+System_Ext(gemini_live, "Google Gemini 3.1 Live API", "Real-time bidirectional 16kHz/24kHz PCM audio voice streaming via WebSockets.")
+System_Ext(gemini_flash, "Google Gemini 2.5 Flash & Embeddings", "RAG vector retrieval (`text-embedding-004`) and context-augmented answer generation.")
+System_Ext(cloud_infra, "Cloud Data Infrastructure", "TiDB Cloud Vector DB, Upstash Redis Memory Cache, Cloudflare R2 Object Storage.")
+
+Rel(student, desktop_pet, "Interacts via drag/drop, speech, and Alt+V hotkey", "GUI / Mic")
+Rel(student, vedika_webapp, "Solves DSA puzzles, runs 3D labs, views courses", "HTTPS Browser")
+Rel(admin, vedika_webapp, "Edits syllabus, quizzes, and lessons", "HTTPS Browser")
+
+Rel_Bi(desktop_pet, local_bridge, "Exchanges real-time user state & action triggers", "Local WebSocket / IPC")
+Rel_Bi(vedika_webapp, local_bridge, "Relays active page context & receives remote commands", "WebSocket")
+
+Rel(desktop_pet, gemini_live, "Streams audio & active screen/page context", "WSS / gRPC")
+Rel(vedika_webapp, gemini_flash, "Performs RAG query augmentation", "HTTPS REST")
+Rel(vedika_webapp, cloud_infra, "Reads/writes LMS data, session cache & vector embeddings", "SQL / Redis API")
+Rel(local_bridge, cloud_infra, "Synchronizes session memory tokens", "Redis API")
+
+@enduml
+
+@startuml C4_Container_Diagram
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+LAYOUT_WITH_LEGEND()
+
+title Container Diagram (Level 2) - Vedika AI Tutor & Desktop Pet Architecture
+
+Person(student, "Student / Learner", "User interacting with native desktop overlay and web application.")
+
+System_Boundary(c1, "Desktop Pet Client Overlay (PySide6 / Python 3)") {
+    Container(gui_win, "TransparentWindow", "PySide6 Qt6", "Frameless, always-on-top transparent Qt window managing pet placement, drag events, and hotkeys.")
+    Container(pet_core, "Pet Engine Orchestrator", "Python 3 (`pet.py`)", "Ties together physics, rendering loops, state machine, activity tracking, and voice engine.")
+    Container(renderer, "Sprite & Animation Renderer", "PySide6 QPainter", "Renders 277 WebP sprite frames across 8 animation sets (`talking`, `reading`, `chemistry`, `maths`, `music`, `typing`, `explaining`, `sleeping`).")
+    Container(state_mgr, "StateMachine & Behavior Engine", "Python 3", "Manages animation state transitions, idle behaviors, and reaction triggers.")
+    Container(act_tracker, "Desktop Activity Tracker", "Win32 API / ctypes", "Monitors active foreground window titles with zero CPU overhead to react to active user tools (VS Code, Desmos, YouTube).")
+    Container(voice_engine, "Gemini Live Voice Client", "Python / PyAudio / WebSockets", "Handles 16kHz mic capture, 24kHz speaker playback, VAD, NLMS echo cancellation, and prompt context injection.")
+    Container(ws_ipc, "Local WS IPC Client", "PySide6 QWebSocket", "Connects Desktop Pet to local event bridge gateway.")
+}
+
+System_Boundary(c2, "Local IPC Gateway (Node.js)") {
+    Container(ws_gateway, "WebSocket Gateway Server", "Node.js / Express (`server-with-ws.js`)", "Runs on `ws://localhost:3000/api/ws`. Relays events between Pet overlay and WebApp.")
+}
+
+System_Boundary(c3, "Vedika WebApp LMS Platform (Vercel & Render)") {
+    Container(next_frontend, "Next.js 14 App Router Frontend", "React 18 / Tailwind / Three.js", "Renders LMS dashboard, course syllabus, 3D science labs, and interactive code puzzles.")
+    Container(pyodide_worker, "Pyodide WASM Worker Engine", "Pyodide Web Worker", "Compiles and executes Python code safely inside isolated client browser sandbox.")
+    Container(backend_api, "FastAPI & Frappe LMS API Server", "Python FastAPI / Docker", "Handles JWT Auth, course CRUD, quiz grading, and multi-tenant RAG vector search.")
+}
+
+System_Boundary(c4, "Cloud Data & AI Infrastructure") {
+    ContainerDb(tidb_db, "TiDB Cloud Vector Database", "TiDB / MySQL", "Stores relational LMS data and HNSW 768-dim vector embeddings (`idx_embedding`).")
+    ContainerDb(redis_cache, "Upstash Redis", "Redis Cache", "Stores global session memory, rate limiting, and pub/sub channels.")
+    ContainerDb(r2_assets, "Cloudflare R2 Object Storage", "S3 Storage", "Hosts video lectures and media assets served via 5-minute pre-signed URLs.")
+    Container(gemini_live_ext, "Gemini 3.1 Live API", "Google Cloud", "Real-time bidirectional audio voice endpoint.")
+    Container(gemini_flash_ext, "Gemini 2.5 Flash & Embeddings", "Google Cloud", "Generative text LLM & `text-embedding-004` vector generator.")
+}
+
+Rel(student, gui_win, "Drags, clicks, uses Alt+V hotkey", "GUI")
+Rel(student, next_frontend, "Interacts with LMS & labs", "Browser")
+
+Rel(gui_win, pet_core, "Delegates window events", "Qt Signals")
+Rel(pet_core, renderer, "Requests sprite frame draws", "Direct Call")
+Rel(pet_core, state_mgr, "Queries/updates animation state", "Direct Call")
+Rel(pet_core, act_tracker, "Polls foreground application", "ctypes / Win32")
+Rel(pet_core, voice_engine, "Controls voice session start/stop", "Thread Signal")
+Rel(pet_core, ws_ipc, "Sends & receives event payloads", "Qt Signals")
+
+Rel_Bi(ws_ipc, ws_gateway, "Exchanges JSON event frames", "WebSocket (ws://127.0.0.1:3000)")
+Rel_Bi(next_frontend, ws_gateway, "Syncs active page & receives pet actions", "WebSocket")
+
+Rel(voice_engine, gemini_live_ext, "Streams 16kHz audio & receives 24kHz audio", "WSS WebSocket")
+Rel(next_frontend, pyodide_worker, "Sends Python code for execution", "Web Worker PostMessage")
+Rel(next_frontend, backend_api, "Performs REST API requests", "HTTPS / JSON")
+
+Rel(backend_api, tidb_db, "Executes SQL & vector similarity search", "MySQL Protocol")
+Rel(backend_api, redis_cache, "Caches user sessions & memory", "Redis Protocol")
+Rel(backend_api, r2_assets, "Generates pre-signed download URLs", "S3 API")
+Rel(backend_api, gemini_flash_ext, "Sends RAG context-augmented prompts", "HTTPS REST")
+Rel(ws_gateway, redis_cache, "Synchronizes user memory", "Redis Protocol")
+
+@enduml
+
+@startuml C4_Component_DesktopPet
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+LAYOUT_WITH_LEGEND()
+
+title Component Diagram (Level 3) - Desktop Pet Engine (`c:\\Users\\seshu\\desktop-pet\\engine`)
+
+Container_Boundary(desktop_engine, "Desktop Pet Python Engine (`c:\\Users\\seshu\\desktop-pet`)") {
+    Component(main_app, "DesktopPetApp", "main.py", "Main PySide6 QObject orchestrator. Loads settings, initializes pet, window, tracker, and WebSocket.")
+    Component(pet_obj, "Pet", "engine/pet.py", "Core pet data model holding physics, spriteloader, state machine, and position coordinates.")
+    Component(sprite_loader, "SpriteLoader", "engine/sprite.py", "Loads master 18x16 WebP sheet (277 frames, 432x596 px) and extracts animation slices.")
+    Component(renderer_comp, "PetRenderer", "engine/renderer.py", "Renders active sprite frame onto PySide6 transparent canvas with high quality scaling.")
+    Component(state_machine_comp, "StateMachine", "engine/state_machine.py", "Manages 8 core animation states: talking, reading, chemistry, maths, music, typing, explaining, sleeping.")
+    Component(physics_comp, "PhysicsEngine", "engine/physics.py", "Handles gravity, velocity, screen boundary bounce, and drag/throw physics.")
+    Component(activity_comp, "DesktopActivityTracker", "engine/activity_tracker.py", "Background thread executing Win32 `GetForegroundWindow` & `GetWindowTextW` every 1000ms.")
+    Component(gemini_client, "GeminiLiveClient", "engine/gemini_live.py", "Runs PyAudio audio input/output, VAD, NLMS filter, context builder, and Gemini Live WSS loop.")
+    Component(win_ui, "TransparentWindow", "ui/transparent_window.py", "PySide6 QWidget with frameless window flags (`Qt.FramelessWindowHint`, `Qt.WindowStaysOnTopHint`).")
+}
+
+Rel(main_app, pet_obj, "Instantiates & updates", "Python")
+Rel(main_app, win_ui, "Initializes GUI window layer", "PySide6")
+Rel(main_app, activity_comp, "Starts background activity monitor", "QThread")
+
+Rel(pet_obj, sprite_loader, "Loads animation WebP sheets", "Direct Call")
+Rel(pet_obj, renderer_comp, "Draws active frame", "QPainter")
+Rel(pet_obj, state_machine_comp, "Evaluates state transitions", "State Pattern")
+Rel(pet_obj, physics_comp, "Applies movement & gravity", "Physics Step")
+
+Rel(activity_comp, state_machine_comp, "Triggers animation reaction (VS Code -> typing, Desmos -> maths)", "Qt Signal")
+Rel(gemini_client, state_machine_comp, "Triggers talking / explaining animation on audio stream", "Qt Signal")
+Rel(win_ui, pet_obj, "Updates position during window drag", "Mouse Events")
+
+@enduml
+
+@startuml C4_Dynamic_Sequence
+title Dynamic Sequence Diagram (Level 4) - Bi-Directional Context-Aware Voice Tutoring Flow
+
+autonumber
+actor Student
+participant "Desktop Pet (PySide6)" as Pet
+participant "Local Gateway Server" as Gateway
+participant "Vedika WebApp (Next.js)" as WebApp
+participant "Gemini Live API" as GeminiLive
+participant "TiDB Cloud & RAG" as RAG
+
+Student -> WebApp: Opens DSA Code Puzzle / Virtual Lab
+WebApp -> Gateway: Emit WS Event: `WEBAPP_ACTIVITY_CHANGED` (Puzzle ID, Code snippet, Course ID)
+Gateway -> Pet: Relay WS Event to Desktop Pet (`ws://localhost:3000/api/ws`)
+Pet -> Pet: State Machine switches animation state to `typing` / `chemistry`
+Pet -> Student: Renders speech bubble: "Ready to solve this DSA puzzle together?"
+
+Student -> Pet: Presses Alt+V / Speaks: "Give me a hint for this puzzle"
+Pet -> Pet: Capture 16kHz Mic Audio + Build System Prompt with active WebApp context
+Pet -> GeminiLive: Stream PCM Audio + Context Payload over WSS WebSocket
+GeminiLive -> RAG: Retrieve context embeddings for Course & Puzzle ID
+RAG --> GeminiLive: Return syllabus solution hint vector chunks
+GeminiLive --> Pet: Stream 24kHz PCM Audio response + JSON animation trigger (`explaining`)
+Pet -> Student: Speaks hint out loud & plays `explaining` animation state
+Pet -> Gateway: Send action trigger: `PET_ACTION_REQUESTED` (Show Hint 1 on Web UI)
+Gateway -> WebApp: Relay hint trigger to WebApp UI
+WebApp -> Student: Displays animated visual hint on screen
+
+@enduml

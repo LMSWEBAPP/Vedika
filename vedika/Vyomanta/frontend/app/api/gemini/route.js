@@ -1,115 +1,131 @@
 import { NextResponse } from 'next/server';
 import { cacheGet, cacheSet, makeCacheKey } from '@/lib/cache';
-import { getRotatedKey } from '@/lib/keys';
+import { getAllKeys } from '@/lib/keys';
 import { loadHistory, saveHistory, recall, buildMemoryContext, trackApiConsumption } from '@/lib/memory';
 
-function calculateWait(error, baseDelay, attempt) {
-  if (error?.details) {
-    for (const d of error.details) {
-      if (d['@type'] === 'type.googleapis.com/google.rpc.RetryInfo' && d.retryDelay) {
-        const m = d.retryDelay.match(/([\d.]+)(s|ms)/);
-        if (m) return parseFloat(m[1]) * (m[2] === 'ms' ? 1 : 1000) + 200;
-      }
-    }
+async function fetchGemini(url, payload) {
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await response.json();
+    return { response, data };
+  } catch (err) {
+    return { error: err.message };
   }
-  if (error?.message) {
-    const m = error.message.match(/Please retry in ([\d.]+)(m?s)/i);
-    if (m) return parseFloat(m[1]) * (m[2].toLowerCase() === 'ms' ? 1 : 1000) + 200;
-  }
-  return baseDelay * Math.pow(2, attempt);
-}
-
-async function fetchWithRetry(url, options, retries = 5, baseDelay = 1000) {
-  for (let i = 0; i < retries; i++) {
-    try {
-      const response = await fetch(url, options);
-      const data = await response.json();
-
-      if (data.error && (data.error.code === 429 || data.error.code === 503)) {
-        const ms = calculateWait(data.error, baseDelay, i);
-        console.warn(`[Backend] ${data.error.code}. Retry in ${Math.round(ms)}ms (${i + 1}/${retries})`);
-        await new Promise(r => setTimeout(r, ms));
-        continue;
-      }
-
-      return { response, data };
-    } catch (error) {
-      if (i === retries - 1) throw error;
-      const ms = baseDelay * Math.pow(2, i);
-      console.warn(`[Backend] Network error. Retry in ${ms}ms (${i + 1}/${retries})`);
-      await new Promise(r => setTimeout(r, ms));
-    }
-  }
-  throw new Error('Max retries exceeded');
 }
 
 export async function POST(request) {
-  const { system, user, maxOutputTokens, sessionId, userId } = await request.json();
-  const activeKey = getRotatedKey();
-
-  if (!activeKey) {
-    return NextResponse.json({ error: 'Gemini API key is not configured on the server.' }, { status: 500 });
-  }
-  if (!user) {
-    return NextResponse.json({ error: 'User message is required.' }, { status: 400 });
-  }
-
-  // Load memory context
-  console.warn(`[Gemini] sessionId=${sessionId} userId=${userId}`);
-  const [history, memories] = await Promise.all([
-    loadHistory(sessionId),
-    recall(userId),
-  ]);
-  const memoryCtx = buildMemoryContext(history, memories);
-  const fullSystem = system ? system + memoryCtx : memoryCtx;
-  console.warn(`[Gemini] history=${history?.length} memories=${memories?.length} ctxLen=${memoryCtx.length}`);
-
-  const cacheKey = makeCacheKey('generate', fullSystem, user, maxOutputTokens);
-  const cached = cacheGet(cacheKey);
-  if (cached) return NextResponse.json({ text: cached });
-
   try {
-    const historyContents = (history || []).map(m => ({
-      role: m.role === 'user' ? 'user' : 'model',
-      parts: [{ text: m.content }],
-    }));
+    const { system, user, image, maxOutputTokens, sessionId, userId } = await request.json();
+    const allKeys = getAllKeys();
 
-    const { response, data } = await fetchWithRetry(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${activeKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [
-            ...historyContents,
-            { role: 'user', parts: [{ text: user }] },
-          ],
-          ...(fullSystem ? { systemInstruction: { parts: [{ text: fullSystem }] } } : {}),
-          generationConfig: { temperature: 0.4, maxOutputTokens: maxOutputTokens || 8192 },
-        }),
+    if (!allKeys || allKeys.length === 0) {
+      return NextResponse.json({ error: 'No Gemini API keys are configured in .env' });
+    }
+    if (!user) {
+      return NextResponse.json({ error: 'User message is required.' });
+    }
+
+    let memoryCtx = '';
+    try {
+      if (sessionId || userId) {
+        const [history, memories] = await Promise.all([
+          loadHistory(sessionId),
+          recall(userId),
+        ]);
+        memoryCtx = buildMemoryContext(history, memories);
       }
-    );
-
-    if (data.error) {
-      return NextResponse.json({ error: data.error.message }, { status: response.status || 500 });
+    } catch (memErr) {
+      console.warn('[Gemini] Memory context notice:', memErr);
     }
 
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    if (text) cacheSet(cacheKey, text);
+    const fullSystem = system ? system + memoryCtx : memoryCtx;
 
-    // Save working memory asynchronously
-    if (sessionId && text) {
-      const updated = [
-        ...(history || []),
-        { role: 'user', content: user },
-        { role: 'assistant', content: text },
-      ];
-      saveHistory(sessionId, updated);
-      trackApiConsumption(userId, user, text);
+    const cacheKey = makeCacheKey('generate', fullSystem, user + (image ? image.slice(0, 100) : ''), maxOutputTokens);
+    const cached = cacheGet(cacheKey);
+    if (cached) return NextResponse.json({ text: cached });
+
+    const userParts = [];
+    if (image) {
+      const base64Data = image.replace(/^data:image\/\w+;base64,/, '');
+      userParts.push({
+        inlineData: {
+          mimeType: 'image/png',
+          data: base64Data
+        }
+      });
+    }
+    userParts.push({ text: user });
+
+    const payload = {
+      contents: [{ role: 'user', parts: userParts }],
+      ...(fullSystem ? { systemInstruction: { parts: [{ text: fullSystem }] } } : {}),
+      generationConfig: { temperature: 0.4, maxOutputTokens: maxOutputTokens || 8192 },
+    };
+
+    // Shuffle keys to distribute traffic across GEMINI_API_KEY, GEMINI_API_KEY_1, GEMINI_API_KEY_2, etc.
+    const shuffledKeys = [...allKeys].sort(() => Math.random() - 0.5);
+    const modelsToTry = ['gemini-1.5-flash', 'gemini-2.5-flash', 'gemini-2.0-flash'];
+
+    let textResult = null;
+    let lastError = null;
+
+    // FAILOVER LOOP: Iterate through keys in .env
+    for (const apiKey of shuffledKeys) {
+      for (const modelName of modelsToTry) {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+        const { data, error } = await fetchGemini(url, payload);
+
+        if (error) {
+          lastError = error;
+          console.warn(`[Gemini] Network error with key ${apiKey.slice(0, 8)}... (${modelName}): ${error}`);
+          continue;
+        }
+
+        if (data?.error) {
+          lastError = data.error.message || 'API error';
+          console.warn(`[Gemini] Key ${apiKey.slice(0, 8)}... notice (${modelName}): ${data.error.message}`);
+          // If rate limited or error, break model loop and switch to NEXT key immediately!
+          break;
+        }
+
+        const candidateText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (candidateText) {
+          textResult = candidateText;
+          break;
+        }
+      }
+
+      if (textResult) break; // Success! Exit key rotation loop
     }
 
-    return NextResponse.json({ text });
+    if (textResult) {
+      cacheSet(cacheKey, textResult);
+
+      if (sessionId && textResult) {
+        try {
+          const history = await loadHistory(sessionId);
+          const updated = [
+            ...(history || []),
+            { role: 'user', content: user },
+            { role: 'assistant', content: textResult },
+          ];
+          saveHistory(sessionId, updated);
+          trackApiConsumption(userId, user, textResult);
+        } catch (e) {
+          console.warn('[Gemini] History save notice:', e);
+        }
+      }
+
+      return NextResponse.json({ text: textResult });
+    }
+
+    return NextResponse.json({ error: lastError || 'All Gemini API keys in .env were tried but unavailable.' });
   } catch (error) {
-    return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
+    console.error('[Gemini Route Error]:', error);
+    return NextResponse.json({ error: error.message || 'Internal Server Error' });
   }
 }

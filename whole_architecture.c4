@@ -1,0 +1,80 @@
+workspace "Vedika AI Tutor & Desktop Pet Ecosystem" "Complete System Architecture for Vedika LMS WebApp and PySide6 Desktop Pet Companion" {
+
+    model {
+        student = person "Student / Learner" "Uses the Vedika AI Tutor WebApp and Desktop Pet companion to learn science, coding, and math."
+        admin = person "Course Administrator" "Manages course syllabus, quizzes, and learning materials via the Admin Console."
+
+        group "Vedika Desktop & Web Ecosystem" {
+            desktopPet = softwareSystem "Desktop Pet Overlay Companion" "Native PySide6 desktop overlay providing real-time voice tutoring, desktop activity tracking, and animated companion behaviors." {
+                transparentWindow = container "TransparentWindow UI" "Frameless, transparent, always-on-top Qt window manager." "PySide6 / Qt6" "GUI Window"
+                petOrchestrator = container "Pet Engine Orchestrator" "Coordinates pet state, physics, rendering, activity tracking, and voice AI." "Python 3" "Core Engine"
+                spriteRenderer = container "Sprite & Animation Renderer" "Renders 277 WebP sprite frames across 8 animation states." "PySide6 / QPainter" "Renderer"
+                stateMachine = container "Behavior & State Machine" "Manages pet state transitions, idle behaviors, and activity reactions." "Python" "State Engine"
+                activityTracker = container "Desktop Activity Tracker" "Monitors active Windows foreground application titles with zero CPU overhead." "Win32 API / ctypes" "OS Integration"
+                geminiLiveClient = container "Gemini Live Voice Engine" "Full-duplex real-time voice client with PyAudio I/O, VAD, NLMS echo cancellation, and context injection." "Python / PyAudio / WebSockets" "AI Voice Client"
+                wsLocalClient = container "Local WS IPC Client" "Connects Desktop Pet to the local WebSocket gateway." "PySide6 QtWebSockets" "IPC Client"
+            }
+
+            localGateway = softwareSystem "Local Event Bridge & Gateway" "Node.js WebSocket gateway enabling bi-directional event relay between Desktop Pet and Vedika WebApp." {
+                wsServer = container "WebSocket Event Server" "Relays events, syncs authentication tokens, and dispatches actions on ws://localhost:3000/api/ws." "Node.js / Express / ws" "Gateway"
+            }
+
+            webApp = softwareSystem "Vedika LMS WebApp (Vyomanta)" "Full-stack Learning Management System and Virtual Science Labs hosted at vyomanta.vercel.app." {
+                frontendApp = container "Next.js App Router Frontend" "Student portal, interactive DSA code puzzles, 3D labs, flashcards, and admin syllabus editor." "Next.js 14 / React / TailwindCSS / Three.js" "Web Frontend"
+                pyodideEngine = container "Pyodide WASM Execution Engine" "Executes Python code safely inside client-side WebWorker sandbox." "Pyodide WASM / WebWorkers" "Sandbox Executor"
+                backendApi = container "FastAPI & Frappe LMS API Server" "Handles auth JWT, course REST API, quiz evaluation, analytics, and RAG vector search." "Python FastAPI / Headless Frappe / Docker" "Backend API"
+            }
+
+            dataStores = softwareSystem "Cloud Data & AI Infrastructure" "Distributed data storage, vector database, session cache, and cloud AI services." {
+                geminiLiveApi = container "Gemini 3.1 Live API" "Real-time multimodal WebSocket audio streaming endpoint." "Google Cloud Gemini API" "External AI Service"
+                geminiFlashApi = container "Gemini 2.5 Flash & Embeddings" "Generative text RAG LLM and 768-dim text-embedding-004 model." "Google Cloud Gemini API" "External AI Service"
+                tidbDatabase = container "TiDB Cloud Vector DB" "Relational database with HNSW vector index (idx_embedding) for RAG syllabus retrieval." "TiDB Cloud / MySQL compatible" "Database"
+                upstashCache = container "Upstash Redis Memory Cache" "Session storage, rate limiting, and cross-platform shared memory." "Upstash Redis" "Cache & PubSub"
+                r2Storage = container "Cloudflare R2 Object Storage" "Secure media and asset storage served via 5-minute pre-signed URLs." "Cloudflare R2 / S3 API" "Object Storage"
+            }
+        }
+
+        # Relationships
+        student -> transparentWindow "Interacts via drag/drop, hotkeys (Alt+V), and voice"
+        student -> frontendApp "Browses LMS, solves code puzzles, and runs 3D labs"
+        admin -> frontendApp "Edits courses and manages syllabus"
+
+        transparentWindow -> petOrchestrator "Delegates user events & scaling"
+        petOrchestrator -> spriteRenderer "Triggers frame rendering"
+        petOrchestrator -> stateMachine "Updates state & animations"
+        petOrchestrator -> activityTracker "Polls active window titles"
+        petOrchestrator -> geminiLiveClient "Controls voice session"
+        petOrchestrator -> wsLocalClient "Dispatches IPC events"
+
+        geminiLiveClient -> geminiLiveApi "Streams 16kHz/24kHz PCM audio via WebSocket"
+        wsLocalClient -> wsServer "Connects over ws://localhost:3000/api/ws"
+        frontendApp -> wsServer "Relays web activity events & listens for pet actions"
+        wsServer -> upstashCache "Stores shared session context & memory"
+
+        frontendApp -> pyodideEngine "Runs Python code sandbox locally"
+        frontendApp -> backendApi "Makes HTTPS REST calls for auth, courses, and RAG"
+        backendApi -> tidbDatabase "Queries LMS metadata & vector search embeddings"
+        backendApi -> geminiFlashApi "Sends RAG context-augmented prompts"
+        backendApi -> upstashCache "Caches user sessions & rate limits"
+        backendApi -> r2Storage "Fetches pre-signed asset download URLs"
+    }
+
+    views {
+        systemContext desktopPet "SystemContext_Overview" "Level 1: System Context Diagram for Desktop Pet & Vedika Ecosystem" {
+            include *
+            autoLayout lr
+        }
+
+        container desktopPet "Container_DesktopPet" "Level 2: Container Diagram for Desktop Pet Engine" {
+            include *
+            autoLayout tb
+        }
+
+        container webApp "Container_WebApp" "Level 2: Container Diagram for Vedika LMS WebApp" {
+            include *
+            autoLayout tb
+        }
+
+        theme default
+    }
+}

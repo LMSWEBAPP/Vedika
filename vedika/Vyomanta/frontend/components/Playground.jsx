@@ -4,7 +4,6 @@ import { useState, useEffect, useRef } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
 import { python } from '@codemirror/lang-python';
 import { usePyodide } from '@/hooks/usePyodide';
-import { useDesktopPetBridge } from '@/hooks/useDesktopPetBridge';
 import { Play, Square, Trash2, CheckCircle, Loader2, Sparkles, ChevronLeft, ChevronRight, Pause, BookOpen, AlertCircle, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Terminal } from 'xterm';
@@ -40,18 +39,6 @@ export default function Playground({
   const [verifyState, setVerifyState] = useState('idle'); // 'idle' | 'verifying' | 'success' | 'failed'
   const [traceError, setTraceError] = useState(null);
   const [isMobile, setIsMobile] = useState(false);
-
-  // Desktop Pet Bridge
-  const { sendStateUpdate } = useDesktopPetBridge();
-
-  useEffect(() => {
-    sendStateUpdate({
-      activity: 'typing',
-      activeTab: 'playground',
-      codeSnippet: code,
-      language: 'python'
-    });
-  }, [code, sendStateUpdate]);
 
   useEffect(() => {
     if (codingExercise?.hasExercise && codingExercise.starterCode) {

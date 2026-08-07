@@ -16,3 +16,103 @@ Traceback (most recent call last):
     
 KeyboardInterrupt
 
+
+--- Crash Log [Sat Aug  1 16:45:15 2026] ---
+Traceback (most recent call last):
+  File "C:\Users\seshu\desktop-pet\main.py", line 818, in <module>
+    app = DesktopPetApp()
+          ^^^^^^^^^^^^^^^
+  File "C:\Users\seshu\desktop-pet\main.py", line 104, in __init__
+    from engine.gemini_live import GeminiLiveClient
+  File "C:\Users\seshu\desktop-pet\engine\gemini_live.py", line 10, in <module>
+    from google import genai
+  File "C:\Users\seshu\desktop-pet\venv\Lib\site-packages\google\genai\__init__.py", line 18, in <module>
+    from . import interactions
+  File "C:\Users\seshu\desktop-pet\venv\Lib\site-packages\google\genai\interactions.py", line 27, in <module>
+    from ._gaos.types.triggers import *  # noqa: F401,F403
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\seshu\desktop-pet\venv\Lib\site-packages\google\genai\_gaos\__init__.py", line 26, in <module>
+    from .sdk import *
+  File "C:\Users\seshu\desktop-pet\venv\Lib\site-packages\google\genai\_gaos\sdk.py", line 20, in <module>
+    from ._hooks import AsyncSDKHooks, SDKHooks, init_async_hooks
+  File "C:\Users\seshu\desktop-pet\venv\Lib\site-packages\google\genai\_gaos\_hooks\__init__.py", line 19, in <module>
+    from .sdkhooks import *
+  File "C:\Users\seshu\desktop-pet\venv\Lib\site-packages\google\genai\_gaos\_hooks\sdkhooks.py", line 19, in <module>
+    import httpx
+  File "C:\Users\seshu\desktop-pet\venv\Lib\site-packages\httpx\__init__.py", line 2, in <module>
+    from ._api import *
+  File "C:\Users\seshu\desktop-pet\venv\Lib\site-packages\httpx\_api.py", line 6, in <module>
+    from ._client import Client
+  File "C:\Users\seshu\desktop-pet\venv\Lib\site-packages\httpx\_client.py", line 13, in <module>
+    from ._auth import Auth, BasicAuth, FunctionAuth
+  File "C:\Users\seshu\desktop-pet\venv\Lib\site-packages\httpx\_auth.py", line 12, in <module>
+    from ._models import Cookies, Request, Response
+  File "C:\Users\seshu\desktop-pet\venv\Lib\site-packages\httpx\_models.py", line 14, in <module>
+    from ._decoders import (
+  File "shibokensupport/signature/loader.py", line 71, in feature_imported
+  File "shibokensupport/feature.py", line 147, in feature_imported
+  File "shibokensupport/feature.py", line 158, in _mod_uses_pyside
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\inspect.py", line 1258, in getsource
+    lines, lnum = getsourcelines(object)
+                  ^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\inspect.py", line 1240, in getsourcelines
+    lines, lnum = findsource(object)
+                  ^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\inspect.py", line 1073, in findsource
+    lines = linecache.getlines(file, module.__dict__)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\linecache.py", line 46, in getlines
+    return updatecache(filename, module_globals)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\linecache.py", line 136, in updatecache
+    with tokenize.open(fullname) as fp:
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\tokenize.py", line 396, in open
+    buffer = _builtin_open(filename, 'rb')
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt
+
+
+--- Crash Log [Sat Aug  1 21:21:58 2026] ---
+Traceback (most recent call last):
+  File "C:\Users\seshu\desktop-pet\main.py", line 818, in <module>
+    app = DesktopPetApp()
+          ^^^^^^^^^^^^^^^
+  File "C:\Users\seshu\desktop-pet\main.py", line 104, in __init__
+    from engine.gemini_live import GeminiLiveClient
+  File "C:\Users\seshu\desktop-pet\engine\gemini_live.py", line 10, in <module>
+    from google import genai
+  File "C:\Users\seshu\desktop-pet\venv\Lib\site-packages\google\genai\__init__.py", line 18, in <module>
+    from . import interactions
+  File "C:\Users\seshu\desktop-pet\venv\Lib\site-packages\google\genai\interactions.py", line 27, in <module>
+    from ._gaos.types.triggers import *  # noqa: F401,F403
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\seshu\desktop-pet\venv\Lib\site-packages\google\genai\_gaos\__init__.py", line 28, in <module>
+    from . import resources
+  File "C:\Users\seshu\desktop-pet\venv\Lib\site-packages\google\genai\_gaos\resources\__init__.py", line 23, in <module>
+    from . import webhooks
+  File "C:\Users\seshu\desktop-pet\venv\Lib\site-packages\google\genai\_gaos\resources\webhooks\__init__.py", line 28, in <module>
+    from ...types.webhooks.rotatesigningsecretrequest import (
+  File "shibokensupport/signature/loader.py", line 71, in feature_imported
+  File "shibokensupport/feature.py", line 147, in feature_imported
+  File "shibokensupport/feature.py", line 158, in _mod_uses_pyside
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\inspect.py", line 1258, in getsource
+    lines, lnum = getsourcelines(object)
+                  ^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\inspect.py", line 1240, in getsourcelines
+    lines, lnum = findsource(object)
+                  ^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\inspect.py", line 1073, in findsource
+    lines = linecache.getlines(file, module.__dict__)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\linecache.py", line 46, in getlines
+    return updatecache(filename, module_globals)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\linecache.py", line 136, in updatecache
+    with tokenize.open(fullname) as fp:
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\tokenize.py", line 396, in open
+    buffer = _builtin_open(filename, 'rb')
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt
+

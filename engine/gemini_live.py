@@ -294,13 +294,19 @@ class GeminiLiveWorker(QThread):
                 sys_inst += f"- Active Virtual Lab Experiment: '{webapp_ctx.get('labTitle')}'\n"
 
         sys_inst += (
-            "TOOLS & IMMEDIATE ACTIONS: "
+            "TOOLS & IMMEDIATE ACTIONS:\n"
             "1. When the user asks to play a song, music, video, or study material: "
-            "IMMEDIATELY call 'play_music' or 'open_website' tool function on your VERY FIRST turn. "
-            "2. If the user asks to open or navigate to any page or course (e.g. 'open chemistry lab', 'go to dsa practice', 'open playground'), call 'navigate_webapp' with the route. "
-            "3. If the user asks for a hint on their current puzzle, call 'trigger_puzzle_hint'. "
-            "4. If the user asks for Vyomantha or study portal, call 'open_website' with 'https://vyomanta.vercel.app'. "
-            "5. If the user asks to stop or pause voice chat, call 'stop_voice_chat' immediately. "
+            "IMMEDIATELY call 'play_music' or 'open_website' tool function on your VERY FIRST turn.\n"
+            "2. If the user asks to open or navigate to any page, tab, or section in Vyomanta LMS: call 'navigate_webapp' with the appropriate route string:\n"
+            "   - '/courses' for Courses, learning modules, or subjects.\n"
+            "   - '/virtual-labs' for Science, Physics, Chemistry, or Math virtual lab simulations.\n"
+            "   - '/playground' for Python/JavaScript code playground and sandbox.\n"
+            "   - '/dsa' for Data Structures & Algorithms practice or coding puzzles.\n"
+            "   - '/resources' for study materials and company-wise questions.\n"
+            "   - '/' for the main home page.\n"
+            "3. If the user asks for a hint on their current puzzle, call 'trigger_puzzle_hint'.\n"
+            "4. If the user asks for Vyomanta portal, call 'navigate_webapp' with '/' or 'open_website' with 'https://vyomanta.vercel.app/'.\n"
+            "5. If the user asks to stop or pause voice chat, call 'stop_voice_chat' immediately.\n"
             "6. You can also trigger pet visual animations on yourself ('wave', 'jump', 'failed', 'waiting', 'review', 'idle')."
         )
 
@@ -660,6 +666,33 @@ class GeminiLiveWorker(QThread):
                                         response={"status": "success", "session_ended": True}
                                     )
                                 )
+                            elif func_name == "navigate_webapp":
+                                route = args.get("route", "/")
+                                print(f"[GeminiLiveWorker] Executing tool navigate_webapp: route='{route}'")
+                                self.client.navigate_webapp_requested.emit(route)
+                                
+                                function_responses.append(
+                                    types.FunctionResponse(
+                                        name=func_name,
+                                        id=fc.id,
+                                        response={"status": "success", "navigated_route": route}
+                                    )
+                                )
+                            elif func_name == "trigger_puzzle_hint":
+                                try:
+                                    hint_level = int(args.get("hint_level", 1))
+                                except Exception:
+                                    hint_level = 1
+                                print(f"[GeminiLiveWorker] Executing tool trigger_puzzle_hint: hint_level={hint_level}")
+                                self.client.trigger_hint_requested.emit(hint_level)
+                                
+                                function_responses.append(
+                                    types.FunctionResponse(
+                                        name=func_name,
+                                        id=fc.id,
+                                        response={"status": "success", "hint_level": hint_level}
+                                    )
+                                )
                         
                         if function_responses and self.session and self.client.is_active:
                             try:
@@ -705,6 +738,7 @@ class GeminiLiveClient(QObject):
         self.main_app = main_app
         
         self.worker_thread = None
+        self._running_threads = set()
         self.audio_source = None
         self.audio_input_device = None
         self.audio_sink = None
@@ -815,9 +849,20 @@ class GeminiLiveClient(QObject):
         self.turn_completed_received = False
         self.input_audio_buffer.clear()
 
-        self.worker_thread = GeminiLiveWorker(self)
-        self.worker_thread.finished.connect(self._on_worker_thread_finished)
-        self.worker_thread.start()
+        # Safely stop and join any existing worker thread before creating a new one
+        if self.worker_thread:
+            old_worker = self.worker_thread
+            self.worker_thread = None
+            old_worker.stop()
+            old_worker.quit()
+            old_worker.wait(1500)
+            self._running_threads.discard(old_worker)
+
+        worker = GeminiLiveWorker(self)
+        self.worker_thread = worker
+        self._running_threads.add(worker)
+        worker.finished.connect(lambda w=worker: self._on_worker_thread_finished(w))
+        worker.start()
         self._is_starting = False
 
     @Slot()
@@ -858,8 +903,9 @@ class GeminiLiveClient(QObject):
             self.worker_thread = None
             w_thread.stop()
             w_thread.quit()
-        else:
-            self._is_stopping = False
+            w_thread.wait(2000)
+            self._running_threads.discard(w_thread)
+        self._is_stopping = False
             
         self.cleanup_audio()
         self.status = "disconnected"
@@ -867,17 +913,22 @@ class GeminiLiveClient(QObject):
         self.say_requested.emit("Voice chat stopped.", 2.5)
 
     @Slot()
-    def _on_worker_thread_finished(self):
+    def _on_worker_thread_finished(self, worker=None):
         """Slot executed on Qt Main Thread when worker QThread finishes cleanly."""
         print("[GeminiLiveClient] Worker thread finished cleanly.")
         self._is_stopping = False
-        sender = self.sender()
-        if sender:
+        if worker is None:
+            worker = self.sender()
+        if worker:
             try:
-                sender.finished.disconnect(self._on_worker_thread_finished)
+                worker.finished.disconnect()
             except Exception:
                 pass
-            sender.deleteLater()
+            try:
+                worker.wait(1000)
+            except Exception:
+                pass
+            self._running_threads.discard(worker)
         self._is_stopping = False
 
     def cleanup_audio(self):

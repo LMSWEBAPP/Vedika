@@ -1,0 +1,188 @@
+{
+  "$schema": "https://raw.githubusercontent.com/c4-model/c4-schema/main/c4-schema.json",
+  "name": "Vedika AI Tutor & Desktop Pet Ecosystem",
+  "version": "1.0.0",
+  "description": "Comprehensive C4 Model Architecture Specification for Desktop Pet overlay companion and Vedika LMS WebApp ecosystem.",
+  "model": {
+    "people": [
+      {
+        "id": "person_student",
+        "name": "Student / Learner",
+        "description": "Uses the Vedika AI Tutor WebApp and Desktop Pet companion to learn science, coding, and math."
+      },
+      {
+        "id": "person_admin",
+        "name": "Course Administrator",
+        "description": "Manages course syllabus, quizzes, and learning materials via the Admin Console."
+      }
+    ],
+    "systems": [
+      {
+        "id": "sys_desktop_pet",
+        "name": "Desktop Pet Overlay Companion",
+        "description": "Native PySide6 desktop overlay providing frameless mascot, desktop activity tracker, real-time Gemini Live voice AI, and IPC event relay.",
+        "containers": [
+          {
+            "id": "cont_transparent_window",
+            "name": "TransparentWindow",
+            "technology": "PySide6 / Qt6",
+            "description": "Frameless, transparent, always-on-top Qt window managing pet placement, drag events, and hotkeys."
+          },
+          {
+            "id": "cont_pet_orchestrator",
+            "name": "Pet Engine Orchestrator",
+            "technology": "Python 3 (pet.py)",
+            "description": "Coordinates pet state, physics, rendering, activity tracking, and voice AI."
+          },
+          {
+            "id": "cont_sprite_renderer",
+            "name": "Sprite & Animation Renderer",
+            "technology": "PySide6 QPainter",
+            "description": "Renders 277 WebP sprite frames across 8 animation sets (talking, reading, chemistry, maths, music, typing, explaining, sleeping)."
+          },
+          {
+            "id": "cont_state_machine",
+            "name": "StateMachine & Behavior Engine",
+            "technology": "Python 3",
+            "description": "Manages pet state transitions, idle behaviors, and reaction triggers."
+          },
+          {
+            "id": "cont_activity_tracker",
+            "name": "Desktop Activity Tracker",
+            "technology": "Win32 API / ctypes",
+            "description": "Monitors active Windows foreground application titles with zero CPU overhead to react to active user tools."
+          },
+          {
+            "id": "cont_voice_engine",
+            "name": "Gemini Live Voice Client",
+            "technology": "Python / PyAudio / WebSockets",
+            "description": "Handles 16kHz mic capture, 24kHz speaker playback, VAD, NLMS echo cancellation, and prompt context injection."
+          },
+          {
+            "id": "cont_ws_ipc",
+            "name": "Local WS IPC Client",
+            "technology": "PySide6 QWebSocket",
+            "description": "Connects Desktop Pet to local event bridge gateway."
+          }
+        ]
+      },
+      {
+        "id": "sys_local_gateway",
+        "name": "Local Event Bridge & Gateway",
+        "description": "Node.js WebSocket gateway enabling bi-directional event relay between Desktop Pet and Vedika WebApp.",
+        "containers": [
+          {
+            "id": "cont_ws_server",
+            "name": "WebSocket Event Server",
+            "technology": "Node.js / Express / ws",
+            "description": "Runs on ws://localhost:3000/api/ws. Relays events, syncs authentication tokens, and dispatches actions."
+          }
+        ]
+      },
+      {
+        "id": "sys_webapp",
+        "name": "Vedika LMS WebApp (Vyomanta)",
+        "description": "Full-stack Learning Management System and Virtual Science Labs hosted at vyomanta.vercel.app.",
+        "containers": [
+          {
+            "id": "cont_next_frontend",
+            "name": "Next.js 14 App Router Frontend",
+            "technology": "React 18 / Tailwind / Three.js",
+            "description": "Renders LMS dashboard, course syllabus, 3D science labs, and interactive code puzzles."
+          },
+          {
+            "id": "cont_pyodide_worker",
+            "name": "Pyodide WASM Worker Engine",
+            "technology": "Pyodide WASM / WebWorkers",
+            "description": "Compiles and executes Python code safely inside client-side WebWorker sandbox."
+          },
+          {
+            "id": "cont_backend_api",
+            "name": "FastAPI & Frappe LMS API Server",
+            "technology": "Python FastAPI / Docker",
+            "description": "Handles auth JWT, course REST API, quiz evaluation, analytics, and RAG vector search."
+          }
+        ]
+      },
+      {
+        "id": "sys_cloud_infra",
+        "name": "Cloud Data & AI Infrastructure",
+        "description": "Distributed data storage, vector database, session cache, and cloud AI services.",
+        "containers": [
+          {
+            "id": "cont_tidb_db",
+            "name": "TiDB Cloud Vector DB",
+            "technology": "TiDB / MySQL compatible",
+            "description": "Relational database with HNSW vector index (idx_embedding) for RAG syllabus retrieval."
+          },
+          {
+            "id": "cont_upstash_cache",
+            "name": "Upstash Redis Memory Cache",
+            "technology": "Upstash Redis",
+            "description": "Session storage, rate limiting, and cross-platform shared memory."
+          },
+          {
+            "id": "cont_r2_storage",
+            "name": "Cloudflare R2 Object Storage",
+            "technology": "Cloudflare R2 / S3 API",
+            "description": "Secure media and asset storage served via 5-minute pre-signed URLs."
+          },
+          {
+            "id": "cont_gemini_live",
+            "name": "Google Gemini 3.1 Live API",
+            "technology": "Google Cloud Gemini API",
+            "description": "Real-time multimodal WebSocket audio streaming endpoint."
+          },
+          {
+            "id": "cont_gemini_flash",
+            "name": "Google Gemini 2.5 Flash & Embeddings",
+            "technology": "Google Cloud Gemini API",
+            "description": "Generative text RAG LLM and 768-dim text-embedding-004 model."
+          }
+        ]
+      }
+    ],
+    "relationships": [
+      {
+        "source": "person_student",
+        "target": "cont_transparent_window",
+        "description": "Interacts via drag/drop, hotkeys (Alt+V), and voice"
+      },
+      {
+        "source": "person_student",
+        "target": "cont_next_frontend",
+        "description": "Browses LMS, solves code puzzles, and runs 3D labs"
+      },
+      {
+        "source": "person_admin",
+        "target": "cont_next_frontend",
+        "description": "Edits courses and manages syllabus"
+      },
+      {
+        "source": "cont_voice_engine",
+        "target": "cont_gemini_live",
+        "description": "Streams 16kHz audio & receives 24kHz audio via WSS"
+      },
+      {
+        "source": "cont_ws_ipc",
+        "target": "cont_ws_server",
+        "description": "Connects over ws://localhost:3000/api/ws"
+      },
+      {
+        "source": "cont_next_frontend",
+        "target": "cont_ws_server",
+        "description": "Relays web activity events & listens for pet actions"
+      },
+      {
+        "source": "cont_backend_api",
+        "target": "cont_tidb_db",
+        "description": "Queries LMS metadata & vector search embeddings"
+      },
+      {
+        "source": "cont_backend_api",
+        "target": "cont_gemini_flash",
+        "description": "Sends RAG context-augmented prompts"
+      }
+    ]
+  }
+}
