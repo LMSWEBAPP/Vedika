@@ -11,7 +11,7 @@
 
 ## 1. Executive Summary
 
-This architecture document defines the **end-to-end production integration** between the **Desktop Pet Companion** (a native PySide6 Windows desktop overlay app with Gemini Live voice capabilities) and the **Vedika AI Tutor WebApp** (a full-stack LMS & virtual lab platform hosted at `https://vyomanta.vercel.app/` with Next.js frontend, Python FastAPI backend, and Pyodide WebWorker execution engine).
+This architecture document defines the **end-to-end production integration** between the **Desktop Pet Companion** (a native PySide6 Windows desktop overlay app with Gemini Live voice capabilities) and the **Vedika AI Tutor WebApp** (a full-stack LMS & virtual lab platform hosted at `https://vyomanta-ai.vercel.app/` with Next.js frontend, Python FastAPI backend, and Pyodide WebWorker execution engine).
 
 ### Core Objectives
 1. **Unified AI Persona**: Ensure Vedika maintains a singular, intelligent, stateful persona across both the Desktop Pet overlay and the Vedika WebApp LMS platform.
@@ -71,7 +71,7 @@ The Desktop Pet is a high-performance native desktop companion built on PySide6 
 - **`DesktopActivityTracker`**: Background Win32 process monitor tracking active foreground window titles with zero CPU overhead to auto-trigger pet animations (`VS Code` -> `typing`, `PhET/Lab` -> `chemistry`, `Desmos` -> `maths`, `YouTube` -> `music`).
 
 ### 3.2 Vedika AI Tutor WebApp (`vedika/Vyomanta/`)
-The Vedika AI Tutor WebApp (`vyomanta.vercel.app`) is an advanced LMS and Virtual Lab platform.
+The Vedika AI Tutor WebApp (`vyomanta-ai.vercel.app`) is an advanced LMS and Virtual Lab platform.
 - **`frontend/` (Next.js App Router)**:
   - `CodePuzzle.jsx` & `Playground.jsx`: Interactive DSA puzzle solver and code sandbox.
   - `pyodide.worker.js`: WebWorker-based client-side Python execution engine.
@@ -140,7 +140,7 @@ The WebSocket bridge enables real-time messaging between Vedika WebApp and Deskt
 | **WebApp** | Student opens DSA Puzzle | Switches to `typing` animation | Desktop Pet bubble: *"Ready to solve this puzzle?"* |
 | **WebApp** | Student opens Chem Lab | Switches to `chemistry` animation | Companion enters Virtual Lab Mode |
 | **WebApp** | Student stuck for > 2 mins | Switches to `explaining` animation | Pet offers voice hint via Gemini Live |
-| **Desktop Pet**| User double-clicks Pet | Plays `wave` animation | Opens `vyomanta.vercel.app` in default browser |
+| **Desktop Pet**| User double-clicks Pet | Plays `wave` animation | Opens `vyomanta-ai.vercel.app` in default browser |
 | **Desktop Pet**| Voice command *"Open Chemistry Lab"* | Speaks confirmation | Navigates WebApp to `/labs/chemistry` |
 
 ### Pillar 3: Context-Injected Voice Tutoring
@@ -164,7 +164,7 @@ Be concise, encouraging, and clear. Help the student step-by-step without giving
 
 ### Pillar 4: Navigation & Remote Control Interface
 Desktop Pet exposes a unified control interface `open_url_by_gemini(url)` and IPC API to interact with Vedika WebApp:
-1. **Direct Web Launch**: Opens specific routes like `https://vyomanta.vercel.app/courses`, `/labs/chemistry`, `/resources/dsa`.
+1. **Direct Web Launch**: Opens specific routes like `https://vyomanta-ai.vercel.app/courses`, `/labs/chemistry`, `/resources/dsa`.
 2. **Auto-Voice Disconnect on Media**: Automatically pauses Gemini Live voice streaming when video tutorials or YouTube media play to eliminate audio interference.
 
 ---
@@ -213,7 +213,7 @@ gantt
 To verify the integration in production:
 1. Run `python main.py` in `c:\Users\seshu\desktop-pet`.
 2. Start the local server `node server-with-ws.js`.
-3. Open `https://vyomanta.vercel.app/` in browser.
+3. Open `https://vyomanta-ai.vercel.app/` in browser.
 4. Verify:
    - Pet switches to `typing` animation when entering Code Puzzle.
    - Pet switches to `chemistry` animation when launching Chemistry Virtual Lab.

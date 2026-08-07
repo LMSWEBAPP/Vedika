@@ -1,0 +1,18 @@
+{
+  "routes": [
+    { "id": "/", "label": "Dashboard", "aliases": ["home", "dashboard", "main", "portal"] },
+    { "id": "/courses", "label": "Courses", "aliases": ["courses", "lessons", "classes", "subjects"] },
+    { "id": "/vedika-ai", "label": "Vedika AI Assistant Hub", "aliases": ["vedika ai", "ai tutor", "ai hub"] },
+    { "id": "/vedika-ai/ask", "label": "Ask Vedika (Start Chatting)", "aliases": ["start chatting", "ask vedika", "general tutor", "chatting"] },
+    { "id": "/vedika-ai/code", "label": "Code with Vedika (Start Coding)", "aliases": ["start coding", "code with vedika", "coding tutor", "code tutor", "programming tutor"] },
+    { "id": "/vedika-ai/puzzle", "label": "Code Puzzles (Play Puzzles)", "aliases": ["play puzzles", "code puzzles", "code puzzle", "dsa", "puzzles", "problem"] },
+    { "id": "/viva-interview", "label": "Viva & Interview", "aliases": ["viva", "interview", "viva interview", "mock interview"] },
+    { "id": "/vedika-labs", "label": "Vedika 3D Science Simulator Labs", "aliases": ["labs", "virtual labs", "science labs"] },
+    { "id": "/vedika-labs/physics", "label": "Physics Lab (Enter Physics Lab)", "aliases": ["enter physics lab", "physics lab", "physics", "enter physics"] },
+    { "id": "/vedika-labs/chemistry", "label": "Chemistry Lab (Enter Chemistry Lab)", "aliases": ["enter chemistry lab", "chemistry lab", "chemistry", "enter chemistry"] },
+    { "id": "/vedika-labs/biology", "label": "Biology Lab (Enter Biology Lab)", "aliases": ["enter biology lab", "biology lab", "biology", "enter biology"] },
+    { "id": "/vedika-labs/math", "label": "Math Lab (Enter Math Lab)", "aliases": ["enter math lab", "math lab", "math", "enter math"] },
+    { "id": "/jobs", "label": "Jobs", "aliases": ["jobs", "careers", "placements", "opportunities"] },
+    { "id": "/progress", "label": "Progress", "aliases": ["progress", "analytics", "stats", "performance"] }
+  ]
+}

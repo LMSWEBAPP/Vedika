@@ -12,6 +12,36 @@ from google.genai import types
 import pyaudio
 import numpy as np
 
+def load_routes_for_prompt() -> str:
+    """Reads routes.json and formats instructions for Gemini Live model."""
+    routes_path = "routes.json"
+    if os.path.exists(routes_path):
+        try:
+            with open(routes_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                lines = []
+                for item in data.get("routes", []):
+                    r_id = item.get("id")
+                    label = item.get("label", "")
+                    aliases = ", ".join(item.get("aliases", []))
+                    lines.append(f"   - '{r_id}' for {label} ({aliases}).")
+                if lines:
+                    return "\n".join(lines) + "\n"
+        except Exception as e:
+            print(f"[!] Warning: Could not parse routes.json for system prompt: {e}")
+
+    return (
+        "   - '/' for Dashboard / Main home page.\n"
+        "   - '/courses' for Courses and learning modules.\n"
+        "   - '/vedika-ai' for Vedika AI Tutor.\n"
+        "   - '/vedika-ai/code' for Coding Tutor.\n"
+        "   - '/code-puzzle' for Coding Puzzles and practice problems.\n"
+        "   - '/viva-interview' for Viva & Interview prep.\n"
+        "   - '/vedika-labs' for Virtual Science/Math Labs.\n"
+        "   - '/jobs' for Jobs and placements.\n"
+        "   - '/progress' for Student progress and stats.\n"
+    )
+
 def analyze_sentiment(text: str) -> dict:
     """Analyzes multilingual sentiment in student speech input (matching voice-server.js)."""
     lowercase = text.lower()
@@ -49,51 +79,62 @@ def analyze_sentiment(text: str) -> dict:
 
 class BlockNLMSEchoCanceller:
     """
-    Normalized Least Mean Squares (NLMS) Block Echo Canceller in pure NumPy.
+    Normalized Least Mean Squares (NLMS) Adaptive Echo Canceller in pure NumPy.
     Subtracts known speaker audio (reference signal) from microphone input in real time.
     """
-    def __init__(self, filter_len=1600, mu=0.2, mic_rate=16000, ref_rate=24000):
-        self.filter_len = filter_len  # 100ms acoustic delay window at 16kHz
+    def __init__(self, filter_len=256, mu=0.1, mic_rate=16000, ref_rate=24000):
+        self.filter_len = filter_len
         self.mu = mu
         self.mic_rate = mic_rate
         self.ref_rate = ref_rate
         self.w = np.zeros(filter_len, dtype=np.float32)
-        self.ref_history = np.zeros(filter_len * 4, dtype=np.float32)
+        self.ref_history = np.zeros(filter_len * 8, dtype=np.float32)
 
     def push_reference(self, ref_bytes: bytes):
-        """Pushes 24kHz speaker audio chunk to reference history buffer."""
+        """Pushes speaker audio chunk to reference history buffer (resampled from 24kHz to 16kHz)."""
         ref = np.frombuffer(ref_bytes, dtype=np.int16).astype(np.float32)
-        # Resample 24kHz speaker chunk down to 16kHz mic sample rate
+        if len(ref) == 0:
+            return
         step = self.ref_rate / self.mic_rate
         indices = np.arange(0, len(ref), step).astype(int)
         indices = np.clip(indices, 0, len(ref) - 1)
         ref_16k = ref[indices]
-        
-        self.ref_history = np.concatenate([self.ref_history, ref_16k])[-self.filter_len * 4:]
+        self.ref_history = np.concatenate([self.ref_history, ref_16k])[-self.filter_len * 8:]
 
     def process(self, mic_bytes: bytes) -> tuple[np.ndarray, float]:
         """
-        Calculates echo-cancelled residual signal from raw mic bytes.
+        Calculates NLMS adaptive echo cancellation on mic chunk against reference buffer.
         Returns (residual_samples, residual_rms).
         """
         mic = np.frombuffer(mic_bytes, dtype=np.int16).astype(np.float32)
-        if len(self.ref_history) < self.filter_len:
-            rms = np.sqrt(np.mean(mic**2)) if len(mic) > 0 else 0.0
+        if len(mic) == 0:
+            return mic, 0.0
+
+        if len(self.ref_history) < self.filter_len + len(mic):
+            rms = float(np.sqrt(np.mean(mic**2))) if len(mic) > 0 else 0.0
             return mic, rms
 
-        # Vectorized block prediction
-        ref_window = self.ref_history[-self.filter_len:]
-        predicted_echo = np.dot(self.w, ref_window)
-        
-        # Residual = mic signal minus predicted speaker echo
-        residual = mic - predicted_echo
-        residual_rms = np.sqrt(np.mean(residual**2)) if len(residual) > 0 else 0.0
+        # True sample-by-sample NLMS adaptive filter over mic chunk
+        ref_buf = self.ref_history
+        N = len(mic)
+        L = self.filter_len
+        residual = np.zeros(N, dtype=np.float32)
 
-        # Vectorized NLMS weight update
-        norm = np.dot(ref_window, ref_window) + 1e-6
-        mean_err = np.mean(residual)
-        self.w += (self.mu / norm) * mean_err * ref_window
+        for n in range(N):
+            idx_end = len(ref_buf) - N + n
+            x_n = ref_buf[idx_end - L : idx_end]
+            if len(x_n) < L:
+                residual[n] = mic[n]
+                continue
 
+            y_n = np.dot(self.w, x_n)
+            e_n = mic[n] - y_n
+            residual[n] = e_n
+
+            norm_x = np.dot(x_n, x_n) + 1e-4
+            self.w += (self.mu / norm_x) * e_n * x_n
+
+        residual_rms = float(np.sqrt(np.mean(residual**2)))
         return residual, residual_rms
 
 class GeminiLiveWorker(QThread):
@@ -194,10 +235,35 @@ class GeminiLiveWorker(QThread):
                     self.loop.stop()
                 except Exception:
                     pass
-            try:
-                self.loop.call_soon_threadsafe(_cancel_and_stop)
-            except Exception:
-                pass
+    async def request_main_thread_screenshot(self) -> bytes:
+        """Safely dispatches screenshot capture to Qt Main Thread and awaits result with 3.5s timeout."""
+        if not self.loop or self.loop.is_closed():
+            print("[GeminiLiveWorker] Error: Worker event loop is closed or missing.")
+            return b""
+            
+        # 150ms stabilization pause allowing OS window focus transitions to complete
+        await asyncio.sleep(0.15)
+
+        fut = self.loop.create_future()
+        print("[GeminiLiveWorker] Emitting screen_capture_requested signal to main thread...")
+        self.client.screen_capture_requested.emit(fut, self.loop)
+        
+        try:
+            # Await result with 3.5s timeout safeguard
+            jpeg_bytes = await asyncio.wait_for(fut, timeout=3.5)
+            print(f"[GeminiLiveWorker] Successfully received screenshot payload ({len(jpeg_bytes)/1024:.1f} KB) from main thread.")
+            return jpeg_bytes
+        except asyncio.TimeoutError:
+            print("[GeminiLiveWorker] Error: Screen capture timed out after 3.5s.")
+            return b""
+        except Exception as e:
+            print(f"[GeminiLiveWorker] Screen capture bridge error: {e}")
+            return b""
+
+    async def _reset_tool_executing_after_delay(self, delay=2.5):
+        await asyncio.sleep(delay)
+        if hasattr(self, "client") and self.client:
+            self.client.tool_executing = False
 
     async def _main(self):
         api_key = self.client.gemini_keys[self.client.current_key_index]
@@ -217,7 +283,9 @@ class GeminiLiveWorker(QThread):
             return {"status": "success", "opened_url": url}
 
         def stop_voice_chat() -> dict:
-            """Stops or pauses the active voice chat session when requested by the user (e.g. pause voice chat, stop voice chat, pause, stop, bye, exit, stop listening)."""
+            """Stops or pauses active voice session ONLY when student explicitly says 'bye', 'goodbye', 'stop listening', or 'close voice chat'."""
+            if getattr(self.client, "tool_executing", False):
+                return {"status": "ignored"}
             self.client.stop_voice_requested.emit()
             return {"status": "success", "session_ended": True}
 
@@ -239,6 +307,41 @@ class GeminiLiveWorker(QThread):
             if hasattr(self.client, 'trigger_hint_requested'):
                 self.client.trigger_hint_requested.emit(hint_level)
             return {"status": "success", "hint_level": hint_level}
+
+        async def capture_user_screen() -> dict:
+            """Captures and analyzes the student's active computer screen when asked 'What is on my screen?', 'What am I looking at?', 'Explain what is on my screen', or when visual screen assistance is requested."""
+            print("[GeminiLiveWorker] Tool call request received: capture_user_screen")
+            self.client.tool_executing = True
+            try:
+                jpeg_bytes = await self.request_main_thread_screenshot()
+                
+                if jpeg_bytes:
+                    if self.session and self.client.is_active:
+                        try:
+                            print(f"[GeminiLiveWorker] Transmitting screen image blob ({len(jpeg_bytes)/1024:.1f} KB) to Gemini Live session via video field...")
+                            await self.session.send_realtime_input(
+                                video=types.Blob(
+                                    data=jpeg_bytes,
+                                    mime_type="image/jpeg"
+                                )
+                            )
+                            print("[GeminiLiveWorker] Screen image blob successfully transmitted to Gemini Live session!")
+                            return {"status": "success", "image_received": True, "message": "Screen image ingested. Analyzing content."}
+                        except Exception as e:
+                            print(f"[GeminiLiveWorker] Error transmitting screen image blob: {e}")
+                            return {"status": "error", "message": f"Failed to transmit screen image to model: {e}"}
+                    return {"status": "error", "message": "Gemini Live session is inactive."}
+                else:
+                    print("[GeminiLiveWorker] Warning: Screenshot request returned empty bytes.")
+                    return {"status": "error", "message": "Failed to capture screen image."}
+            finally:
+                asyncio.create_task(self._reset_tool_executing_after_delay(2.5))
+
+        def point_to_screen_location(x: float, y: float, label: str = "", action: str = "point") -> dict:
+            """Points to or highlights a specific UI element, code line, error, or button on the student's screen using normalized coordinates (x: 0.0 to 1.0, y: 0.0 to 1.0)."""
+            print(f"[GeminiLiveWorker] Tool call: point_to_screen_location(x={x}, y={y}, label='{label}', action='{action}')")
+            self.client.point_location_requested.emit(x, y, label, action)
+            return {"status": "success", "pointing_at": {"x": x, "y": y, "label": label, "action": action}}
 
         # Construct dynamic Academic Voice Tutor system instruction matching voice-server.js
         tutor_lang = getattr(self.client, "tutor_language", "all")
@@ -293,21 +396,19 @@ class GeminiLiveWorker(QThread):
             if webapp_ctx.get("labTitle"):
                 sys_inst += f"- Active Virtual Lab Experiment: '{webapp_ctx.get('labTitle')}'\n"
 
+        route_instructions = load_routes_for_prompt()
         sys_inst += (
             "TOOLS & IMMEDIATE ACTIONS:\n"
             "1. When the user asks to play a song, music, video, or study material: "
             "IMMEDIATELY call 'play_music' or 'open_website' tool function on your VERY FIRST turn.\n"
             "2. If the user asks to open or navigate to any page, tab, or section in Vyomanta LMS: call 'navigate_webapp' with the appropriate route string:\n"
-            "   - '/courses' for Courses, learning modules, or subjects.\n"
-            "   - '/virtual-labs' for Science, Physics, Chemistry, or Math virtual lab simulations.\n"
-            "   - '/playground' for Python/JavaScript code playground and sandbox.\n"
-            "   - '/dsa' for Data Structures & Algorithms practice or coding puzzles.\n"
-            "   - '/resources' for study materials and company-wise questions.\n"
-            "   - '/' for the main home page.\n"
+            + route_instructions +
             "3. If the user asks for a hint on their current puzzle, call 'trigger_puzzle_hint'.\n"
-            "4. If the user asks for Vyomanta portal, call 'navigate_webapp' with '/' or 'open_website' with 'https://vyomanta.vercel.app/'.\n"
+            "4. If the user asks for Vyomanta portal, call 'navigate_webapp' with '/' or 'open_website' with 'https://vyomanta-ai.vercel.app/'.\n"
             "5. If the user asks to stop or pause voice chat, call 'stop_voice_chat' immediately.\n"
-            "6. You can also trigger pet visual animations on yourself ('wave', 'jump', 'failed', 'waiting', 'review', 'idle')."
+            "6. You can also trigger pet visual animations on yourself ('wave', 'jump', 'failed', 'waiting', 'review', 'idle').\n"
+            "7. SCREEN VISION: When the user asks 'What is on my screen?', 'Can you see what I am doing?', 'Explain what is on my screen', or asks a visual question about their active computer screen: IMMEDIATELY call 'capture_user_screen' tool function on your VERY FIRST turn. Once the image is received, describe and assist with what is visible clearly and concisely. ALWAYS base your visual response strictly on the VERY LATEST image frame received in the current turn. Ignore any older image frames from earlier turns.\n"
+            "8. VISUAL POINTING & LASER HIGHLIGHT: When explaining code errors, UI buttons, syntax mistakes, or specific elements on the user's screen: IMMEDIATELY call 'point_to_screen_location(x, y, label)' with normalized coordinates (x: 0.0 to 1.0, y: 0.0 to 1.0) to highlight the exact position with a glowing laser pointer and sonar pulse for the student."
         )
 
         config = types.LiveConnectConfig(
@@ -327,7 +428,7 @@ class GeminiLiveWorker(QThread):
             realtime_input_config=types.RealtimeInputConfig(
                 turn_coverage="TURN_INCLUDES_ONLY_ACTIVITY",
             ),
-            tools=[play_animation, open_website, play_music, stop_voice_chat, navigate_webapp, trigger_puzzle_hint]
+            tools=[play_animation, open_website, play_music, stop_voice_chat, navigate_webapp, trigger_puzzle_hint, capture_user_screen, point_to_screen_location]
         )
 
         try:
@@ -435,8 +536,8 @@ class GeminiLiveWorker(QThread):
             n = 0
             speaking_sustained_counter = 0
             while self.client.is_active and self.mic_stream and not getattr(self, "_stopping_audio", False):
-                # Mute mic audio when session is paused or audio is stopping
-                if getattr(self.client, "is_paused", False) or getattr(self, "_stopping_audio", False):
+                # Mute mic audio when session is paused, audio is stopping, or tool is executing
+                if getattr(self.client, "is_paused", False) or getattr(self, "_stopping_audio", False) or getattr(self.client, "tool_executing", False):
                     await asyncio.sleep(0.05)
                     continue
 
@@ -526,19 +627,25 @@ class GeminiLiveWorker(QThread):
     async def play_audio_loop(self):
         try:
             n = 0
+            pcm_buffer = bytearray()
             while self.client.is_active and self.speaker_stream and not getattr(self, "_stopping_audio", False):
                 # Pause audio output when session is paused or audio is stopping
                 if getattr(self.client, "is_paused", False) or getattr(self, "_stopping_audio", False):
                     await asyncio.sleep(0.05)
                     continue
 
-                chunk = await self.audio_out_queue.get()
-                if chunk is None or getattr(self, "_stopping_audio", False):
+                try:
+                    chunk = await asyncio.wait_for(self.audio_out_queue.get(), timeout=0.05)
+                except asyncio.TimeoutError:
+                    chunk = None
+
+                if chunk is None and getattr(self, "_stopping_audio", False):
                     break
                 
                 # Check for thread-safe interruption flush request
                 if self.flush_speaker:
                     self.flush_speaker = False
+                    pcm_buffer.clear()
                     print("[GeminiLiveWorker] Flushed speaker queue on user interruption.")
                     while not self.audio_out_queue.empty():
                         try:
@@ -547,27 +654,37 @@ class GeminiLiveWorker(QThread):
                             break
                     continue
 
-                n += 1
-                print(f"[PLAY] Playing chunk {n}, length={len(chunk)} bytes.")
-                
-                # Push far-end reference audio to Block-NLMS Echo Canceller
-                self.aec.push_reference(chunk)
+                if chunk:
+                    pcm_buffer.extend(chunk)
 
-                if not self.speaker_stream:
-                    break
+                # Buffer PCM chunks to at least 2400 bytes (50ms of 24kHz mono) for smooth, non-stuttering PyAudio playback
+                min_chunk_bytes = 2400
+                while len(pcm_buffer) >= min_chunk_bytes or (chunk is None and len(pcm_buffer) > 0 and self.audio_out_queue.empty()):
+                    send_len = min_chunk_bytes if len(pcm_buffer) >= min_chunk_bytes else len(pcm_buffer)
+                    play_bytes = bytes(pcm_buffer[:send_len])
+                    del pcm_buffer[:send_len]
 
-                try:
-                    # Play audio chunk asynchronously to prevent event loop blocking
-                    await asyncio.to_thread(self.speaker_stream.write, chunk)
-                except Exception as ex:
-                    print(f"[GeminiLiveWorker] Speaker stream write gracefully stopped: {ex}")
-                    break
-                
-                # Thread-safely trigger client timer
-                self.client.mic_timer_trigger.emit(2500)
+                    n += 1
+                    print(f"[PLAY] Playing smooth audio chunk {n}, length={len(play_bytes)} bytes.")
+                    
+                    # Push far-end reference audio to Block-NLMS Echo Canceller
+                    self.aec.push_reference(play_bytes)
+
+                    if not self.speaker_stream:
+                        break
+
+                    try:
+                        # Play audio chunk asynchronously to prevent event loop blocking
+                        await asyncio.to_thread(self.speaker_stream.write, play_bytes)
+                    except Exception as ex:
+                        print(f"[GeminiLiveWorker] Speaker stream write gracefully stopped: {ex}")
+                        break
+                    
+                    # Thread-safely trigger client timer
+                    self.client.mic_timer_trigger.emit(2500)
                 
                 # Check if we finished playing all chunks after turn completed
-                if self.audio_out_queue.empty() and getattr(self.client, "turn_completed_received", False):
+                if self.audio_out_queue.empty() and len(pcm_buffer) == 0 and getattr(self.client, "turn_completed_received", False):
                     print("[GeminiLive] Speaker finished playing all chunks. Re-enabling mic.")
                     self.client.turn_completed_received = False
                     self.client.mic_timer_trigger.emit(0)
@@ -593,8 +710,11 @@ class GeminiLiveWorker(QThread):
                         print(f"[RECV] Got response: text={has_text} audio={has_audio}")
                         
                         if sc.interrupted:
-                            print("[GeminiLiveWorker] Gemini Server VAD emitted interrupted=True! Halting local speaker.")
-                            self.client.interrupted.emit()
+                            if getattr(self.client, "tool_executing", False):
+                                print("[GeminiLiveWorker] Suppressed false server VAD interruption signal during active tool execution.")
+                            else:
+                                print("[GeminiLiveWorker] Gemini Server VAD emitted interrupted=True! Halting local speaker.")
+                                self.client.interrupted.emit()
                         
                         if sc.input_transcription and sc.input_transcription.text:
                             user_text = sc.input_transcription.text.strip()
@@ -693,6 +813,73 @@ class GeminiLiveWorker(QThread):
                                         response={"status": "success", "hint_level": hint_level}
                                     )
                                 )
+                            elif func_name == "capture_user_screen":
+                                print("[GeminiLiveWorker] Executing tool capture_user_screen via main-thread bridge...")
+                                self.client.tool_executing = True
+                                try:
+                                    jpeg_bytes = await self.request_main_thread_screenshot()
+                                    if jpeg_bytes:
+                                        if self.session and self.client.is_active:
+                                            try:
+                                                print(f"[GeminiLiveWorker] Transmitting screen image blob ({len(jpeg_bytes)/1024:.1f} KB) to Gemini Live session via video field...")
+                                                await self.session.send_realtime_input(
+                                                    video=types.Blob(
+                                                        data=jpeg_bytes,
+                                                        mime_type="image/jpeg"
+                                                    )
+                                                )
+                                                print("[GeminiLiveWorker] Screen image blob successfully transmitted to Gemini Live session!")
+                                                function_responses.append(
+                                                    types.FunctionResponse(
+                                                        name=func_name,
+                                                        id=fc.id,
+                                                        response={"status": "success", "image_received": True, "message": "Screen image ingested. Analyzing content."}
+                                                    )
+                                                )
+                                            except Exception as e:
+                                                print(f"[GeminiLiveWorker] Error transmitting screen image blob: {e}")
+                                                function_responses.append(
+                                                    types.FunctionResponse(
+                                                        name=func_name,
+                                                        id=fc.id,
+                                                        response={"status": "error", "message": f"Failed to transmit screen image: {e}"}
+                                                    )
+                                                )
+                                        else:
+                                            function_responses.append(
+                                                types.FunctionResponse(
+                                                    name=func_name,
+                                                    id=fc.id,
+                                                    response={"status": "error", "message": "Gemini Live session is inactive."}
+                                                )
+                                            )
+                                    else:
+                                        function_responses.append(
+                                            types.FunctionResponse(
+                                                name=func_name,
+                                                id=fc.id,
+                                                response={"status": "error", "message": "Failed to capture screen image."}
+                                            )
+                                        )
+                                finally:
+                                    asyncio.create_task(self._reset_tool_executing_after_delay(2.5))
+                            elif func_name == "point_to_screen_location":
+                                try:
+                                    x_val = float(args.get("x", 0.5))
+                                    y_val = float(args.get("y", 0.5))
+                                except Exception:
+                                    x_val, y_val = 0.5, 0.5
+                                label_str = str(args.get("label", ""))
+                                action_str = str(args.get("action", "point"))
+                                print(f"[GeminiLiveWorker] Executing tool point_to_screen_location: x={x_val}, y={y_val}, label='{label_str}', action='{action_str}'")
+                                self.client.point_location_requested.emit(x_val, y_val, label_str, action_str)
+                                function_responses.append(
+                                    types.FunctionResponse(
+                                        name=func_name,
+                                        id=fc.id,
+                                        response={"status": "success", "pointing_at": {"x": x_val, "y": y_val, "label": label_str}}
+                                    )
+                                )
                         
                         if function_responses and self.session and self.client.is_active:
                             try:
@@ -705,6 +892,8 @@ class GeminiLiveWorker(QThread):
                 break
             except Exception as e:
                 print(f"[GeminiLiveWorker] Receive loop error: {e}")
+                if self.client and self.client.is_active:
+                    self.client.connection_failed.emit(f"WebSocket error/closure: {e}")
                 break
 
 class GeminiLiveClient(QObject):
@@ -716,6 +905,8 @@ class GeminiLiveClient(QObject):
     stop_voice_requested = Signal()  # stop signal
     navigate_webapp_requested = Signal(str)  # route string
     trigger_hint_requested = Signal(int)  # hint level
+    screen_capture_requested = Signal(object, object)  # future, loop
+    point_location_requested = Signal(float, float, str, str)  # x, y, label, action
     session_activated = Signal()
     speaking_started = Signal()
     speaking_stopped = Signal()

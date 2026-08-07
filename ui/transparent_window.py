@@ -60,6 +60,11 @@ class TransparentWindow(QWidget):
             res_alt_v = user32.RegisterHotKey(hwnd, 1010, 0x4001, 0x56)
             if res_alt_v:
                 print("[Hotkeys] System-wide Alt+V hotkey registered successfully.")
+
+            # Alt+S (Screen Vision) - VK_S = 0x53, MOD_ALT = 0x0001 | MOD_NOREPEAT = 0x4000
+            res_alt_s = user32.RegisterHotKey(hwnd, 1011, 0x4001, 0x53)
+            if res_alt_s:
+                print("[Hotkeys] System-wide Alt+S hotkey registered successfully.")
         except Exception as e:
             print(f"[TransparentWindow] Windows RegisterHotKey notice: {e}")
 
@@ -79,6 +84,10 @@ class TransparentWindow(QWidget):
                     elif msg.wParam == 1010:
                         print("[NativeEvent] System-wide Alt+V pressed.")
                         self.main_app.toggle_gemini_start_stop_alt_v()
+                        return True, 0
+                    elif msg.wParam == 1011:
+                        print("[NativeEvent] System-wide Alt+S pressed.")
+                        self.main_app.trigger_screen_analysis_alt_s()
                         return True, 0
         except Exception:
             pass
@@ -226,7 +235,7 @@ class TransparentWindow(QWidget):
 
         # 3b. Open Vyomantha Portal
         menu.addSeparator()
-        vyom_act = menu.addAction("🚀 Open Vyomantha (vyomanta.vercel.app)")
+        vyom_act = menu.addAction("🚀 Open Vyomantha (vyomanta-ai.vercel.app)")
         vyom_act.triggered.connect(self.main_app.open_vyomantha_website)
 
         # 3c. Gemini Live Voice Chat Toggle (Alt+V)

@@ -17,3 +17,10 @@ python main.py
 
  .\venv\Scripts\Activate.ps1 
 
+
+
+py -3.12 -m venv venv
+# 3. Activate the new environment
+.\venv\Scripts\Activate.ps1
+# 4. Install requirements
+pip install -r requirements.txt

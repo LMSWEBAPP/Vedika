@@ -16,7 +16,8 @@ export function useDesktopPetBridge() {
     }
 
     try {
-      const wsUrl = 'ws://localhost:3000/api/ws?role=webapp';
+      // Connect directly to local Desktop Pet PySide6 QWebSocketServer on port 8765
+      const wsUrl = 'ws://127.0.0.1:8765';
       const ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {

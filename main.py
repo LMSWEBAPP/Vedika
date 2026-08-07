@@ -3,6 +3,7 @@ import sys
 import json
 import time
 import traceback
+import re
 
 if sys.platform == "win32":
     try:
@@ -12,10 +13,49 @@ if sys.platform == "win32":
     except Exception:
         pass
 
+# Import GeminiLiveClient before PySide6 QApplication to prevent Shiboken inspection locks
+from engine.gemini_live import GeminiLiveClient
+
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import QTimer, QThread, QObject, Slot, Signal, QUrl
 from PySide6.QtGui import QCursor, Qt
-from PySide6.QtWebSockets import QWebSocket
+from PySide6.QtWebSockets import QWebSocketServer, QWebSocket
+from PySide6.QtNetwork import QHostAddress
+
+ALLOWED_ROUTE_PATTERN = re.compile(r"^/[a-z0-9\-_/]*$")
+
+def load_valid_routes() -> set:
+    routes_path = "routes.json"
+    if os.path.exists(routes_path):
+        try:
+            with open(routes_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return {item["id"] for item in data.get("routes", []) if "id" in item}
+        except Exception as e:
+            print(f"[!] Warning: Could not parse routes.json for validation: {e}")
+    return {"/", "/courses", "/vedika-ai", "/vedika-ai/code", "/code-puzzle", "/viva-interview", "/vedika-labs", "/jobs", "/progress"}
+
+VALID_ROUTES = load_valid_routes()
+
+def sanitize_and_validate_route(route: str) -> str:
+    if not route or not isinstance(route, str):
+        return "/"
+    
+    route = route.strip()
+    if not route.startswith("/"):
+        route = "/" + route
+        
+    # Enforce regex security allowlist
+    if not ALLOWED_ROUTE_PATTERN.match(route):
+        print(f"[Security Warning] Blocked suspicious route format: '{route}'. Falling back to '/'")
+        return "/"
+        
+    # Enforce dynamic whitelist membership check
+    if route not in VALID_ROUTES:
+        print(f"[Route Validation] Unknown route '{route}'. Falling back to dashboard '/'")
+        return "/"
+        
+    return route
 
 def log_uncaught_exception(exc_type, exc_value, exc_tb):
     err_msg = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
@@ -101,8 +141,6 @@ class DesktopPetApp(QObject):
         self.pet.say("Hi, I am Vedika, what's going on?", duration=4.5)
 
         # Initialize Gemini Live voice-to-voice client
-        from engine.gemini_live import GeminiLiveClient
-        
         self.gemini_client = GeminiLiveClient(self.pet, self)
         
         # Connect signals for thread-safe UI updates
@@ -114,6 +152,14 @@ class DesktopPetApp(QObject):
         self.gemini_client.session_activated.connect(self.on_gemini_session_activated)
         self.gemini_client.navigate_webapp_requested.connect(self.on_navigate_webapp_requested)
         self.gemini_client.trigger_hint_requested.connect(self.on_trigger_hint_requested)
+
+        # Initialize PointerOverlay & ScreenCapturer on Main GUI Thread
+        from ui.pointer_overlay import PointerOverlay
+        from engine.screen_capturer import ScreenCapturer
+        self.pointer_overlay = PointerOverlay()
+        self.screen_capturer = ScreenCapturer()
+        self.gemini_client.screen_capture_requested.connect(self.screen_capturer.grab_screen_slot)
+        self.gemini_client.point_location_requested.connect(self.on_point_location_requested)
         
         # Connect conversational state transitions
         self.gemini_client.speaking_started.connect(self.on_gemini_speaking)
@@ -326,6 +372,70 @@ class DesktopPetApp(QObject):
                 self.pet.say("Voice Chat starting... 🚀", duration=2.5)
             client.start()
 
+    def trigger_screen_analysis_alt_s(self):
+        """Alt+S Hotkey Handler: Triggers manual screen capture and vision analysis."""
+        if not hasattr(self, 'gemini_client') or not self.gemini_client.is_active:
+            print("[Alt+S Hotkey] Starting Gemini Live Voice Chat for Screen Analysis...")
+            if self.pet:
+                self.pet.say("Scanning your screen... 🔍", duration=2.5)
+            self.gemini_client.start()
+            return
+
+        if self.pet:
+            self.pet.say("Scanning your screen... 🔍", duration=2.5)
+            self.set_active_animation("searching")
+
+        if hasattr(self, 'screen_capturer') and hasattr(self.gemini_client, 'worker_thread') and self.gemini_client.worker_thread:
+            import asyncio
+            from google.genai import types
+            worker = self.gemini_client.worker_thread
+            fut = worker.loop.create_future()
+            self.screen_capturer.grab_screen_slot(fut, worker.loop)
+            
+            async def _send_hotkey_image():
+                try:
+                    jpeg_bytes = await asyncio.wait_for(fut, timeout=3.5)
+                    if jpeg_bytes and worker.session:
+                        print(f"[Alt+S Hotkey] Sending screen image ({len(jpeg_bytes)/1024:.1f} KB) to Gemini Live...")
+                        await worker.session.send_realtime_input(
+                            video=types.Blob(
+                                data=jpeg_bytes,
+                                mime_type="image/jpeg"
+                            )
+                        )
+                except Exception as e:
+                    print(f"[Alt+S Hotkey] Error sending screen image: {e}")
+
+            asyncio.run_coroutine_threadsafe(_send_hotkey_image(), worker.loop)
+
+    def on_point_location_requested(self, x_norm: float, y_norm: float, label: str = "", action: str = "point"):
+        """Main GUI Thread Slot: Handles visual laser pointer overlay, pet walking, and optional mouse movement."""
+        print(f"[MainApp] Visual point location requested: ({x_norm:.2f}, {y_norm:.2f}) - Label: '{label}' - Action: '{action}'")
+        
+        # 1. Trigger glowing laser pointer dot and sonar ripple overlay
+        if hasattr(self, 'pointer_overlay') and self.pointer_overlay:
+            self.pointer_overlay.point_at(x_norm, y_norm, label, duration=4.0)
+
+        # 2. Trigger Pet Speech / Reaction
+        if self.pet:
+            if label:
+                self.pet.say(f"Look here! 🔍 {label}", duration=3.5)
+            self.set_active_animation("pointing" if hasattr(self.pet, "pointing") else "searching")
+
+        # 3. Optional System Mouse Movement if requested by action
+        if action == "move_mouse":
+            try:
+                import ctypes
+                screen = self.app.primaryScreen()
+                if screen:
+                    geom = screen.geometry()
+                    target_px = int(max(0.0, min(1.0, x_norm)) * geom.width())
+                    target_py = int(max(0.0, min(1.0, y_norm)) * geom.height())
+                    ctypes.windll.user32.SetCursorPos(target_px, target_py)
+                    print(f"[MainApp] System mouse cursor set to ({target_px}, {target_py})")
+            except Exception as e:
+                print(f"[MainApp] SetCursorPos notice: {e}")
+
     def pause_voice_by_gemini(self):
         """Pauses voice chat when user asks to pause or stop voice chat via voice command."""
         if hasattr(self, 'gemini_client') and self.gemini_client:
@@ -335,28 +445,52 @@ class DesktopPetApp(QObject):
 
     def open_vyomantha_website(self):
         """Opens Vyomantha portal in default web browser and triggers pet speech response."""
-        self.open_url_by_gemini("https://vyomanta.vercel.app/")
+        self.open_url_by_gemini("https://vyomanta-ai.vercel.app/")
 
     def init_websocket_bridge(self):
-        """Initializes PySide6 QWebSocket bridge connecting Desktop Pet to local Vedika WebApp event server."""
+        """Initializes embedded PySide6 QWebSocketServer on port 8765 for direct browser WebApp bridge."""
         try:
-            self.ws_bridge = QWebSocket()
-            self.ws_bridge.textMessageReceived.connect(self.on_ws_bridge_message)
-            self.ws_bridge.disconnected.connect(self.on_ws_bridge_disconnected)
-            self.connect_ws_bridge()
+            self.web_clients = []
+            self.ws_server = QWebSocketServer(
+                "VedikaDesktopPetBridge",
+                QWebSocketServer.SslMode.NonSecureMode,
+                self.app
+            )
+            if self.ws_server.listen(QHostAddress.SpecialAddress.Any, 8765):
+                print("[WS Server] Embedded Desktop Pet WebSocket Server listening on ws://127.0.0.1:8765")
+                self.ws_server.newConnection.connect(self.on_ws_new_connection)
+            else:
+                print(f"[WS Server] Warning: Could not bind port 8765: {self.ws_server.errorString()}")
         except Exception as e:
-            print(f"[Main] WebSocket Bridge Init Notice: {e}")
+            print(f"[WS Server] Exception during initialization: {e}")
 
-    def connect_ws_bridge(self):
-        """Connects to local WebSocket server on ws://localhost:3000/api/ws?role=pet."""
-        if hasattr(self, 'ws_bridge'):
-            url = QUrl("ws://localhost:3000/api/ws?role=pet")
-            self.ws_bridge.open(url)
+    def on_ws_new_connection(self):
+        client = self.ws_server.nextPendingConnection()
+        print(f"[WS Server] Browser WebApp connected from {client.peerAddress().toString()}")
+        self.web_clients.append(client)
+        client.textMessageReceived.connect(lambda msg: self.on_ws_bridge_message(msg))
+        client.disconnected.connect(lambda: self.on_ws_client_disconnected(client))
 
-    @Slot()
-    def on_ws_bridge_disconnected(self):
-        """Re-establishes WebSocket connection if local server restarts."""
-        QTimer.singleShot(5000, self.connect_ws_bridge)
+    def on_ws_client_disconnected(self, client):
+        print(f"[WS Server] Browser WebApp disconnected.")
+        if client in self.web_clients:
+            self.web_clients.remove(client)
+
+    def is_webapp_connected(self) -> bool:
+        """Returns True if at least one active Vyomanta WebApp browser tab is connected via WebSocket."""
+        return any(c.isValid() and c.state() == QWebSocket.SocketState.ConnectedState for c in getattr(self, 'web_clients', []))
+
+    def broadcast_to_webapp(self, message_dict) -> bool:
+        """Broadcasts JSON payload to all connected active browser tabs."""
+        if not hasattr(self, 'web_clients') or not self.web_clients:
+            return False
+        msg_str = json.dumps(message_dict)
+        sent_count = 0
+        for c in list(self.web_clients):
+            if c.isValid() and c.state() == QWebSocket.SocketState.ConnectedState:
+                c.sendTextMessage(msg_str)
+                sent_count += 1
+        return sent_count > 0
 
     @Slot(str)
     def on_ws_bridge_message(self, message_str):
@@ -399,23 +533,26 @@ class DesktopPetApp(QObject):
             return env_url.rstrip("/")
         if os.getenv("USE_LOCALHOST", "").lower() in ("true", "1", "yes"):
             return "http://localhost:3000"
-        if hasattr(self, 'ws_bridge') and self.ws_bridge and self.ws_bridge.isValid():
+        if self.is_webapp_connected():
             return "http://localhost:3000"
-        return "https://vyomanta.vercel.app"
+        return "https://vyomanta-ai.vercel.app"
 
     @Slot(str)
     def on_navigate_webapp_requested(self, route):
-        """Handles voice-triggered webapp route navigation."""
-        if not route:
-            route = "/"
-        if not route.startswith("/") and not route.startswith("http://") and not route.startswith("https://"):
-            route = "/" + route
-        print(f"[Main] Voice requested navigation to route: {route}")
-        if hasattr(self, 'ws_bridge') and self.ws_bridge.isValid():
-            self.ws_bridge.sendTextMessage(json.dumps({
-                "type": "NAVIGATE_WEBAPP",
-                "payload": {"route": route}
-            }))
+        """Handles voice-triggered webapp route navigation with whitelist validation & regex security."""
+        raw_route = route
+        route = sanitize_and_validate_route(route)
+        print(f"[Main] Voice requested navigation to route: '{raw_route}' -> Validated target: '{route}'")
+        
+        # 1. Try seamless in-tab WebSocket navigation if an active browser tab is connected
+        if self.broadcast_to_webapp({"type": "NAVIGATE_WEBAPP", "payload": {"route": route}}):
+            print(f"[Main] Seamless in-tab WebSocket navigation dispatched to active browser tab for route: '{route}' (No new tab opened).")
+            if self.pet:
+                self.pet.say(f"Navigating to {route}! 🚀", duration=2.5)
+            return
+
+        # 2. Fallback to opening browser only if no active browser tab is connected
+        print(f"[Main] No active browser tab connected via WebSocket. Launching browser for target route: '{route}'")
         base_url = self.get_vyomanta_base_url()
         target_url = f"{base_url}{route}" if route.startswith("/") else route
         self.open_url_by_gemini(target_url)
@@ -424,11 +561,7 @@ class DesktopPetApp(QObject):
     def on_trigger_hint_requested(self, hint_level=1):
         """Handles voice-triggered hint dispatching."""
         print(f"[Main] Voice requested hint dispatching (level {hint_level}).")
-        if hasattr(self, 'ws_bridge') and self.ws_bridge.isValid():
-            self.ws_bridge.sendTextMessage(json.dumps({
-                "type": "TRIGGER_HINT",
-                "payload": {"hint_level": hint_level}
-            }))
+        self.broadcast_to_webapp({"type": "TRIGGER_HINT", "payload": {"hint_level": hint_level}})
         self.set_active_animation("explaining")
         if self.pet:
             self.pet.say("Here's a hint for your problem! 💡", duration=4.0)
@@ -480,18 +613,53 @@ class DesktopPetApp(QObject):
         ]
         return any(kw in url_lower for kw in media_keywords)
 
+    def is_vyomanta_url(self, url: str) -> bool:
+        """Returns True if the URL belongs to Vyomanta LMS (local or hosted)."""
+        if not url:
+            return False
+        url_lower = url.lower().strip()
+        if url_lower.startswith("/"):
+            return True
+        if "vyomanta" in url_lower or "vyomantha" in url_lower or "localhost:3000" in url_lower or "127.0.0.1:3000" in url_lower:
+            return True
+        return False
+
+    def extract_route_from_vyomanta_url(self, url: str) -> str:
+        """Extracts pathname route from a Vyomanta URL (e.g. https://vyomanta-ai.vercel.app/courses -> /courses)."""
+        if url.startswith("/"):
+            return sanitize_and_validate_route(url)
+        from urllib.parse import urlparse
+        try:
+            parsed = urlparse(url)
+            path = parsed.path or "/"
+            if parsed.query:
+                path += f"?{parsed.query}"
+            return sanitize_and_validate_route(path)
+        except Exception:
+            return "/"
+
     def open_url_by_gemini(self, url):
-        """Opens requested URL. Disconnects voice chat ONLY for YouTube/songs/media, preserving voice chat for general websites."""
+        """Intelligently routes URLs: Vyomanta URLs navigate inside active tab via WebSocket bridge; YouTube/external URLs open in new browser tabs."""
         if not url:
             return
+
+        # Check if URL belongs to Vyomanta LMS
+        if self.is_vyomanta_url(url):
+            route = self.extract_route_from_vyomanta_url(url)
+            if self.broadcast_to_webapp({"type": "NAVIGATE_WEBAPP", "payload": {"route": route}}):
+                print(f"[Main] Vyomanta URL detected ('{url}'). Routing seamlessly inside active browser tab to: '{route}' (No new tab opened).")
+                if self.pet:
+                    self.pet.say(f"Navigating to {route}! 🚀", duration=2.5)
+                return
+
         base_url = self.get_vyomanta_base_url()
         url_lower = url.lower().strip()
-        if url_lower in ("vyomantha", "vyomanta", "study", "vyomantha website", "vyomanta website", "https://vyomanta.vercel.app", "https://vyomanta.vercel.app/", "http://localhost:3000", "http://localhost:3000/"):
+        if url_lower in ("vyomantha", "vyomanta", "study", "vyomantha website", "vyomanta website", "https://vyomanta-ai.vercel.app", "https://vyomanta-ai.vercel.app/", "https://vyomanta.vercel.app", "https://vyomanta.vercel.app/", "http://localhost:3000", "http://localhost:3000/"):
             url = f"{base_url}/"
         elif url.startswith("/"):
             url = f"{base_url}{url}"
         elif not (url.startswith("http://") or url.startswith("https://")):
-            if "vyomanta.vercel.app" in url_lower or "vyomanta" in url_lower or "vyomantha" in url_lower or "localhost" in url_lower:
+            if "vyomanta-ai.vercel.app" in url_lower or "vyomanta.vercel.app" in url_lower or "vyomanta" in url_lower or "vyomantha" in url_lower or "localhost" in url_lower:
                 url = "https://" + url if "." in url else f"{base_url}/{url.lstrip('/')}"
             else:
                 url = "https://" + url
@@ -513,7 +681,7 @@ class DesktopPetApp(QObject):
                 print(f"[Main] Media/Song URL detected ({url}) -> Disconnecting Gemini Live Voice Chat.")
                 self.gemini_client.stop()
             elif not is_media:
-                print(f"[Main] Standard website detected ({url}) -> Keeping Gemini Live Voice Chat ACTIVE.")
+                print(f"[Main] Standard external website detected ({url}) -> Keeping Gemini Live Voice Chat ACTIVE.")
             self._do_open_url(url)
 
         QTimer.singleShot(1500 if not is_media else 2500, _launch_link)

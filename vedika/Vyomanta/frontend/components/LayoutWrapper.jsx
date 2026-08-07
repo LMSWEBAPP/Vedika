@@ -5,8 +5,10 @@ import { usePathname, useRouter } from 'next/navigation';
 import Sidebar from './Sidebar';
 import AdminSidebar from './AdminSidebar';
 import { T } from '@/lib/lms-data';
+import { useDesktopPetBridge } from '@/hooks/useDesktopPetBridge';
 
 export default function LayoutWrapper({ children }) {
+  useDesktopPetBridge();
   const pathname = usePathname();
   const router = useRouter();
   const [user, setUser] = useState(null);

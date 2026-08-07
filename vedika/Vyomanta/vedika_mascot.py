@@ -20,7 +20,7 @@ import pythoncom
 
 # Configuration
 SPRITE_FILE = "vedika.png"
-WEBAPP_URL = "https://vyomanta.vercel.app/"
+WEBAPP_URL = "https://vyomanta-ai.vercel.app/"
 COLOR_KEY = "#010101"  # Transparent window color key
 
 # SAPI Speech Recognition event handler class
