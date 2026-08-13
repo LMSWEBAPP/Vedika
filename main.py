@@ -72,6 +72,7 @@ sys.excepthook = log_uncaught_exception
 from engine.sprite import SpriteLoader
 from engine.pet import Pet
 from engine.activity_tracker import DesktopActivityTracker
+from engine.user_profile import UserProfileManager
 from ui.transparent_window import TransparentWindow
 
 class DesktopPetApp(QObject):
@@ -137,8 +138,10 @@ class DesktopPetApp(QObject):
         
         self.window.show()
 
-        # Initial welcome greeting on launch
-        self.pet.say("Hi, I am Vedika, what's going on?", duration=4.5)
+        # Initialize User Profile Manager & dynamic greeting
+        self.user_profile = UserProfileManager()
+        dynamic_greeting = self.user_profile.generate_dynamic_greeting()
+        self.pet.say(dynamic_greeting, duration=6.0)
 
         # Initialize Gemini Live voice-to-voice client
         self.gemini_client = GeminiLiveClient(self.pet, self)
@@ -152,6 +155,7 @@ class DesktopPetApp(QObject):
         self.gemini_client.session_activated.connect(self.on_gemini_session_activated)
         self.gemini_client.navigate_webapp_requested.connect(self.on_navigate_webapp_requested)
         self.gemini_client.trigger_hint_requested.connect(self.on_trigger_hint_requested)
+        self.gemini_client.trigger_action_requested.connect(self.on_trigger_action_requested)
 
         # Initialize PointerOverlay & ScreenCapturer on Main GUI Thread
         from ui.pointer_overlay import PointerOverlay
@@ -565,6 +569,16 @@ class DesktopPetApp(QObject):
         self.set_active_animation("explaining")
         if self.pet:
             self.pet.say("Here's a hint for your problem! 💡", duration=4.0)
+
+    @Slot(str, str)
+    def on_trigger_action_requested(self, action, target=""):
+        """Handles voice-triggered remote page actions."""
+        print(f"[Main] Voice requested remote action: {action} (target={target})")
+        if hasattr(self, 'ws_bridge') and self.ws_bridge.isValid():
+            self.ws_bridge.sendTextMessage(json.dumps({
+                "type": "PET_ACTION_REQUESTED",
+                "payload": {"action": action, "target": target}
+            }))
 
     @Slot(str)
     def _do_open_url(self, target_url):

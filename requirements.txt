@@ -4,3 +4,4 @@ numpy
 google-genai
 pyaudio
 yt-dlp
+mss

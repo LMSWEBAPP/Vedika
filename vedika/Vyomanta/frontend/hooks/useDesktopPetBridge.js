@@ -46,6 +46,12 @@ export function useDesktopPetBridge() {
             console.log('[DesktopPetBridge] Remote hint trigger received');
             window.dispatchEvent(new CustomEvent('vedika-pet-trigger-hint', { detail: data.payload }));
           }
+
+          // Handle action trigger requested by Desktop Pet voice tools
+          if (data.type === 'PET_ACTION_REQUESTED') {
+            console.log('[DesktopPetBridge] Remote pet action received:', data.payload);
+            window.dispatchEvent(new CustomEvent('vedika-pet-action', { detail: data.payload }));
+          }
         } catch (err) {
           console.error('[DesktopPetBridge] Message parse error:', err);
         }

@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   BookOpen, Brain, Code2, BarChart3, Home, Zap, LogOut, Briefcase, Award, FileText, FolderOpen, Sun, Moon,
-  ChevronLeft, ChevronRight, ChevronDown, Plus, FlaskConical, Dna, Atom
+  ChevronLeft, ChevronRight, ChevronDown, Plus, FlaskConical, Dna, Atom, Presentation
 } from 'lucide-react';
 import { T, getTheme, setTheme } from '@/lib/lms-data';
 import { useMediaQuery, isMobileMQ } from '@/lib/useMediaQuery';
@@ -15,6 +15,7 @@ const NAV = [
   { id: '/courses',       Icon: BookOpen,      label: 'Courses'       },
   { id: '/vedika-ai',     Icon: Brain,         label: 'Vedika AI'     },
   { id: '/viva-interview',Icon: FileText,      label: 'Viva & Interview' },
+  { id: '/presentation',  Icon: Presentation,  label: 'Dynamic Presentation' },
   { id: '/vedika-labs',   Icon: FlaskConical,  label: 'Vedika Labs'   },
   { id: '/jobs',          Icon: Briefcase,     label: 'Jobs'          },
   { id: '/progress',      Icon: BarChart3,     label: 'Progress'      },

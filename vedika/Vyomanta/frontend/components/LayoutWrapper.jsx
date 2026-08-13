@@ -14,6 +14,13 @@ export default function LayoutWrapper({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const { sendStateUpdate } = useDesktopPetBridge();
+
+  useEffect(() => {
+    if (sendStateUpdate && pathname) {
+      sendStateUpdate({ activeRoute: pathname });
+    }
+  }, [pathname, sendStateUpdate]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {

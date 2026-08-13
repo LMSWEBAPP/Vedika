@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Award, FileText, ChevronRight, HelpCircle, ArrowLeft, Send, 
   AlertCircle, ShieldAlert, CheckCircle, Volume2, RotateCcw, 
-  BookOpen, Code, Brain, Settings, Compass, Sparkles, Loader2 
+  BookOpen, Code, Brain, Settings, Compass, Sparkles, Loader2, FlaskConical, AlertTriangle, RefreshCw
 } from 'lucide-react';
 import { T } from '@/lib/lms-data';
 import { useMediaQuery, isMobileMQ } from '@/lib/useMediaQuery';
@@ -16,10 +16,15 @@ export default function VivaInterviewPage() {
 
   // Configuration States
   const [sessionMode, setSessionMode] = useState('viva'); // 'viva' | 'interview'
-  const [subject, setSubject] = useState('Computer Science');
-  const [level, setLevel] = useState('College'); // Viva: 'School' | 'College', Interview: 'Easy' | 'Medium' | 'Hard'
-  const [topic, setTopic] = useState('');
+  const [subject, setSubject] = useState('Physics');
+  const [level, setLevel] = useState('College'); // Viva: 'School' | 'College', Interview: 'Junior' | 'Mid-Level' | 'Senior'
+  const [topic, setTopic] = useState("Ohm's Law & Circuit Resistance");
   
+  // Custom Viva & Interview Setup States
+  const [selectedExperiment, setSelectedExperiment] = useState("Ohm's Law & Circuit Resistance");
+  const [programmingLanguage, setProgrammingLanguage] = useState('Python');
+  const [jdText, setJdText] = useState('');
+
   // Runtime States
   const [gameState, setGameState] = useState('setup'); // 'setup' | 'active' | 'summary'
   const [loading, setLoading] = useState(false);
@@ -28,18 +33,26 @@ export default function VivaInterviewPage() {
   const [userAnswer, setUserAnswer] = useState('');
   const [isSpeaking, setIsSpeaking] = useState(false);
   
-  // Active Round History
-  const [history, setHistory] = useState([]); // [{ question, answer, grade, score, correctAnswer, explanation, improvementTip }]
+  // Active Round History & Misaligned State
+  const [history, setHistory] = useState([]); 
   const [currentEvaluation, setCurrentEvaluation] = useState(null);
 
-  // Setup Options
-  const subjects = ['Computer Science', 'Physics', 'Chemistry', 'Biology', 'Mathematics'];
-  const levelsViva = ['School', 'College'];
-  const levelsInterview = ['Easy', 'Medium', 'Hard'];
+  // Setup Presets
+  const subjects = ['Physics', 'Chemistry', 'Biology', 'Computer Science', 'Mathematics'];
+  const experimentPresets = {
+    'Physics': ["Ohm's Law & Circuit Resistance", "Young's Double Slit Experiment", "Compound Pendulum & Gravity g", "Hooke's Law & Elasticity"],
+    'Chemistry': ["Acid-Base Titration & Molarity", "Qualitative Salt Analysis", "Volumetric Analysis", "Electrochemistry & EMF"],
+    'Biology': ["Photosynthesis & Light Spectrum", "Cell Mitosis Observation", "Enzyme Kinetics & Temperature"],
+    'Computer Science': ["Binary Search Trees & Traversal", "Sorting Algorithm Complexities", "TCP/IP 3-Way Handshake", "SQL Indexing & Joins"],
+    'Mathematics': ["Differential Equations & Calculus", "Matrix Eigenvalues & Vectors", "Probability Distributions"]
+  };
+
+  const programmingLanguages = ['Python', 'JavaScript', 'Java', 'C++', 'SQL', 'Systems & Cloud Architecture'];
 
   const handleStartSession = async () => {
-    if (!topic.trim()) {
-      alert("Please enter a study topic.");
+    const activeTopic = sessionMode === 'viva' ? selectedExperiment : (topic || programmingLanguage);
+    if (!activeTopic.trim()) {
+      alert("Please select or enter a topic.");
       return;
     }
     setLoading(true);
@@ -60,8 +73,11 @@ export default function VivaInterviewPage() {
           action: 'question',
           type: sessionMode,
           subject,
-          topic,
+          topic: activeTopic,
           level,
+          experimentName: selectedExperiment,
+          programmingLanguage,
+          jdText,
           history: []
         })
       });
@@ -88,7 +104,8 @@ export default function VivaInterviewPage() {
 
     try {
       const token = await getJwtToken();
-      // 1. Evaluate current answer
+      const activeTopic = sessionMode === 'viva' ? selectedExperiment : (topic || programmingLanguage);
+
       const evalResponse = await fetch('/api/viva-interview', {
         method: 'POST',
         headers: {
@@ -99,7 +116,7 @@ export default function VivaInterviewPage() {
           action: 'evaluate',
           type: sessionMode,
           subject,
-          topic,
+          topic: activeTopic,
           level,
           question: currentQuestion,
           userAnswer
@@ -113,12 +130,14 @@ export default function VivaInterviewPage() {
 
       setCurrentEvaluation(evalData);
       
-      // Save to history
       const roundDetails = {
         question: currentQuestion,
         answer: userAnswer,
         grade: evalData.grade,
         score: evalData.score,
+        isMisaligned: evalData.isMisaligned,
+        misalignedReason: evalData.misalignedReason,
+        rectificationPrompt: evalData.rectificationPrompt,
         correctAnswer: evalData.correctAnswer,
         explanation: evalData.explanation,
         improvementTip: evalData.improvementTip
@@ -148,8 +167,8 @@ export default function VivaInterviewPage() {
 
     try {
       const token = await getJwtToken();
-      
-      // Format historical records for prompt guidance
+      const activeTopic = sessionMode === 'viva' ? selectedExperiment : (topic || programmingLanguage);
+
       const historyPayload = history.map(h => ({
         question: h.question,
         answer: h.answer,
@@ -166,8 +185,11 @@ export default function VivaInterviewPage() {
           action: 'question',
           type: sessionMode,
           subject,
-          topic,
+          topic: activeTopic,
           level,
+          experimentName: selectedExperiment,
+          programmingLanguage,
+          jdText,
           history: historyPayload
         })
       });
@@ -187,7 +209,6 @@ export default function VivaInterviewPage() {
     }
   };
 
-  // Browser Speak aloud (TTS fallback wow feature)
   const speakText = (text) => {
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       window.speechSynthesis.cancel();
@@ -199,505 +220,309 @@ export default function VivaInterviewPage() {
     }
   };
 
-  const stopSpeaking = () => {
-    if (typeof window !== 'undefined' && window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-      setIsSpeaking(false);
-    }
-  };
-
-  // Score stats calculation
-  const getAverageScore = () => {
-    if (history.length === 0) return 0;
-    const total = history.reduce((sum, h) => sum + h.score, 0);
-    return (total / history.length).toFixed(1);
-  };
-
-  const getOverallGrade = () => {
-    const avg = parseFloat(getAverageScore());
-    if (avg >= 9) return 'A';
-    if (avg >= 7.5) return 'B';
-    if (avg >= 6) return 'C';
-    if (avg >= 4.5) return 'D';
-    return 'F';
-  };
-
   return (
-    <div style={{
-      padding: isMobile ? '70px 16px 32px' : '40px',
-      maxWidth: 1100,
-      margin: '0 auto',
-      fontFamily: 'var(--font-outfit), sans-serif',
-      color: T.text,
-      minHeight: '90vh'
-    }}>
-      {/* HEADER */}
-      <div style={{ marginBottom: 28, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div>
-          <h1 style={{ display: 'flex', alignItems: 'center', gap: 10, color: T.text, fontSize: isMobile ? 22 : 28, fontWeight: 800, margin: 0, letterSpacing: '-0.04em' }}>
-            <Award color={T.accent} /> Viva & Job Interview Simulator
-          </h1>
-          <p style={{ color: T.muted, fontSize: 13.5, margin: '4px 0 0' }}>
-            Prepare for academic evaluations and technical job reviews in a realistic mock panel.
-          </p>
-        </div>
+    <div className="w-full min-h-screen bg-slate-950 text-white font-sans p-6 pb-20 selection:bg-purple-500 selection:text-white">
+      <div className="max-w-5xl mx-auto space-y-6">
         
-        {gameState !== 'setup' && (
-          <button 
-            onClick={() => setGameState('setup')} 
-            style={{
-              background: 'transparent', border: `1px solid ${T.border}`, color: T.text,
-              borderRadius: 8, padding: '6px 12px', fontSize: 12.5, display: 'flex', 
-              alignItems: 'center', gap: 6, cursor: 'pointer'
-            }}
-          >
-            <RotateCcw size={13} /> Exit Session
-          </button>
-        )}
-      </div>
+        {/* HEADER BAR */}
+        <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+          <div className="flex items-center space-x-3">
+            <a href="/" className="p-2 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700">
+              <ArrowLeft size={18} />
+            </a>
+            <div>
+              <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-indigo-400 bg-clip-text text-transparent flex items-center gap-2">
+                <Brain className="text-purple-400" size={24} />
+                Vyomanta Viva & Interview Hub
+              </h1>
+              <p className="text-xs text-slate-400">Academic Experiment Viva Examiner & Technical Job Interview Practice</p>
+            </div>
+          </div>
 
-      <AnimatePresence mode="wait">
-        
-        {/* SETUP SCREEN */}
+          <div className="flex bg-slate-900 border border-slate-800 rounded-xl p-1">
+            <button
+              onClick={() => setSessionMode('viva')}
+              className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition ${
+                sessionMode === 'viva' ? 'bg-purple-600 text-white' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Academic Viva
+            </button>
+            <button
+              onClick={() => setSessionMode('interview')}
+              className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition ${
+                sessionMode === 'interview' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Technical Interview
+            </button>
+          </div>
+        </div>
+
+        {/* SETUP VIEW */}
         {gameState === 'setup' && (
-          <motion.div
-            key="setup"
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -15 }}
-            style={{
-              background: T.s1, border: `1px solid ${T.border}`, borderRadius: 16,
-              padding: isMobile ? '24px 16px' : '36px', boxShadow: '0 8px 30px rgba(0,0,0,0.15)'
-            }}
-          >
-            {/* Toggle Mode */}
-            <div style={{ display: 'flex', gap: 12, marginBottom: 28, background: T.s2, padding: 4, borderRadius: 10, maxWidth: 450 }}>
-              <button
-                onClick={() => { setSessionMode('viva'); setSubject('Computer Science'); setLevel('College'); }}
-                style={{
-                  flex: 1, padding: '10px', borderRadius: 8, border: 'none',
-                  background: sessionMode === 'viva' ? T.accent : 'transparent',
-                  color: sessionMode === 'viva' ? '#000' : T.muted,
-                  fontWeight: 700, fontSize: 13.5, cursor: 'pointer', transition: 'all 0.2s'
-                }}
-              >
-                🎓 Academic Viva Prep
-              </button>
-              <button
-                onClick={() => { setSessionMode('interview'); setSubject('Computer Science'); setLevel('Medium'); }}
-                style={{
-                  flex: 1, padding: '10px', borderRadius: 8, border: 'none',
-                  background: sessionMode === 'interview' ? T.accent : 'transparent',
-                  color: sessionMode === 'interview' ? '#000' : T.muted,
-                  fontWeight: 700, fontSize: 13.5, cursor: 'pointer', transition: 'all 0.2s'
-                }}
-              >
-                💼 Technical Interview Prep
-              </button>
+          <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-8 backdrop-blur-xl shadow-2xl space-y-6">
+            <div className="border-b border-slate-800/80 pb-4">
+              <h2 className="text-xl font-bold text-slate-100 flex items-center gap-2">
+                {sessionMode === 'viva' ? <FlaskConical className="text-purple-400" /> : <Code className="text-indigo-400" />}
+                {sessionMode === 'viva' ? 'Academic Lab Viva Setup' : 'Technical Job Interview Setup'}
+              </h2>
+              <p className="text-xs text-slate-400 mt-1">
+                {sessionMode === 'viva' 
+                  ? 'Select an experiment and academic level. Vedika will ask viva questions and catch misaligned or wrong concepts.' 
+                  : 'Practice mock interview questions based on Job Descriptions or specific programming language stacks.'}
+              </p>
             </div>
 
-            {/* Config Fields */}
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 24, marginBottom: 28 }}>
-              
+            {/* SUBJECT & LEVEL SELECTION */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label style={{ display: 'block', fontSize: 13, color: T.muted, fontWeight: 600, marginBottom: 8 }}>SUBJECT / DISCIPLINE</label>
+                <label className="block text-xs font-semibold text-slate-300 uppercase mb-2">Subject Area</label>
                 <select
                   value={subject}
-                  onChange={e => setSubject(e.target.value)}
-                  style={{
-                    width: '100%', padding: '12px 16px', background: T.s2, color: T.text,
-                    border: `1px solid ${T.border}`, borderRadius: 8, outline: 'none',
-                    fontSize: 13.5, fontFamily: 'inherit'
+                  onChange={(e) => {
+                    setSubject(e.target.value);
+                    const defaultExp = experimentPresets[e.target.value]?.[0] || "General Lab";
+                    setSelectedExperiment(defaultExp);
                   }}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-purple-500"
                 >
                   {subjects.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: 13, color: T.muted, fontWeight: 600, marginBottom: 8 }}>
-                  {sessionMode === 'viva' ? 'GRADE LEVEL' : 'TARGET DIFFICULTY'}
-                </label>
+                <label className="block text-xs font-semibold text-slate-300 uppercase mb-2">Target Academic/Career Level</label>
                 <select
                   value={level}
-                  onChange={e => setLevel(e.target.value)}
-                  style={{
-                    width: '100%', padding: '12px 16px', background: T.s2, color: T.text,
-                    border: `1px solid ${T.border}`, borderRadius: 8, outline: 'none',
-                    fontSize: 13.5, fontFamily: 'inherit'
-                  }}
+                  onChange={(e) => setLevel(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-purple-500"
                 >
-                  {(sessionMode === 'viva' ? levelsViva : levelsInterview).map(l => (
-                    <option key={l} value={l}>{l}</option>
-                  ))}
+                  {sessionMode === 'viva' ? (
+                    <>
+                      <option value="School">School (High School / K-12)</option>
+                      <option value="College">College (Undergraduate B.Tech/B.Sc)</option>
+                      <option value="PG">Postgraduate / Research</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="Junior">Junior / Entry Level</option>
+                      <option value="Mid-Level">Mid-Level Engineer</option>
+                      <option value="Senior">Senior / Tech Lead</option>
+                    </>
+                  )}
                 </select>
               </div>
-
             </div>
 
-            <div style={{ marginBottom: 32 }}>
-              <label style={{ display: 'block', fontSize: 13, color: T.muted, fontWeight: 600, marginBottom: 8 }}>TOPIC OF PREPARATION</label>
-              <input
-                type="text"
-                placeholder={sessionMode === 'viva' ? "e.g., Ohm's Law, Organic Synthesis, Cell Mitosis" : "e.g., Python Lists & Trees, Relational SQL Queries, System Design"}
-                value={topic}
-                onChange={e => setTopic(e.target.value)}
-                style={{
-                  width: '100%', padding: '12px 16px', background: T.s2, color: T.text,
-                  border: `1px solid ${T.border}`, borderRadius: 8, outline: 'none',
-                  fontSize: 14, fontFamily: 'inherit'
-                }}
-              />
-            </div>
+            {/* VIVA MODE: EXPERIMENT SELECTOR */}
+            {sessionMode === 'viva' ? (
+              <div className="space-y-3">
+                <label className="block text-xs font-semibold text-slate-300 uppercase">Select Academic Experiment</label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {(experimentPresets[subject] || []).map(exp => (
+                    <button
+                      key={exp}
+                      onClick={() => setSelectedExperiment(exp)}
+                      className={`p-3.5 rounded-xl border text-left text-xs font-medium transition ${
+                        selectedExperiment === exp
+                          ? 'bg-purple-950/80 border-purple-500 text-purple-200'
+                          : 'bg-slate-800/40 border-slate-800 text-slate-300 hover:bg-slate-800'
+                      }`}
+                    >
+                      🧪 {exp}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="text"
+                  placeholder="Or enter custom experiment name..."
+                  value={selectedExperiment}
+                  onChange={(e) => setSelectedExperiment(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-500 outline-none focus:border-purple-500"
+                />
+              </div>
+            ) : (
+              /* INTERVIEW MODE: LANGUAGE & JD UPLOAD */
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 uppercase mb-2">Target Programming Language / Stack</label>
+                  <select
+                    value={programmingLanguage}
+                    onChange={(e) => setProgrammingLanguage(e.target.value)}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-indigo-500"
+                  >
+                    {programmingLanguages.map(lang => <option key={lang} value={lang}>{lang}</option>)}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 uppercase mb-2">
+                    Paste Job Description (Optional for JD-based Interview)
+                  </label>
+                  <textarea
+                    rows={4}
+                    placeholder="Paste the Job Description (JD) text here to generate custom targeted interview questions..."
+                    value={jdText}
+                    onChange={(e) => setJdText(e.target.value)}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-xs text-white placeholder-slate-500 outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+            )}
 
             <button
               onClick={handleStartSession}
               disabled={loading}
-              style={{
-                background: T.accent, color: '#000', border: 'none', borderRadius: 8,
-                padding: '14px 28px', fontSize: 14, fontWeight: 700, cursor: 'pointer',
-                display: 'flex', alignItems: 'center', gap: 8, opacity: loading ? 0.6 : 1
-              }}
+              className="w-full py-3.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold rounded-2xl text-sm shadow-xl shadow-purple-600/25 flex items-center justify-center space-x-2 transition"
             >
               {loading ? (
-                <>
-                  <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
-                  Assembling Exam Panel...
-                </>
+                <Loader2 className="animate-spin" size={18} />
               ) : (
                 <>
-                  🚀 Start Practice Round
+                  <Sparkles size={18} />
+                  <span>Start {sessionMode === 'viva' ? 'Viva Exam' : 'Interview Session'}</span>
                 </>
               )}
             </button>
-          </motion.div>
+          </div>
         )}
 
-        {/* ACTIVE SESSION PANELS */}
+        {/* ACTIVE SESSION VIEW */}
         {gameState === 'active' && (
-          <motion.div
-            key="active"
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -15 }}
-            style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.3fr 0.7fr', gap: 28 }}
-          >
-            {/* Left Pane: Core Panel */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-              
-              {/* Question Screen */}
-              <div style={{
-                background: T.s1, border: `1px solid ${T.border}`, borderRadius: 16,
-                padding: '24px', position: 'relative', overflow: 'hidden'
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                  <span style={{ fontSize: 11, background: `${T.accent}12`, border: `1px solid ${T.accent}30`, color: T.accent, padding: '2px 8px', borderRadius: 4, fontWeight: 700 }}>
-                    QUESTION {currentQIndex + 1} OF 5
-                  </span>
-                  
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button 
-                      onClick={() => speakText(currentQuestion)}
-                      style={{
-                        background: 'transparent', border: 'none', color: isSpeaking ? T.accent : T.muted,
-                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: 12
-                      }}
-                      title="Speak Question"
-                    >
-                      <Volume2 size={15} /> Speak
-                    </button>
-                  </div>
-                </div>
-
-                {/* Animated Mascot Visual + Speech bubble */}
-                <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-                  {/* Mascot Sprite representation */}
-                  <div style={{
-                    width: 70, height: 80, borderRadius: 12, background: T.s2, border: `1px solid ${T.border}`,
-                    flexShrink: 0, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center'
-                  }}>
-                    <img 
-                      src="/vedika.png" 
-                      alt="Vedika AI" 
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                      onError={(e) => {
-                        // Fallback fallback if img fails
-                        e.target.style.display = 'none';
-                      }}
-                    />
-                  </div>
-
-                  <div style={{
-                    flex: 1, background: T.s2, border: `1px solid ${T.border}`, borderRadius: '0 14px 14px 14px',
-                    padding: '16px', position: 'relative'
-                  }}>
-                    <p style={{ margin: 0, fontSize: 14.5, fontWeight: 600, lineHeight: 1.5, color: T.text }}>
-                      {currentQuestion}
-                    </p>
-                  </div>
-                </div>
+          <div className="space-y-6">
+            
+            {/* EXAMINER / QUESTION CARD */}
+            <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-6 backdrop-blur-xl shadow-2xl relative overflow-hidden">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+                <span className="text-xs font-bold text-purple-400 uppercase tracking-widest">
+                  QUESTION {currentQIndex + 1} OF 5 • {sessionMode === 'viva' ? selectedExperiment : (programmingLanguage || 'Technical Interview')}
+                </span>
+                <button
+                  onClick={() => speakText(currentQuestion)}
+                  className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs flex items-center space-x-1"
+                >
+                  <Volume2 size={14} />
+                  <span>Speak</span>
+                </button>
               </div>
 
-              {/* Answer Input and feedback */}
-              <div style={{
-                background: T.s1, border: `1px solid ${T.border}`, borderRadius: 16, padding: '24px'
-              }}>
-                {!currentEvaluation ? (
-                  /* Answer Entry Mode */
-                  <div>
-                    <label style={{ display: 'block', fontSize: 13, color: T.muted, fontWeight: 600, marginBottom: 8 }}>
-                      YOUR ANSWER
-                    </label>
-                    <textarea
-                      placeholder="Type your explanation in detail here... Make sure to include core principles and vocabulary terms."
-                      value={userAnswer}
-                      onChange={e => setUserAnswer(e.target.value)}
-                      disabled={loading}
-                      style={{
-                        width: '100%', height: 120, padding: '14px', background: T.s2, color: T.text,
-                        border: `1px solid ${T.border}`, borderRadius: 8, outline: 'none',
-                        fontSize: 13.5, resize: 'none', fontFamily: 'inherit', marginBottom: 16
-                      }}
-                    />
-                    
-                    <button
-                      onClick={handleSubmitAnswer}
-                      disabled={loading || !userAnswer.trim()}
-                      style={{
-                        background: T.purple, color: '#fff', border: 'none', borderRadius: 8,
-                        padding: '10px 20px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', gap: 6, opacity: (loading || !userAnswer.trim()) ? 0.6 : 1
-                      }}
-                    >
-                      {loading ? (
-                        <>
-                          <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
-                          Assessing Answer...
-                        </>
-                      ) : (
-                        <>
-                          Submit Response <Send size={13} />
-                        </>
-                      )}
-                    </button>
+              <h2 className="text-xl md:text-2xl font-bold text-slate-100 leading-snug">
+                "{currentQuestion}"
+              </h2>
+            </div>
+
+            {/* MISALIGNED ANSWER RECTIFICATION HUD ALERT */}
+            {currentEvaluation?.isMisaligned && (
+              <div className="p-5 rounded-2xl bg-amber-950/80 border border-amber-500/50 shadow-xl space-y-3">
+                <div className="flex items-center space-x-2 text-amber-400 text-xs font-bold uppercase tracking-wider">
+                  <ShieldAlert size={18} />
+                  <span>MISALIGNED ANSWER DETECTED — RECTIFICATION REQUIRED</span>
+                </div>
+                <p className="text-sm font-semibold text-amber-200">
+                  ⚠️ {currentEvaluation.misalignedReason}
+                </p>
+                {currentEvaluation.rectificationPrompt && (
+                  <div className="p-3.5 rounded-xl bg-slate-900/90 border border-amber-500/30 text-xs text-amber-300">
+                    <strong className="text-amber-400">Vedika Rectification Hint:</strong> {currentEvaluation.rectificationPrompt}
                   </div>
-                ) : (
-                  /* Evaluation / Result Mode */
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                  >
-                    {/* Score Summary Banner */}
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'center', marginBottom: 18, borderBottom: `1px solid ${T.border}`, paddingBottom: 14 }}>
-                      
-                      <div style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 6,
-                        background: currentEvaluation.score >= 7 ? `${T.green}18` : `${T.red}18`,
-                        border: `1px solid ${currentEvaluation.score >= 7 ? T.green : T.red}30`,
-                        color: currentEvaluation.score >= 7 ? T.green : T.red,
-                        padding: '4px 12px', borderRadius: 6, fontSize: 12, fontWeight: 700
-                      }}>
-                        Score: {currentEvaluation.score} / 10
-                      </div>
-
-                      <div style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 6,
-                        background: `${T.accent}18`, border: `1px solid ${T.accent}30`,
-                        color: T.accent, padding: '4px 12px', borderRadius: 6, fontSize: 12, fontWeight: 700
-                      }}>
-                        Grade: {currentEvaluation.grade}
-                      </div>
-
-                    </div>
-
-                    {/* Critique / Feedback */}
-                    <div style={{ marginBottom: 18 }}>
-                      <h4 style={{ color: T.text, fontSize: 13.5, fontWeight: 700, margin: '0 0 6px 0' }}>💡 critique & feedback</h4>
-                      <p style={{ color: T.muted, fontSize: 13, margin: 0, lineHeight: 1.5 }}>
-                        {currentEvaluation.explanation}
-                      </p>
-                    </div>
-
-                    {/* Improvement Tip */}
-                    <div style={{
-                      background: `${T.purple}12`, borderLeft: `3px solid ${T.purple}`,
-                      padding: '12px 16px', borderRadius: '0 8px 8px 0', marginBottom: 18
-                    }}>
-                      <h4 style={{ color: T.purple, fontSize: 13, fontWeight: 700, margin: '0 0 4px 0' }}>🎯 improvement advice</h4>
-                      <p style={{ color: T.text, fontSize: 12.5, margin: 0, lineHeight: 1.4 }}>
-                        {currentEvaluation.improvementTip}
-                      </p>
-                    </div>
-
-                    {/* Model Answer */}
-                    <div style={{ marginBottom: 24 }}>
-                      <h4 style={{ color: T.text, fontSize: 13.5, fontWeight: 700, margin: '0 0 6px 0' }}>⭐ model / ideal response</h4>
-                      <p style={{ color: T.muted, fontSize: 13, margin: 0, lineHeight: 1.5, background: T.s2, padding: 12, borderRadius: 6, border: `1px solid ${T.border}` }}>
-                        {currentEvaluation.correctAnswer}
-                      </p>
-                    </div>
-
-                    <button
-                      onClick={handleNextQuestion}
-                      disabled={loading}
-                      style={{
-                        background: T.green, color: '#000', border: 'none', borderRadius: 8,
-                        padding: '10px 22px', fontSize: 13, fontWeight: 700, cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', gap: 6, opacity: loading ? 0.6 : 1
-                      }}
-                    >
-                      {loading ? (
-                        <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
-                      ) : (
-                        currentQIndex >= 4 ? "Complete Practice Session" : "Next Question"
-                      )}
-                      <ChevronRight size={14} />
-                    </button>
-                  </motion.div>
                 )}
               </div>
+            )}
 
-            </div>
-
-            {/* Right Pane: History Sidebar */}
-            <div style={{
-              background: T.s1, border: `1px solid ${T.border}`, borderRadius: 16,
-              padding: '20px', display: 'flex', flexDirection: 'column', gap: 16, maxHeight: '80vh', overflowY: 'auto'
-            }}>
-              <h3 style={{ color: T.text, fontSize: 15, fontWeight: 700, margin: 0, letterSpacing: '-0.02em', borderBottom: `1px solid ${T.border}`, paddingBottom: 10 }}>
-                Round Progress Log
-              </h3>
-              
-              {history.length === 0 ? (
-                <div style={{ color: T.dim, fontSize: 12, textAlign: 'center', padding: '32px 0' }}>
-                  Your answers and scorecards will populate here in real-time.
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                  {history.map((h, idx) => (
-                    <div 
-                      key={idx}
-                      style={{
-                        borderBottom: idx < history.length - 1 ? `1px solid ${T.border}` : 'none',
-                        paddingBottom: idx < history.length - 1 ? 12 : 0
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                        <span style={{ fontSize: 11, color: T.muted, fontWeight: 700 }}>Q{idx + 1} Scorecard</span>
-                        <span style={{
-                          fontSize: 10.5, fontWeight: 700, color: h.score >= 7 ? T.green : T.red
-                        }}>
-                          {h.score}/10 ({h.grade})
-                        </span>
-                      </div>
-                      <p style={{ margin: 0, fontSize: 11.5, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {h.question}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-          </motion.div>
-        )}
-
-        {/* SUMMARY SCREEN / REPORT CARD */}
-        {gameState === 'summary' && (
-          <motion.div
-            key="summary"
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -15 }}
-            style={{
-              background: T.s1, border: `1px solid ${T.border}`, borderRadius: 16,
-              padding: isMobile ? '24px 16px' : '36px', boxShadow: '0 8px 30px rgba(0,0,0,0.15)'
-            }}
-          >
-            {/* Statistics Dashboard Banner */}
-            <div style={{ textAlign: 'center', marginBottom: 36 }}>
-              <div style={{
-                width: 64, height: 64, borderRadius: '50%', background: `${T.accent}18`,
-                display: 'flex', alignItems: 'center', justifycontent: 'center', margin: '0 auto 16px',
-                border: `1px solid ${T.accent}30`
-              }}>
-                <Sparkles size={32} color={T.accent} style={{ margin: '0 auto' }} />
-              </div>
-              <h2 style={{ color: T.text, fontSize: 22, fontWeight: 800, margin: '0 0 6px 0' }}>
-                Practice Session Finished!
-              </h2>
-              <p style={{ color: T.muted, fontSize: 13.5, margin: 0 }}>
-                Here is a summary of your performance on {topic} ({subject}).
-              </p>
-            </div>
-
-            {/* Metric Blocks Grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 20, marginBottom: 32 }}>
-              
-              <div style={{ background: T.s2, border: `1px solid ${T.border}`, borderRadius: 12, padding: 20, textAlign: 'center' }}>
-                <span style={{ display: 'block', fontSize: 12, color: T.muted, fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>
-                  Average Rating
-                </span>
-                <span style={{ fontSize: 32, fontWeight: 800, color: T.text }}>
-                  {getAverageScore()} <span style={{ fontSize: 14, color: T.muted, fontWeight: 400 }}>/ 10</span>
-                </span>
-              </div>
-
-              <div style={{ background: T.s2, border: `1px solid ${T.border}`, borderRadius: 12, padding: 20, textAlign: 'center' }}>
-                <span style={{ display: 'block', fontSize: 12, color: T.muted, fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>
-                  Overall Grade
-                </span>
-                <span style={{ fontSize: 32, fontWeight: 800, color: T.purple }}>
-                  {getOverallGrade()}
-                </span>
-              </div>
-
-            </div>
-
-            {/* Recapitulated Tips list */}
-            <div style={{ marginBottom: 36 }}>
-              <h3 style={{ color: T.text, fontSize: 16, fontWeight: 700, margin: '0 0 16px 0', borderBottom: `1px solid ${T.border}`, paddingBottom: 8 }}>
-                🎯 Combined Study Recommendations
-              </h3>
-              
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {history.map((h, idx) => (
-                  <div key={idx} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                    <div style={{
-                      width: 20, height: 20, borderRadius: '50%', background: `${T.purple}18`,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 10, fontWeight: 700, color: T.purple, flexShrink: 0, marginTop: 2
-                    }}>
-                      {idx + 1}
+            {/* ANSWER EVALUATION DISPLAY */}
+            {currentEvaluation && (
+              <div className="p-6 rounded-3xl bg-slate-900/90 border border-slate-800 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <div className="px-3 py-1 bg-purple-600 text-white font-extrabold rounded-xl text-lg">
+                      {currentEvaluation.grade}
                     </div>
                     <div>
-                      <p style={{ margin: 0, fontSize: 13, color: T.text, fontWeight: 600 }}>
-                        {h.question}
-                      </p>
-                      <p style={{ margin: '4px 0 0 0', fontSize: 12.5, color: T.muted }}>
-                        {h.improvementTip}
-                      </p>
+                      <h4 className="text-sm font-bold text-slate-200">Score: {currentEvaluation.score} / 10</h4>
+                      <p className="text-xs text-slate-400">{currentEvaluation.explanation}</p>
                     </div>
                   </div>
-                ))}
+                </div>
+
+                <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 text-xs space-y-2">
+                  <p className="text-slate-300"><strong className="text-purple-400">Model Answer:</strong> {currentEvaluation.correctAnswer}</p>
+                  <p className="text-slate-400"><strong className="text-cyan-400">Improvement Advice:</strong> {currentEvaluation.improvementTip}</p>
+                </div>
               </div>
+            )}
+
+            {/* ANSWER INPUT AREA */}
+            <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6 space-y-4">
+              <label className="block text-xs font-semibold text-slate-300 uppercase">Your Answer</label>
+              <textarea
+                rows={4}
+                placeholder="Type your answer clearly or dictate your response..."
+                value={userAnswer}
+                onChange={(e) => setUserAnswer(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-sm text-white placeholder-slate-500 outline-none focus:border-purple-500"
+              />
+
+              <div className="flex items-center justify-between">
+                <button
+                  onClick={handleSubmitAnswer}
+                  disabled={loading || !userAnswer.trim()}
+                  className="px-6 py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-xl text-xs shadow-lg flex items-center space-x-2 transition disabled:opacity-50"
+                >
+                  {loading ? <Loader2 className="animate-spin" size={14} /> : <Send size={14} />}
+                  <span>Submit Answer</span>
+                </button>
+
+                {currentEvaluation && (
+                  <button
+                    onClick={handleNextQuestion}
+                    className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs shadow-lg flex items-center space-x-2 transition"
+                  >
+                    <span>Next Question</span>
+                    <ChevronRight size={14} />
+                  </button>
+                )}
+              </div>
+            </div>
+
+          </div>
+        )}
+
+        {/* SUMMARY SCORECARD VIEW */}
+        {gameState === 'summary' && (
+          <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-8 text-center space-y-6">
+            <Award size={48} className="mx-auto text-purple-400" />
+            <h2 className="text-3xl font-extrabold text-white">Session Completed!</h2>
+            <p className="text-xs text-slate-400 max-w-md mx-auto">
+              Here is your final evaluation summary matrix for <strong className="text-purple-300">{sessionMode === 'viva' ? selectedExperiment : programmingLanguage}</strong>.
+            </p>
+
+            <div className="space-y-3 max-w-3xl mx-auto text-left">
+              {history.map((item, idx) => (
+                <div key={idx} className="p-4 rounded-2xl bg-slate-950 border border-slate-800 text-xs space-y-1">
+                  <div className="flex justify-between font-bold text-slate-200">
+                    <span>Q{idx + 1}: {item.question}</span>
+                    <span className="text-purple-400">Score: {item.score}/10 ({item.grade})</span>
+                  </div>
+                  <p className="text-slate-400">Your Answer: "{item.answer}"</p>
+                  {item.isMisaligned && (
+                    <p className="text-amber-400 font-semibold">Rectified Misaligned Concept: {item.misalignedReason}</p>
+                  )}
+                </div>
+              ))}
             </div>
 
             <button
               onClick={() => setGameState('setup')}
-              style={{
-                background: T.accent, color: '#000', border: 'none', borderRadius: 8,
-                padding: '12px 24px', fontSize: 13.5, fontWeight: 700, cursor: 'pointer',
-                display: 'flex', alignItems: 'center', gap: 6
-              }}
+              className="px-8 py-3 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-2xl text-xs shadow-xl inline-flex items-center space-x-2"
             >
-              <RotateCcw size={14} /> Start Another Session
+              <RotateCcw size={16} />
+              <span>Start Another Round</span>
             </button>
-
-          </motion.div>
+          </div>
         )}
 
-      </AnimatePresence>
+      </div>
     </div>
   );
 }

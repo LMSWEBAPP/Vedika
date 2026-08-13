@@ -1,0 +1,111 @@
+================================================================================
+                    VEDIKA SYSTEM UPDATES & CHANGES LOG
+================================================================================
+Date: August 13, 2026
+Repository: c:\Users\seshu\desktop-pet
+Sub-Repository: c:\Users\seshu\desktop-pet\vedika\Vyomanta
+Status: All Features Implemented, Tested & Verified
+
+================================================================================
+1. DYNAMIC PRESENTATION ENGINE (FEATURE 1)
+================================================================================
+- Local System Presentation Folder Manager:
+  * Vedika Desktop Pet now automatically initializes a standardized local system 
+    directory on the user's PC:
+    C:\Users\<Username>\Documents\VedikaPresentations\
+  * Users can simply drop topic folders (e.g., "Product_Launch_2026", 
+    "Physics_Viva_Demo") containing images (.png, .jpg, .webp, .svg), PDFs, and 
+    notes directly into this system directory.
+  * Vedika reads presentation assets directly from disk at 0ms latency with 
+    zero cloud data store or cloud bandwidth overhead.
+  * Primary File: engine/presentation_manager.py
+  * API File: vedika/Vyomanta/frontend/app/api/presentation/folders/route.js
+
+- Standalone Windows Executable (.exe) Packaging:
+  * Created build_exe.py using PyInstaller to compile the Desktop Mascot into a 
+    single standalone binary: dist/VedikaDesktopMascot.exe
+  * Includes hidden imports for PySide6 GUI, QtMultimedia, QtWebSockets, and 
+    google-genai.
+  * Primary File: build_exe.py
+
+- Two-Pass Real-Time AI Speech Operator:
+  * Pass 1: Live speech teleprompter display using WebSpeech API.
+  * Pass 2: Periodic 1.5s - 2s speech buffer sent to Gemini 2.5 Flash API to:
+    1. Clean up presenter articulation stumbles, hesitations, and messy phrasing.
+    2. Extract high-impact launch presentation elements: titles, subtitles, 
+       bullet points, key takeaway cards, and highlight sentence banners.
+    3. Match speech topics against images/documents in the local presentation folder.
+  * API File: vedika/Vyomanta/frontend/app/api/presentation/route.js
+
+- Tech-Giant Product Launch Event Stage Canvas:
+  * Redesigned presentation stage with dark-mode glassmorphism, glowing ambient 
+    lighting, animated bullet point lists, highlight callout banners, and 
+    floating image cards.
+  * Component File: vedika/Vyomanta/frontend/components/DynamicPresentation.jsx
+
+
+================================================================================
+2. DESKTOP PET ADAPTIVE PERSONALITY & DYNAMIC GREETINGS (FEATURE 2)
+================================================================================
+- Persistent User Profile Memory Manager:
+  * Created UserProfileManager handling user_profile.json.
+  * Stores user stage ("School", "College", "PG"), field of study (e.g., Computer 
+    Science & AI), key hobbies, personality role, and learned traits.
+  * Primary File: engine/user_profile.py
+
+- Dynamic Context-Aware Startup Greetings:
+  * Replaced static hardcoded startup greeting ("Hi, I am Vedika...") with 
+    dynamic, non-repetitive greetings generated based on:
+    1. Time of day (Morning, Afternoon, Evening, Late Night)
+    2. Academic stage and field of study
+    3. User hobbies and recent interaction history
+  * Vedika initiates conversations naturally so the user doesn't always have to 
+    start the conversation.
+  * Main Integration File: main.py
+
+- Gemini Live Persona Context Injection:
+  * Automatically injects user profile context into Gemini Live System Instructions 
+    so Vedika speaks naturally like a smart peer and mentor.
+  * Engine Integration File: engine/gemini_live.py
+
+
+================================================================================
+3. VYOMANTA ACADEMIC VIVA & TECHNICAL INTERVIEW HUB (FEATURE 3)
+================================================================================
+- Academic Experiment Viva Examiner:
+  * Experiment selector covering Physics, Chemistry, Biology, Computer Science, 
+    and Mathematics lab experiments, with custom experiment support.
+  * Oral exam mode testing core lab principles, apparatus, and formulas.
+
+- Misaligned Answer Rectification Guidance Loop:
+  * Uses Gemini 2.5 Flash to evaluate student answers for missing or incorrect 
+    scientific concepts.
+  * When a misaligned or wrong answer is detected, Vedika triggers a prominent 
+    Misaligned Answer Warning Banner HUD explaining the mistake and giving a 
+    guided rectification prompt for the student to correct their answer.
+
+- Technical Job Interview Practice Engine:
+  * Supports Job Description (JD) text/file parsing to generate custom 
+    interview questions.
+  * Programming language stack selector (Python, JavaScript, Java, C++, 
+    Systems Architecture, SQL).
+  * Session summary matrix and scorecard upon completion.
+  * API File: vedika/Vyomanta/frontend/app/api/viva-interview/route.js
+  * UI File: vedika/Vyomanta/frontend/app/viva-interview/page.jsx
+
+
+================================================================================
+4. DEPENDENCY & ENVIRONMENT FIXES
+================================================================================
+- Resolved IDE import warnings by installing PySide6 and mss across both project 
+  virtualenv (venv) and global Python environments.
+- Added mss to requirements.txt.
+- Configured .vscode/settings.json for seamless IDE Python interpreter resolution.
+
+================================================================================
+                              SUMMARY FILE LINKS
+================================================================================
+- Changes Text Log: file:///c:/Users/seshu/desktop-pet/VEDIKA_CHANGES_SUMMARY.txt
+- Implementation Doc: file:///C:/Users/seshu/.gemini/antigravity-ide/brain/1e4425ec-54f6-42c4-94ad-1449c5c136d9/implementation_documentation.md
+- Walkthrough Report: file:///C:/Users/seshu/.gemini/antigravity-ide/brain/1e4425ec-54f6-42c4-94ad-1449c5c136d9/walkthrough.md
+================================================================================

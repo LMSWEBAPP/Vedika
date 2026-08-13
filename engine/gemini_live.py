@@ -12,6 +12,8 @@ from google.genai import types
 import pyaudio
 import numpy as np
 
+from engine.user_profile import UserProfileManager
+
 def load_routes_for_prompt() -> str:
     """Reads routes.json and formats instructions for Gemini Live model."""
     routes_path = "routes.json"
@@ -308,6 +310,12 @@ class GeminiLiveWorker(QThread):
                 self.client.trigger_hint_requested.emit(hint_level)
             return {"status": "success", "hint_level": hint_level}
 
+        def trigger_pet_action(action: str, target: str = "") -> dict:
+            """Triggers a remote page action on the active WebApp page (e.g. 'start_presentation', 'show_architecture', 'clear_screen', 'start_viva')."""
+            if hasattr(self.client, 'trigger_action_requested'):
+                self.client.trigger_action_requested.emit(action, target)
+            return {"status": "success", "action": action, "target": target}
+
         async def capture_user_screen() -> dict:
             """Captures and analyzes the student's active computer screen when asked 'What is on my screen?', 'What am I looking at?', 'Explain what is on my screen', or when visual screen assistance is requested."""
             print("[GeminiLiveWorker] Tool call request received: capture_user_screen")
@@ -381,6 +389,13 @@ class GeminiLiveWorker(QThread):
         else:
             sys_inst += "SUBJECT FOCUS: You are ready to tutor on any academic school subject: math, science, history, geography, languages, or reading. "
 
+        # Dynamic User Profile Context Injection
+        try:
+            profile_ctx = UserProfileManager().get_system_instruction_context()
+            sys_inst += profile_ctx
+        except Exception as e:
+            print(f"[GeminiLiveWorker] Could not attach user profile context: {e}")
+
         # Real-time WebApp context injection
         webapp_ctx = getattr(self.client, "active_webapp_context", {})
         if webapp_ctx:
@@ -403,12 +418,13 @@ class GeminiLiveWorker(QThread):
             "IMMEDIATELY call 'play_music' or 'open_website' tool function on your VERY FIRST turn.\n"
             "2. If the user asks to open or navigate to any page, tab, or section in Vyomanta LMS: call 'navigate_webapp' with the appropriate route string:\n"
             + route_instructions +
-            "3. If the user asks for a hint on their current puzzle, call 'trigger_puzzle_hint'.\n"
-            "4. If the user asks for Vyomanta portal, call 'navigate_webapp' with '/' or 'open_website' with 'https://vyomanta-ai.vercel.app/'.\n"
-            "5. If the user asks to stop or pause voice chat, call 'stop_voice_chat' immediately.\n"
-            "6. You can also trigger pet visual animations on yourself ('wave', 'jump', 'failed', 'waiting', 'review', 'idle').\n"
-            "7. SCREEN VISION: When the user asks 'What is on my screen?', 'Can you see what I am doing?', 'Explain what is on my screen', or asks a visual question about their active computer screen: IMMEDIATELY call 'capture_user_screen' tool function on your VERY FIRST turn. Once the image is received, describe and assist with what is visible clearly and concisely. ALWAYS base your visual response strictly on the VERY LATEST image frame received in the current turn. Ignore any older image frames from earlier turns.\n"
-            "8. VISUAL POINTING & LASER HIGHLIGHT: When explaining code errors, UI buttons, syntax mistakes, or specific elements on the user's screen: IMMEDIATELY call 'point_to_screen_location(x, y, label)' with normalized coordinates (x: 0.0 to 1.0, y: 0.0 to 1.0) to highlight the exact position with a glowing laser pointer and sonar pulse for the student."
+            "3. If the user asks to control or trigger actions on a page (like start presentation, show module architecture, clear screen), call 'trigger_pet_action'.\n"
+            "4. If the user asks for a hint on their current puzzle, call 'trigger_puzzle_hint'.\n"
+            "5. If the user asks for Vyomanta portal, call 'navigate_webapp' with '/' or 'open_website' with 'https://vyomanta.vercel.app/'.\n"
+            "6. If the user asks to stop or pause voice chat, call 'stop_voice_chat' immediately.\n"
+            "7. You can also trigger pet visual animations on yourself ('wave', 'jump', 'failed', 'waiting', 'review', 'idle').\n"
+            "8. SCREEN VISION: When the user asks 'What is on my screen?', 'Can you see what I am doing?', 'Explain what is on my screen', or asks a visual question about their active computer screen: IMMEDIATELY call 'capture_user_screen' tool function on your VERY FIRST turn. Once the image is received, describe and assist with what is visible clearly and concisely. ALWAYS base your visual response strictly on the VERY LATEST image frame received in the current turn. Ignore any older image frames from earlier turns.\n"
+            "9. VISUAL POINTING & LASER HIGHLIGHT: When explaining code errors, UI buttons, syntax mistakes, or specific elements on the user's screen: IMMEDIATELY call 'point_to_screen_location(x, y, label)' with normalized coordinates (x: 0.0 to 1.0, y: 0.0 to 1.0) to highlight the exact position with a glowing laser pointer and sonar pulse for the student."
         )
 
         config = types.LiveConnectConfig(
@@ -428,7 +444,7 @@ class GeminiLiveWorker(QThread):
             realtime_input_config=types.RealtimeInputConfig(
                 turn_coverage="TURN_INCLUDES_ONLY_ACTIVITY",
             ),
-            tools=[play_animation, open_website, play_music, stop_voice_chat, navigate_webapp, trigger_puzzle_hint, capture_user_screen, point_to_screen_location]
+            tools=[play_animation, open_website, play_music, stop_voice_chat, navigate_webapp, trigger_puzzle_hint, trigger_pet_action, capture_user_screen, point_to_screen_location]
         )
 
         try:
@@ -904,7 +920,7 @@ class GeminiLiveClient(QObject):
     play_music_requested = Signal(str)  # query string
     stop_voice_requested = Signal()  # stop signal
     navigate_webapp_requested = Signal(str)  # route string
-    trigger_hint_requested = Signal(int)  # hint level
+    trigger_action_requested = Signal(str, str)  # action, target
     screen_capture_requested = Signal(object, object)  # future, loop
     point_location_requested = Signal(float, float, str, str)  # x, y, label, action
     session_activated = Signal()
