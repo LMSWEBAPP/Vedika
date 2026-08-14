@@ -49,8 +49,8 @@ EOF
     else
         echo "Database has already been migrated. Skipping bench migrate. (Delete $MIGRATE_LOCK to force)."
     fi
-    # Restore Procfile web service to default (no host arguments, only port)
-    sed -i 's/bench serve.*/bench serve --port 8000/g' ./Procfile
+    # Restore Procfile web service to default (no host arguments, only port, no reload for stable connections)
+    sed -i 's/bench serve.*/bench serve --port 8000 --noreload/g' ./Procfile
     
     # Consolidate background workers to run in a single process (saves ~160MB+ RAM)
     if grep -q "worker_" ./Procfile; then

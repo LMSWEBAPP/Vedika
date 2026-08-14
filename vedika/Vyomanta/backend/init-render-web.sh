@@ -154,6 +154,12 @@ fi
 if [ "$HAS_TABLES" -eq 1 ]; then
     echo "Database tables already exist. Connecting directly to existing database..."
     bench --site lms.render clear-cache || true
+    
+    if [ "$FORCE_MIGRATE" = "1" ]; then
+        echo "FORCE_MIGRATE=1 detected: Running database migrations..."
+        bench --site lms.render migrate || true
+        bench --site lms.render execute "exec(open('/home/frappe/grant_question_perm.py').read())" || true
+    fi
 else
     echo "Database is empty. Initializing new site tables..."
     # Drop all partial remnants if any
@@ -173,18 +179,18 @@ else
       --install-app lms \
       --no-setup-db \
       --force || true
+
+    # Run database migrations (ensures schemas align with installed codebase)
+    echo "Running database migrations for new database..."
+    bench --site lms.render migrate || true
+
+    # Bootstrap student users and permissions in the database
+    echo "Bootstrapping student users and permissions..."
+    bench --site lms.render execute "exec(open('/home/frappe/create_students.py').read())" || true
+    bench --site lms.render execute "exec(open('/home/frappe/grant_question_perm.py').read())" || true
 fi
 
 bench use lms.render
-
-# Run database migrations (ensures schemas align with installed codebase)
-echo "Running database migrations..."
-bench --site lms.render migrate || true
-
-# Bootstrap student users in the database
-echo "Bootstrapping student users and permissions..."
-bench --site lms.render execute "exec(open('/home/frappe/create_students.py').read())" || true
-bench --site lms.render execute "exec(open('/home/frappe/grant_question_perm.py').read())" || true
 
 # Install queue worker dependencies if missing
 if ! ./env/bin/python -c "import boto3, pymysql, pypdf" 2>/dev/null; then
