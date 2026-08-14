@@ -44,7 +44,7 @@ export async function GET(request) {
       return NextResponse.json({ error: 'No active session identifier found.' }, { status: 401 });
     }
     
-    const frappeUrl = process.env.FRAPPE_URL || 'https://vyomanta.onrender.com';
+    const frappeUrl = process.env.FRAPPE_URL || process.env.NEXT_PUBLIC_FRAPPE_URL || 'https://vedika-backend-s576.onrender.com';
     const exchangeUrl = `${frappeUrl}/api/method/lms.lms.api.get_jwt`;
     
     console.warn(`[JWT Proxy] Requesting JWT from backend for session ${sid.slice(0, 10)}...`);

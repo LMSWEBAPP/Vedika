@@ -64,7 +64,8 @@ export async function POST(request) {
       
       if (embedding) {
         // 2. Fetch secure chunks from centralized RLS API on Render
-        const rlsEndpoint = `${process.env.FRAPPE_URL || 'https://vyomanta.onrender.com'}/api/method/lms.lms.api.retrieve_secure_chunks_internal`;
+        const backendBase = process.env.FRAPPE_URL || process.env.NEXT_PUBLIC_FRAPPE_URL || 'https://vedika-backend-s576.onrender.com';
+        const rlsEndpoint = `${backendBase}/api/method/lms.lms.api.retrieve_secure_chunks_internal`;
         console.warn(`[TutorChat] Querying Central RLS API at ${rlsEndpoint}`);
         
         const internalToken = process.env.INTERNAL_SERVICE_TOKEN || 'internal_key_123';

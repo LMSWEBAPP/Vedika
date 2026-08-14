@@ -36,7 +36,7 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      const frappeUrl = process.env.NEXT_PUBLIC_FRAPPE_URL || 'https://vyomanta.onrender.com';
+      const frappeUrl = process.env.NEXT_PUBLIC_FRAPPE_URL || 'https://vedika-backend-s576.onrender.com';
       const redirectUrl = `${window.location.origin}/auth/callback`;
       
       const res = await fetch(`${frappeUrl}/api/method/lms.lms.api.get_google_auth_url?redirect_to=${encodeURIComponent(redirectUrl)}`);

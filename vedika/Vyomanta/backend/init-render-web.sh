@@ -61,7 +61,7 @@ while True:
 
 cd /home/frappe/frappe-bench
 
-# Add db_ssl_ca configuration to common_site_config.json so all connections use TLS
+# Add db_ssl_ca, default_site, and disable dns_multitenant in common_site_config.json
 if [ -f "sites/common_site_config.json" ]; then
     python3 -c "
 import json
@@ -69,6 +69,8 @@ path = 'sites/common_site_config.json'
 with open(path, 'r') as f:
     config = json.load(f)
 config['db_ssl_ca'] = '/etc/ssl/certs/ca-certificates.crt'
+config['default_site'] = 'lms.render'
+config['dns_multitenant'] = False
 with open(path, 'w') as f:
     json.dump(config, f, indent=4)
 "
@@ -77,6 +79,8 @@ fi
 # Apply environment configurations dynamically
 bench set-mariadb-host "$DB_HOST"
 bench set-config -g db_port "${DB_PORT:-4000}"
+bench set-config -g default_site "lms.render"
+bench set-config -g dns_multitenant 0
 bench set-config -g allow_cors "${FRONTEND_URL:-*}"
 bench set-config -g ignore_csrf 1
 
@@ -87,6 +91,12 @@ bench set-redis-socketio-host redis://127.0.0.1:6379
 
 # Ensure site config and logs directories exist
 mkdir -p sites/lms.render/logs
+ln -sfn lms.render sites/localhost
+ln -sfn lms.render sites/vedika-backend-s576.onrender.com
+ln -sfn lms.render sites/vyomanta.onrender.com
+if [ -n "$RENDER_EXTERNAL_HOSTNAME" ]; then
+    ln -sfn lms.render "sites/$RENDER_EXTERNAL_HOSTNAME"
+fi
 
 # Write/verify site_config.json configuration so the web server can connect to the DB
 cat <<EOF > sites/lms.render/site_config.json
@@ -160,6 +170,10 @@ if [ "$HAS_TABLES" -eq 1 ]; then
         bench --site lms.render migrate || true
         bench --site lms.render execute "exec(open('/home/frappe/grant_question_perm.py').read())" || true
     fi
+
+    # Sync Google OAuth keys and permissions on startup
+    echo "Syncing Google OAuth keys and permissions..."
+    bench --site lms.render execute "exec(open('/home/frappe/create_students.py').read())" || true
 else
     echo "Database is empty. Initializing new site tables..."
     # Drop all partial remnants if any
