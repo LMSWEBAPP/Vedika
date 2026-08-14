@@ -532,7 +532,7 @@ try:
             import base64
             import json
             from urllib.parse import urlparse
-            frontend_url = os.environ.get("FRONTEND_URL") or "https://vyomantha-testing.vercel.app"
+            frontend_url = os.environ.get("FRONTEND_URL") or "https://vedika-pet-testing.vercel.app"
             try:
                 state_data = json.loads(base64.b64decode(state).decode("utf-8"))
                 redirect_to = state_data.get("redirect_to")

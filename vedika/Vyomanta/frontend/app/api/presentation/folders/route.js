@@ -11,11 +11,24 @@ function getSystemPresentationsDir() {
     }
   } catch (e) {}
 
-  const localUploads = path.join(process.cwd(), 'public', 'uploads', 'presentations');
-  if (!fs.existsSync(localUploads)) {
-    fs.mkdirSync(localUploads, { recursive: true });
+  try {
+    const localUploads = path.join(process.cwd(), 'public', 'uploads', 'presentations');
+    if (!fs.existsSync(localUploads)) {
+      fs.mkdirSync(localUploads, { recursive: true });
+    }
+    return localUploads;
+  } catch (e) {
+    // Fallback to OS temp directory if public/uploads is read-only (e.g. Vercel serverless)
+    try {
+      const tmpDir = path.join(os.tmpdir(), 'vedika_presentations');
+      if (!fs.existsSync(tmpDir)) {
+        fs.mkdirSync(tmpDir, { recursive: true });
+      }
+      return tmpDir;
+    } catch (err) {
+      return '/tmp';
+    }
   }
-  return localUploads;
 }
 
 export async function GET(request) {
@@ -27,7 +40,7 @@ export async function GET(request) {
     if (folderName) {
       const targetPath = path.join(baseDir, folderName);
       if (!fs.existsSync(targetPath)) {
-        return NextResponse.json({ error: 'Folder not found' }, { status: 404 });
+        return NextResponse.json({ folder: folderName, files: [] });
       }
 
       const files = fs.readdirSync(targetPath).map(file => {
@@ -40,7 +53,7 @@ export async function GET(request) {
         const isDoc = ['.pdf', '.txt', '.md', '.doc', '.docx', '.ppt', '.pptx'].includes(ext);
 
         let dataUrl = `/uploads/presentations/${folderName}/${file}`;
-        if (isImage && baseDir.includes('Documents')) {
+        if (isImage) {
           try {
             const buf = fs.readFileSync(filePath);
             const mime = ext === '.svg' ? 'image/svg+xml' : ext === '.webp' ? 'image/webp' : 'image/png';
@@ -61,23 +74,35 @@ export async function GET(request) {
     }
 
     // List all presentation folders from system directory
+    if (!fs.existsSync(baseDir)) {
+      return NextResponse.json({ folders: [], rootDir: baseDir });
+    }
+
     const entries = fs.readdirSync(baseDir, { withFileTypes: true });
     const folders = entries
       .filter(entry => entry.isDirectory())
       .map(entry => {
         const folderPath = path.join(baseDir, entry.name);
-        const filesCount = fs.readdirSync(folderPath).length;
-        return {
-          name: entry.name,
-          filesCount,
-          createdAt: fs.statSync(folderPath).birthtime
-        };
+        try {
+          const filesCount = fs.readdirSync(folderPath).length;
+          return {
+            name: entry.name,
+            filesCount,
+            createdAt: fs.statSync(folderPath).birthtime
+          };
+        } catch (e) {
+          return {
+            name: entry.name,
+            filesCount: 0,
+            createdAt: new Date()
+          };
+        }
       });
 
     return NextResponse.json({ folders, rootDir: baseDir });
   } catch (error) {
     console.error('Error in Presentation Folders GET API:', error);
-    return NextResponse.json({ error: 'Failed to list presentation folders' }, { status: 500 });
+    return NextResponse.json({ folders: [], error: 'Failed to list presentation folders' });
   }
 }
 
@@ -118,14 +143,14 @@ export async function POST(request) {
       }
 
       return NextResponse.json({
-        message: `Uploaded ${savedFiles.length} assets directly to local system folder ${sanitizedFolder}`,
+        message: `Uploaded ${savedFiles.length} assets to folder ${sanitizedFolder}`,
         folder: sanitizedFolder,
         savedFiles
       });
     }
 
     return NextResponse.json({
-      message: `System presentation folder '${sanitizedFolder}' created successfully`,
+      message: `Presentation folder '${sanitizedFolder}' created successfully`,
       folder: sanitizedFolder,
       path: folderPath
     });

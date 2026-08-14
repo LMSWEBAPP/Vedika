@@ -221,38 +221,113 @@ export default function VivaInterviewPage() {
   };
 
   return (
-    <div className="w-full min-h-screen bg-slate-950 text-white font-sans p-6 pb-20 selection:bg-purple-500 selection:text-white">
-      <div className="max-w-5xl mx-auto space-y-6">
+    <div style={{
+      width: '100%',
+      minHeight: '100vh',
+      background: 'var(--bg)',
+      color: 'var(--text)',
+      fontFamily: 'var(--font-outfit), sans-serif',
+      padding: isMobile ? '16px 12px 64px 12px' : '28px 32px 80px 32px',
+      boxSizing: 'border-box'
+    }}>
+      <div style={{
+        maxWidth: 1040,
+        margin: '0 auto',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 24
+      }}>
         
         {/* HEADER BAR */}
-        <div className="flex items-center justify-between border-b border-slate-800 pb-4">
-          <div className="flex items-center space-x-3">
-            <a href="/" className="p-2 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700">
+        <div style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          borderBottom: `1px solid var(--border)`,
+          paddingBottom: 16,
+          gap: 14
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <a 
+              href="/" 
+              style={{
+                padding: '8px 10px',
+                borderRadius: 12,
+                background: 'var(--s2)',
+                border: `1px solid var(--border)`,
+                color: 'var(--muted)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                textDecoration: 'none',
+                transition: 'all 0.2s ease'
+              }}
+            >
               <ArrowLeft size={18} />
             </a>
             <div>
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-indigo-400 bg-clip-text text-transparent flex items-center gap-2">
-                <Brain className="text-purple-400" size={24} />
+              <h1 style={{
+                margin: 0,
+                fontSize: isMobile ? '1.25rem' : '1.5rem',
+                fontWeight: 800,
+                background: 'linear-gradient(135deg, var(--purple) 0%, var(--accent) 100%)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8
+              }}>
+                <Brain size={24} style={{ color: 'var(--purple)' }} />
                 Vyomanta Viva & Interview Hub
               </h1>
-              <p className="text-xs text-slate-400">Academic Experiment Viva Examiner & Technical Job Interview Practice</p>
+              <p style={{ margin: '4px 0 0 0', fontSize: '0.75rem', color: 'var(--muted)' }}>
+                Academic Experiment Viva Examiner & Technical Job Interview Practice
+              </p>
             </div>
           </div>
 
-          <div className="flex bg-slate-900 border border-slate-800 rounded-xl p-1">
+          {/* Mode Switcher Tabs */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            background: 'var(--s2)',
+            border: `1px solid var(--border)`,
+            borderRadius: 12,
+            padding: 4,
+            gap: 4
+          }}>
             <button
               onClick={() => setSessionMode('viva')}
-              className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition ${
-                sessionMode === 'viva' ? 'bg-purple-600 text-white' : 'text-slate-400 hover:text-white'
-              }`}
+              style={{
+                padding: '6px 14px',
+                borderRadius: 8,
+                fontSize: '0.8rem',
+                fontWeight: 700,
+                border: 'none',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                background: sessionMode === 'viva' ? 'var(--purple)' : 'transparent',
+                color: sessionMode === 'viva' ? '#FFFFFF' : 'var(--muted)',
+                boxShadow: sessionMode === 'viva' ? '0 2px 8px rgba(155, 110, 248, 0.3)' : 'none'
+              }}
             >
               Academic Viva
             </button>
             <button
               onClick={() => setSessionMode('interview')}
-              className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition ${
-                sessionMode === 'interview' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
-              }`}
+              style={{
+                padding: '6px 14px',
+                borderRadius: 8,
+                fontSize: '0.8rem',
+                fontWeight: 700,
+                border: 'none',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                background: sessionMode === 'interview' ? 'var(--accent)' : 'transparent',
+                color: sessionMode === 'interview' ? '#FFFFFF' : 'var(--muted)',
+                boxShadow: sessionMode === 'interview' ? '0 2px 8px rgba(79, 131, 246, 0.3)' : 'none'
+              }}
             >
               Technical Interview
             </button>
@@ -261,13 +336,30 @@ export default function VivaInterviewPage() {
 
         {/* SETUP VIEW */}
         {gameState === 'setup' && (
-          <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-8 backdrop-blur-xl shadow-2xl space-y-6">
-            <div className="border-b border-slate-800/80 pb-4">
-              <h2 className="text-xl font-bold text-slate-100 flex items-center gap-2">
-                {sessionMode === 'viva' ? <FlaskConical className="text-purple-400" /> : <Code className="text-indigo-400" />}
+          <div style={{
+            background: 'var(--s1)',
+            border: `1px solid var(--border)`,
+            borderRadius: 24,
+            padding: isMobile ? '20px 16px' : '32px 28px',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.05)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 24
+          }}>
+            <div style={{ borderBottom: `1px solid var(--border)`, paddingBottom: 16 }}>
+              <h2 style={{
+                margin: 0,
+                fontSize: '1.25rem',
+                fontWeight: 800,
+                color: 'var(--text)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8
+              }}>
+                {sessionMode === 'viva' ? <FlaskConical size={22} style={{ color: 'var(--purple)' }} /> : <Code size={22} style={{ color: 'var(--accent)' }} />}
                 {sessionMode === 'viva' ? 'Academic Lab Viva Setup' : 'Technical Job Interview Setup'}
               </h2>
-              <p className="text-xs text-slate-400 mt-1">
+              <p style={{ margin: '6px 0 0 0', fontSize: '0.8rem', color: 'var(--muted)', lineHeight: 1.5 }}>
                 {sessionMode === 'viva' 
                   ? 'Select an experiment and academic level. Vedika will ask viva questions and catch misaligned or wrong concepts.' 
                   : 'Practice mock interview questions based on Job Descriptions or specific programming language stacks.'}
@@ -275,9 +367,15 @@ export default function VivaInterviewPage() {
             </div>
 
             {/* SUBJECT & LEVEL SELECTION */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+              gap: 18
+            }}>
               <div>
-                <label className="block text-xs font-semibold text-slate-300 uppercase mb-2">Subject Area</label>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 8, letterSpacing: '0.05em' }}>
+                  Subject Area
+                </label>
                 <select
                   value={subject}
                   onChange={(e) => {
@@ -285,18 +383,40 @@ export default function VivaInterviewPage() {
                     const defaultExp = experimentPresets[e.target.value]?.[0] || "General Lab";
                     setSelectedExperiment(defaultExp);
                   }}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-purple-500"
+                  style={{
+                    width: '100%',
+                    background: 'var(--s2)',
+                    border: `1px solid var(--border)`,
+                    borderRadius: 12,
+                    padding: '10px 14px',
+                    fontSize: '0.875rem',
+                    color: 'var(--text)',
+                    outline: 'none',
+                    cursor: 'pointer'
+                  }}
                 >
                   {subjects.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 uppercase mb-2">Target Academic/Career Level</label>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 8, letterSpacing: '0.05em' }}>
+                  Target Academic/Career Level
+                </label>
                 <select
                   value={level}
                   onChange={(e) => setLevel(e.target.value)}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-purple-500"
+                  style={{
+                    width: '100%',
+                    background: 'var(--s2)',
+                    border: `1px solid var(--border)`,
+                    borderRadius: 12,
+                    padding: '10px 14px',
+                    fontSize: '0.875rem',
+                    color: 'var(--text)',
+                    outline: 'none',
+                    cursor: 'pointer'
+                  }}
                 >
                   {sessionMode === 'viva' ? (
                     <>
@@ -317,47 +437,88 @@ export default function VivaInterviewPage() {
 
             {/* VIVA MODE: EXPERIMENT SELECTOR */}
             {sessionMode === 'viva' ? (
-              <div className="space-y-3">
-                <label className="block text-xs font-semibold text-slate-300 uppercase">Select Academic Experiment</label>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {(experimentPresets[subject] || []).map(exp => (
-                    <button
-                      key={exp}
-                      onClick={() => setSelectedExperiment(exp)}
-                      className={`p-3.5 rounded-xl border text-left text-xs font-medium transition ${
-                        selectedExperiment === exp
-                          ? 'bg-purple-950/80 border-purple-500 text-purple-200'
-                          : 'bg-slate-800/40 border-slate-800 text-slate-300 hover:bg-slate-800'
-                      }`}
-                    >
-                      🧪 {exp}
-                    </button>
-                  ))}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Select Academic Experiment
+                </label>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+                  gap: 10
+                }}>
+                  {(experimentPresets[subject] || []).map(exp => {
+                    const isSelected = selectedExperiment === exp;
+                    return (
+                      <button
+                        key={exp}
+                        onClick={() => setSelectedExperiment(exp)}
+                        style={{
+                          padding: '12px 14px',
+                          borderRadius: 12,
+                          border: `1px solid ${isSelected ? 'var(--purple)' : 'var(--border)'}`,
+                          background: isSelected ? 'rgba(139, 92, 246, 0.12)' : 'var(--s2)',
+                          color: isSelected ? 'var(--purple)' : 'var(--text)',
+                          textAlign: 'left',
+                          fontSize: '0.825rem',
+                          fontWeight: isSelected ? 700 : 500,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        <span>🧪</span>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{exp}</span>
+                      </button>
+                    );
+                  })}
                 </div>
                 <input
                   type="text"
                   placeholder="Or enter custom experiment name..."
                   value={selectedExperiment}
                   onChange={(e) => setSelectedExperiment(e.target.value)}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-500 outline-none focus:border-purple-500"
+                  style={{
+                    width: '100%',
+                    background: 'var(--s2)',
+                    border: `1px solid var(--border)`,
+                    borderRadius: 12,
+                    padding: '10px 14px',
+                    fontSize: '0.825rem',
+                    color: 'var(--text)',
+                    outline: 'none',
+                    boxSizing: 'border-box'
+                  }}
                 />
               </div>
             ) : (
               /* INTERVIEW MODE: LANGUAGE & JD UPLOAD */
-              <div className="space-y-4">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 uppercase mb-2">Target Programming Language / Stack</label>
+                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 8, letterSpacing: '0.05em' }}>
+                    Target Programming Language / Stack
+                  </label>
                   <select
                     value={programmingLanguage}
                     onChange={(e) => setProgrammingLanguage(e.target.value)}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-indigo-500"
+                    style={{
+                      width: '100%',
+                      background: 'var(--s2)',
+                      border: `1px solid var(--border)`,
+                      borderRadius: 12,
+                      padding: '10px 14px',
+                      fontSize: '0.875rem',
+                      color: 'var(--text)',
+                      outline: 'none'
+                    }}
                   >
                     {programmingLanguages.map(lang => <option key={lang} value={lang}>{lang}</option>)}
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 uppercase mb-2">
+                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 8, letterSpacing: '0.05em' }}>
                     Paste Job Description (Optional for JD-based Interview)
                   </label>
                   <textarea
@@ -365,7 +526,18 @@ export default function VivaInterviewPage() {
                     placeholder="Paste the Job Description (JD) text here to generate custom targeted interview questions..."
                     value={jdText}
                     onChange={(e) => setJdText(e.target.value)}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-xs text-white placeholder-slate-500 outline-none focus:border-indigo-500"
+                    style={{
+                      width: '100%',
+                      background: 'var(--s2)',
+                      border: `1px solid var(--border)`,
+                      borderRadius: 12,
+                      padding: 12,
+                      fontSize: '0.825rem',
+                      color: 'var(--text)',
+                      outline: 'none',
+                      boxSizing: 'border-box',
+                      resize: 'vertical'
+                    }}
                   />
                 </div>
               </div>
@@ -374,13 +546,32 @@ export default function VivaInterviewPage() {
             <button
               onClick={handleStartSession}
               disabled={loading}
-              className="w-full py-3.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold rounded-2xl text-sm shadow-xl shadow-purple-600/25 flex items-center justify-center space-x-2 transition"
+              style={{
+                width: '100%',
+                padding: '14px 20px',
+                borderRadius: 16,
+                border: 'none',
+                background: sessionMode === 'viva'
+                  ? 'linear-gradient(135deg, #8B5CF6 0%, #6366F1 100%)'
+                  : 'linear-gradient(135deg, #4F83F6 0%, #8B5CF6 100%)',
+                color: '#FFFFFF',
+                fontSize: '0.95rem',
+                fontWeight: 800,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 10,
+                boxShadow: '0 8px 24px rgba(139, 92, 246, 0.3)',
+                transition: 'all 0.2s ease',
+                opacity: loading ? 0.7 : 1
+              }}
             >
               {loading ? (
-                <Loader2 className="animate-spin" size={18} />
+                <Loader2 className="animate-spin" size={20} />
               ) : (
                 <>
-                  <Sparkles size={18} />
+                  <Sparkles size={20} />
                   <span>Start {sessionMode === 'viva' ? 'Viva Exam' : 'Interview Session'}</span>
                 </>
               )}
@@ -390,41 +581,91 @@ export default function VivaInterviewPage() {
 
         {/* ACTIVE SESSION VIEW */}
         {gameState === 'active' && (
-          <div className="space-y-6">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
             
             {/* EXAMINER / QUESTION CARD */}
-            <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-6 backdrop-blur-xl shadow-2xl relative overflow-hidden">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
-                <span className="text-xs font-bold text-purple-400 uppercase tracking-widest">
+            <div style={{
+              background: 'var(--s1)',
+              border: `1px solid var(--border)`,
+              borderRadius: 24,
+              padding: isMobile ? '20px 16px' : '28px 24px',
+              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.05)',
+              position: 'relative',
+              overflow: 'hidden'
+            }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                borderBottom: `1px solid var(--border)`,
+                paddingBottom: 12,
+                marginBottom: 16
+              }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--purple)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
                   QUESTION {currentQIndex + 1} OF 5 • {sessionMode === 'viva' ? selectedExperiment : (programmingLanguage || 'Technical Interview')}
                 </span>
                 <button
                   onClick={() => speakText(currentQuestion)}
-                  className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs flex items-center space-x-1"
+                  style={{
+                    padding: '6px 10px',
+                    background: 'var(--s2)',
+                    border: `1px solid var(--border)`,
+                    color: 'var(--text)',
+                    borderRadius: 8,
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6
+                  }}
                 >
-                  <Volume2 size={14} />
-                  <span>Speak</span>
+                  <Volume2 size={14} style={{ color: isSpeaking ? 'var(--accent)' : 'inherit' }} />
+                  <span>{isSpeaking ? 'Speaking...' : 'Speak'}</span>
                 </button>
               </div>
 
-              <h2 className="text-xl md:text-2xl font-bold text-slate-100 leading-snug">
+              <h2 style={{
+                margin: 0,
+                fontSize: isMobile ? '1.15rem' : '1.4rem',
+                fontWeight: 700,
+                color: 'var(--text)',
+                lineHeight: 1.5
+              }}>
                 "{currentQuestion}"
               </h2>
             </div>
 
             {/* MISALIGNED ANSWER RECTIFICATION HUD ALERT */}
             {currentEvaluation?.isMisaligned && (
-              <div className="p-5 rounded-2xl bg-amber-950/80 border border-amber-500/50 shadow-xl space-y-3">
-                <div className="flex items-center space-x-2 text-amber-400 text-xs font-bold uppercase tracking-wider">
+              <div style={{
+                padding: 18,
+                borderRadius: 18,
+                background: 'rgba(236, 154, 41, 0.1)',
+                border: '1px solid var(--amber)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 10,
+                boxShadow: '0 4px 16px rgba(236, 154, 41, 0.15)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--amber)', fontSize: '0.75rem', fontWeight: 800, letterSpacing: '0.05em' }}>
                   <ShieldAlert size={18} />
                   <span>MISALIGNED ANSWER DETECTED — RECTIFICATION REQUIRED</span>
                 </div>
-                <p className="text-sm font-semibold text-amber-200">
+                <p style={{ margin: 0, fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)' }}>
                   ⚠️ {currentEvaluation.misalignedReason}
                 </p>
                 {currentEvaluation.rectificationPrompt && (
-                  <div className="p-3.5 rounded-xl bg-slate-900/90 border border-amber-500/30 text-xs text-amber-300">
-                    <strong className="text-amber-400">Vedika Rectification Hint:</strong> {currentEvaluation.rectificationPrompt}
+                  <div style={{
+                    padding: 12,
+                    borderRadius: 12,
+                    background: 'var(--s1)',
+                    border: '1px solid rgba(236, 154, 41, 0.3)',
+                    fontSize: '0.8rem',
+                    color: 'var(--amber)',
+                    lineHeight: 1.4
+                  }}>
+                    <strong style={{ color: 'var(--amber)' }}>Vedika Rectification Hint:</strong> {currentEvaluation.rectificationPrompt}
                   </div>
                 )}
               </div>
@@ -432,54 +673,136 @@ export default function VivaInterviewPage() {
 
             {/* ANSWER EVALUATION DISPLAY */}
             {currentEvaluation && (
-              <div className="p-6 rounded-3xl bg-slate-900/90 border border-slate-800 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <div className="px-3 py-1 bg-purple-600 text-white font-extrabold rounded-xl text-lg">
+              <div style={{
+                padding: isMobile ? 18 : 24,
+                borderRadius: 20,
+                background: 'var(--s1)',
+                border: `1px solid var(--border)`,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 16
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div style={{
+                      padding: '6px 14px',
+                      background: 'var(--purple)',
+                      color: '#FFFFFF',
+                      fontWeight: 800,
+                      borderRadius: 12,
+                      fontSize: '1.1rem'
+                    }}>
                       {currentEvaluation.grade}
                     </div>
                     <div>
-                      <h4 className="text-sm font-bold text-slate-200">Score: {currentEvaluation.score} / 10</h4>
-                      <p className="text-xs text-slate-400">{currentEvaluation.explanation}</p>
+                      <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 800, color: 'var(--text)' }}>
+                        Score: {currentEvaluation.score} / 10
+                      </h4>
+                      <p style={{ margin: '2px 0 0 0', fontSize: '0.75rem', color: 'var(--muted)' }}>
+                        {currentEvaluation.explanation}
+                      </p>
                     </div>
                   </div>
                 </div>
 
-                <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 text-xs space-y-2">
-                  <p className="text-slate-300"><strong className="text-purple-400">Model Answer:</strong> {currentEvaluation.correctAnswer}</p>
-                  <p className="text-slate-400"><strong className="text-cyan-400">Improvement Advice:</strong> {currentEvaluation.improvementTip}</p>
+                <div style={{
+                  padding: 14,
+                  borderRadius: 14,
+                  background: 'var(--s2)',
+                  border: `1px solid var(--border)`,
+                  fontSize: '0.8rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 8
+                }}>
+                  <p style={{ margin: 0, color: 'var(--text)' }}>
+                    <strong style={{ color: 'var(--purple)' }}>Model Answer:</strong> {currentEvaluation.correctAnswer}
+                  </p>
+                  <p style={{ margin: 0, color: 'var(--muted)' }}>
+                    <strong style={{ color: 'var(--accent)' }}>Improvement Advice:</strong> {currentEvaluation.improvementTip}
+                  </p>
                 </div>
               </div>
             )}
 
             {/* ANSWER INPUT AREA */}
-            <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6 space-y-4">
-              <label className="block text-xs font-semibold text-slate-300 uppercase">Your Answer</label>
+            <div style={{
+              background: 'var(--s1)',
+              border: `1px solid var(--border)`,
+              borderRadius: 24,
+              padding: isMobile ? 18 : 24,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 14
+            }}>
+              <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Your Answer
+              </label>
               <textarea
                 rows={4}
                 placeholder="Type your answer clearly or dictate your response..."
                 value={userAnswer}
                 onChange={(e) => setUserAnswer(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-sm text-white placeholder-slate-500 outline-none focus:border-purple-500"
+                style={{
+                  width: '100%',
+                  background: 'var(--s2)',
+                  border: `1px solid var(--border)`,
+                  borderRadius: 16,
+                  padding: 14,
+                  fontSize: '0.875rem',
+                  color: 'var(--text)',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                  resize: 'vertical'
+                }}
               />
 
-              <div className="flex items-center justify-between">
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
                 <button
                   onClick={handleSubmitAnswer}
                   disabled={loading || !userAnswer.trim()}
-                  className="px-6 py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-xl text-xs shadow-lg flex items-center space-x-2 transition disabled:opacity-50"
+                  style={{
+                    padding: '10px 20px',
+                    background: 'var(--purple)',
+                    color: '#FFFFFF',
+                    border: 'none',
+                    borderRadius: 12,
+                    fontSize: '0.825rem',
+                    fontWeight: 700,
+                    cursor: (loading || !userAnswer.trim()) ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    boxShadow: '0 4px 14px rgba(139, 92, 246, 0.25)',
+                    opacity: (loading || !userAnswer.trim()) ? 0.5 : 1,
+                    transition: 'all 0.15s ease'
+                  }}
                 >
-                  {loading ? <Loader2 className="animate-spin" size={14} /> : <Send size={14} />}
+                  {loading ? <Loader2 className="animate-spin" size={16} /> : <Send size={16} />}
                   <span>Submit Answer</span>
                 </button>
 
                 {currentEvaluation && (
                   <button
                     onClick={handleNextQuestion}
-                    className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs shadow-lg flex items-center space-x-2 transition"
+                    style={{
+                      padding: '10px 20px',
+                      background: 'var(--accent)',
+                      color: '#FFFFFF',
+                      border: 'none',
+                      borderRadius: 12,
+                      fontSize: '0.825rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      boxShadow: '0 4px 14px rgba(79, 131, 246, 0.25)',
+                      transition: 'all 0.15s ease'
+                    }}
                   >
                     <span>Next Question</span>
-                    <ChevronRight size={14} />
+                    <ChevronRight size={16} />
                   </button>
                 )}
               </div>
@@ -490,23 +813,53 @@ export default function VivaInterviewPage() {
 
         {/* SUMMARY SCORECARD VIEW */}
         {gameState === 'summary' && (
-          <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-8 text-center space-y-6">
-            <Award size={48} className="mx-auto text-purple-400" />
-            <h2 className="text-3xl font-extrabold text-white">Session Completed!</h2>
-            <p className="text-xs text-slate-400 max-w-md mx-auto">
-              Here is your final evaluation summary matrix for <strong className="text-purple-300">{sessionMode === 'viva' ? selectedExperiment : programmingLanguage}</strong>.
-            </p>
+          <div style={{
+            background: 'var(--s1)',
+            border: `1px solid var(--border)`,
+            borderRadius: 24,
+            padding: isMobile ? 24 : 36,
+            textAlign: 'center',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 20
+          }}>
+            <Award size={54} style={{ color: 'var(--purple)' }} />
+            <div>
+              <h2 style={{ margin: 0, fontSize: '1.75rem', fontWeight: 800, color: 'var(--text)' }}>Session Completed!</h2>
+              <p style={{ margin: '8px 0 0 0', fontSize: '0.8rem', color: 'var(--muted)', maxWidth: 460 }}>
+                Here is your final evaluation summary matrix for <strong style={{ color: 'var(--purple)' }}>{sessionMode === 'viva' ? selectedExperiment : programmingLanguage}</strong>.
+              </p>
+            </div>
 
-            <div className="space-y-3 max-w-3xl mx-auto text-left">
+            <div style={{
+              width: '100%',
+              maxWidth: 720,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
+              textAlign: 'left'
+            }}>
               {history.map((item, idx) => (
-                <div key={idx} className="p-4 rounded-2xl bg-slate-950 border border-slate-800 text-xs space-y-1">
-                  <div className="flex justify-between font-bold text-slate-200">
+                <div key={idx} style={{
+                  padding: 14,
+                  borderRadius: 14,
+                  background: 'var(--s2)',
+                  border: `1px solid var(--border)`,
+                  fontSize: '0.8rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 4
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, color: 'var(--text)' }}>
                     <span>Q{idx + 1}: {item.question}</span>
-                    <span className="text-purple-400">Score: {item.score}/10 ({item.grade})</span>
+                    <span style={{ color: 'var(--purple)' }}>Score: {item.score}/10 ({item.grade})</span>
                   </div>
-                  <p className="text-slate-400">Your Answer: "{item.answer}"</p>
+                  <p style={{ margin: 0, color: 'var(--muted)' }}>Your Answer: "{item.answer}"</p>
                   {item.isMisaligned && (
-                    <p className="text-amber-400 font-semibold">Rectified Misaligned Concept: {item.misalignedReason}</p>
+                    <p style={{ margin: 0, color: 'var(--amber)', fontWeight: 600 }}>
+                      Rectified Misaligned Concept: {item.misalignedReason}
+                    </p>
                   )}
                 </div>
               ))}
@@ -514,7 +867,20 @@ export default function VivaInterviewPage() {
 
             <button
               onClick={() => setGameState('setup')}
-              className="px-8 py-3 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-2xl text-xs shadow-xl inline-flex items-center space-x-2"
+              style={{
+                padding: '12px 28px',
+                background: 'var(--purple)',
+                color: '#FFFFFF',
+                border: 'none',
+                borderRadius: 16,
+                fontSize: '0.875rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                boxShadow: '0 8px 24px rgba(139, 92, 246, 0.3)'
+              }}
             >
               <RotateCcw size={16} />
               <span>Start Another Round</span>
