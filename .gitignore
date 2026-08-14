@@ -94,3 +94,5 @@ data/*.db
 data/*.db-wal
 data/*.db-shm
 scratch/
+*.exe
+tidb-backup*/
