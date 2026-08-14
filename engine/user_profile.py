@@ -53,18 +53,48 @@ class UserProfileManager:
         except Exception as e:
             print(f"[UserProfileManager] Failed to save profile: {e}")
 
-    def update_user_info(self, stage=None, field_of_study=None, hobbies=None, name=None):
+    def update_user_info(self, stage=None, field_of_study=None, hobbies=None, name=None, favorite_topics=None, personality_template=None):
         user = self.profile.get("user", {})
+        learned = self.profile.get("learned_traits", {})
+
         if stage:
-            user["stage"] = stage
+            user["stage"] = str(stage).strip()
         if field_of_study:
-            user["field_of_study"] = field_of_study
+            user["field_of_study"] = str(field_of_study).strip()
         if hobbies is not None:
-            user["hobbies"] = hobbies if isinstance(hobbies, list) else [hobbies]
+            if isinstance(hobbies, str):
+                hobbies = [h.strip() for h in hobbies.split(",") if h.strip()]
+            user["hobbies"] = hobbies
         if name:
-            user["name"] = name
+            user["name"] = str(name).strip()
+        if personality_template:
+            user["personality_template"] = str(personality_template).strip()
+
+        if favorite_topics is not None:
+            if isinstance(favorite_topics, str):
+                favorite_topics = [t.strip() for t in favorite_topics.split(",") if t.strip()]
+            learned["favorite_topics"] = favorite_topics
+            self.profile["learned_traits"] = learned
+
         self.profile["user"] = user
         self.save_profile()
+
+        # Sync with SQLite MemoryManager
+        try:
+            from engine.memory import MemoryManager
+            mm = MemoryManager()
+            if name:
+                mm.update_profile("name", str(name).strip())
+            if stage:
+                mm.update_profile("stage", str(stage).strip())
+            if field_of_study:
+                mm.update_profile("field_of_study", str(field_of_study).strip())
+            if hobbies:
+                mm.update_profile("hobbies", ", ".join(user["hobbies"]))
+            if personality_template:
+                mm.update_profile("personality_template", str(personality_template).strip())
+        except Exception as e:
+            print(f"[UserProfileManager] Notice: Could not sync to SQLite: {e}")
 
     def generate_dynamic_greeting(self):
         """Generates a dynamic, context-aware greeting and conversation starter based on time of day,
@@ -111,6 +141,18 @@ class UserProfileManager:
                 f"Late night coding or studying? What are we working on right now?",
                 f"Still awake! What cool idea or topic are you exploring tonight?"
             ]
+
+        # Check for recent study topics/questions from MemoryManager
+        try:
+            from engine.memory import MemoryManager
+            prev_qs = MemoryManager().get_previous_student_questions(limit=1)
+            if prev_qs and prev_qs[0].get("text"):
+                q_text = prev_qs[0]["text"].strip()
+                if len(q_text.split()) >= 3 and not any(w in q_text.lower() for w in ["bye", "stop", "pause", "what was my previous", "what did i ask"]):
+                    starters.append(f"Still thinking about '{q_text[:45]}' or ready for a new topic?")
+                    starters.append(f"How did that question about '{q_text[:40]}' go?")
+        except Exception:
+            pass
 
         greeting_prefix = random.choice([
             f"{time_greeting}, {name}!",

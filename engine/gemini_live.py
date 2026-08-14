@@ -13,6 +13,7 @@ import pyaudio
 import numpy as np
 
 from engine.user_profile import UserProfileManager
+from engine.memory import MemoryManager
 
 def load_routes_for_prompt() -> str:
     """Reads routes.json and formats instructions for Gemini Live model."""
@@ -156,6 +157,11 @@ class GeminiLiveWorker(QThread):
         self.last_interruption_time = 0.0
         self.aec = BlockNLMSEchoCanceller()
         self._stopping_audio = False
+        self.current_turn_user_transcription = ""
+        self.current_turn_model_text = ""
+        self.in_session_history = []
+        self.session_id = str(int(time.time()))
+        self.last_user_sentiment = None
 
     def run(self):
         self.loop = asyncio.new_event_loop()
@@ -351,6 +357,74 @@ class GeminiLiveWorker(QThread):
             self.client.point_location_requested.emit(x, y, label, action)
             return {"status": "success", "pointing_at": {"x": x, "y": y, "label": label, "action": action}}
 
+        def save_student_memory(category: str, subject: str, topic: str, note: str) -> dict:
+            """Saves or updates a key learning insight, struggle, mastered concept, or academic preference into long-term memory. STRICTLY for academic/learning facts only. Never log personal/private life details."""
+            print(f"[GeminiLiveWorker] Tool call: save_student_memory(category='{category}', subject='{subject}', topic='{topic}', note='{note}')")
+            mm = MemoryManager()
+            res = mm.save_memory(category, subject, topic, note)
+            return {"status": "success" if res else "failed", "saved": {"category": category, "subject": subject, "topic": topic}}
+
+        def recall_previous_questions(limit: int = 3) -> dict:
+            """Retrieves the exact verbatim previous questions the student asked in this session or earlier voice sessions. ALWAYS call this when the student asks 'What was my previous question?', 'What did I ask before?', or asks to review what they previously asked."""
+            print(f"[GeminiLiveWorker] Tool call: recall_previous_questions(limit={limit})")
+            in_session_questions = [t["text"] for t in self.in_session_history if t["role"] == "student"]
+            mm = MemoryManager()
+            db_questions = mm.get_previous_student_questions(limit=limit + 3)
+            all_questions = []
+            for q_text in reversed(in_session_questions):
+                if q_text not in all_questions:
+                    all_questions.append(q_text)
+            for row in db_questions:
+                txt = row.get("text", "")
+                if txt and txt not in all_questions:
+                    all_questions.append(txt)
+            final_list = all_questions[:limit]
+            return {
+                "status": "success",
+                "count": len(final_list),
+                "previous_questions": final_list,
+                "latest_question": final_list[0] if final_list else "No prior question recorded"
+            }
+
+        def search_learning_memory(query: str = "", category: str = "all") -> dict:
+            """Searches long-term academic memory and conversation records for specific concepts, topics, struggles, or past answers."""
+            print(f"[GeminiLiveWorker] Tool call: search_learning_memory(query='{query}', category='{category}')")
+            mm = MemoryManager()
+            mems = mm.search_memories(query=query, category=category)
+            convs = mm.search_conversation_history(query=query, limit=5)
+            return {
+                "status": "success",
+                "memories": mems,
+                "dialogue_matches": convs
+            }
+
+        def update_student_profile(name: str = "", stage: str = "", field_of_study: str = "", hobbies: str = "", favorite_topics: str = "") -> dict:
+            """Updates student personalization info (e.g. when student introduces themselves, tells you their name, grade level, major, hobbies, or favorite subjects)."""
+            print(f"[GeminiLiveWorker] Tool call: update_student_profile(name='{name}', stage='{stage}', field='{field_of_study}')")
+            upm = UserProfileManager()
+            upm.update_user_info(
+                name=name if name else None,
+                stage=stage if stage else None,
+                field_of_study=field_of_study if field_of_study else None,
+                hobbies=hobbies if hobbies else None,
+                favorite_topics=favorite_topics if favorite_topics else None
+            )
+            return {"status": "success", "message": "Student profile updated successfully."}
+
+        def clear_student_memory() -> dict:
+            """Clears all stored learning history and topic memories when student explicitly asks 'clear my memory' or 'reset my history'."""
+            print("[GeminiLiveWorker] Tool call: clear_student_memory")
+            mm = MemoryManager()
+            mm.clear_all_memories()
+            return {"status": "success", "message": "All student memories cleared."}
+
+        def set_study_timer(duration_seconds: int, label: str = "Study Timer") -> dict:
+            """Sets a visual countdown timer capsule on the desktop pet when the student asks to set a timer, reminder, or study session (e.g. 'set a timer for 10 minutes', 'remind me in 5 minutes')."""
+            print(f"[GeminiLiveWorker] Tool call: set_study_timer(duration_seconds={duration_seconds}, label='{label}')")
+            self.client.timer_requested.emit(int(duration_seconds), str(label))
+            mins = max(1, int(duration_seconds) // 60)
+            return {"status": "success", "timer_started": f"{mins} minutes for {label}"}
+
         # Construct dynamic Academic Voice Tutor system instruction matching voice-server.js
         tutor_lang = getattr(self.client, "tutor_language", "all")
         tutor_subj = getattr(self.client, "tutor_subject", "all")
@@ -363,6 +437,22 @@ class GeminiLiveWorker(QThread):
             "Sound like an encouraging elder sibling or personal tutor: warm, relatable, dynamic, and full of natural life. "
             "Keep answers strictly short and fluid (usually 1 to 2 short sentences per turn) so text-to-speech voice output sounds immediate, crisp, and human. "
             "Never output markdown symbols, asterisks, bullet points, numbers, or complex formulas into text, as they disrupt natural voice synthesis. "
+            "\n\nSOCRATIC PEDAGOGY (ACTIVE INQUIRY & CHECK-IN CYCLES):\n"
+            "1. PRE-EXPLANATION INTUITION PROBE: When a student asks for help, asks a question, or brings up a topic, do NOT immediately dump the direct answer or full solution. First, ask what they already know or what their intuition is (e.g., 'What do you already know about [concept]?' or 'Before I explain, what do you think is the first step?').\n"
+            "2. GUIDED DISCOVERY: Break problems into simple pieces, provide intuitive analogies or tiny hints, and ask guided questions so the student discovers the solution themselves step by step.\n"
+            "3. POST-EXPLANATION COMPREHENSION CHECK: After explaining any concept, answering a question, or breaking down a solution, ALWAYS conclude with a short, friendly check-in question or micro-challenge (e.g., 'Does that make sense? What would happen if we doubled X?' or 'Can you tell me a quick real-world example of this?') to verify understanding.\n"
+            "4. CELEBRATION & ENCOURAGEMENT: Celebrate and cheer when the student answers correctly or tries.\n"
+            "5. SOCRATIC ESCAPE HATCH: If the student explicitly demands 'Just give me the answer', 'I am in a hurry', or after 3 unsuccessful attempts, provide the clear answer directly, followed by a 1-sentence breakdown of why it works and a quick check-in.\n"
+            "\nCONTINUOUS MEMORY & CONVERSATIONAL RECALL RULES:\n"
+            "1. You have continuous, persistent memory across voice sessions and real-time tracking of what the student is asking.\n"
+            "2. ANTI-HALLUCINATION RECALL RULE: When the student asks 'What was my previous question?', 'What did I ask earlier?', 'What were we talking about?', or 'Do you remember me?':\n"
+            "   - Immediately check the [RECENT VOICE CONVERSATION HISTORY] context below, or call the 'recall_previous_questions()' tool function to retrieve the exact previous questions verbatim!\n"
+            "   - NEVER invent, hallucinate, or guess a question that the student did not ask.\n"
+            "   - Answer directly and accurately (e.g., 'Your previous question was: [Exact Question]').\n"
+            "3. PROACTIVE TOPIC FOLLOW-UP: When reconnecting or starting a session, if you remember past topics or previous questions, warmly ask a quick follow-up on how that topic is going!\n"
+            "4. STUDENT PERSONALIZATION: When the student shares their name, grade level, school/college, field of study, or hobbies, call 'update_student_profile()' to remember it.\n"
+            "5. LEARNING MEMORY: Whenever the student reveals a recurring struggle, masters a topic, or expresses a study preference, call 'save_student_memory(category, subject, topic, note)'.\n"
+            "6. If the student asks to clear/forget their study history, call 'clear_student_memory()'.\n"
         )
 
         if tutor_lang == 'telugu':
@@ -390,11 +480,30 @@ class GeminiLiveWorker(QThread):
             sys_inst += "SUBJECT FOCUS: You are ready to tutor on any academic school subject: math, science, history, geography, languages, or reading. "
 
         # Dynamic User Profile Context Injection
+        student_name = "there"
         try:
-            profile_ctx = UserProfileManager().get_system_instruction_context()
+            upm = UserProfileManager()
+            profile_ctx = upm.get_system_instruction_context()
             sys_inst += profile_ctx
+            student_name = upm.profile.get("user", {}).get("name", "there")
         except Exception as e:
             print(f"[GeminiLiveWorker] Could not attach user profile context: {e}")
+
+        # Dynamic Recent Voice Conversation History Context Injection
+        try:
+            conv_ctx = MemoryManager().get_conversation_context_for_prompt(limit=6)
+            if conv_ctx:
+                sys_inst += conv_ctx
+        except Exception as e:
+            print(f"[GeminiLiveWorker] Could not attach conversation history context: {e}")
+
+        # Dynamic Long-Term SQLite Memory Context Injection
+        try:
+            mem_ctx = MemoryManager().get_relevant_memories(current_subject=tutor_subj, limit=7)
+            if mem_ctx:
+                sys_inst += mem_ctx
+        except Exception as e:
+            print(f"[GeminiLiveWorker] Could not attach memory context: {e}")
 
         # Real-time WebApp context injection
         webapp_ctx = getattr(self.client, "active_webapp_context", {})
@@ -424,7 +533,10 @@ class GeminiLiveWorker(QThread):
             "6. If the user asks to stop or pause voice chat, call 'stop_voice_chat' immediately.\n"
             "7. You can also trigger pet visual animations on yourself ('wave', 'jump', 'failed', 'waiting', 'review', 'idle').\n"
             "8. SCREEN VISION: When the user asks 'What is on my screen?', 'Can you see what I am doing?', 'Explain what is on my screen', or asks a visual question about their active computer screen: IMMEDIATELY call 'capture_user_screen' tool function on your VERY FIRST turn. Once the image is received, describe and assist with what is visible clearly and concisely. ALWAYS base your visual response strictly on the VERY LATEST image frame received in the current turn. Ignore any older image frames from earlier turns.\n"
-            "9. VISUAL POINTING & LASER HIGHLIGHT: When explaining code errors, UI buttons, syntax mistakes, or specific elements on the user's screen: IMMEDIATELY call 'point_to_screen_location(x, y, label)' with normalized coordinates (x: 0.0 to 1.0, y: 0.0 to 1.0) to highlight the exact position with a glowing laser pointer and sonar pulse for the student."
+            "9. VISUAL POINTING & LASER HIGHLIGHT: When explaining code errors, UI buttons, syntax mistakes, or specific elements on the user's screen: IMMEDIATELY call 'point_to_screen_location(x, y, label)' with normalized coordinates (x: 0.0 to 1.0, y: 0.0 to 1.0) to highlight the exact position with a glowing laser pointer and sonar pulse for the student.\n"
+            "10. RECALL PREVIOUS QUESTIONS & MEMORY SEARCH: Call 'recall_previous_questions(limit)' when the student asks what was previously asked, or 'search_learning_memory(query, category)' to search stored academic insights and past discussions.\n"
+            "11. LEARNING MEMORY & PROFILE: Call 'save_student_memory(category, subject, topic, note)' to remember struggles/masteries, 'update_student_profile(name, stage, field_of_study, hobbies, favorite_topics)' to remember student details, or 'clear_student_memory' to clear history.\n"
+            "12. STUDY TIMER: Call 'set_study_timer(duration_seconds, label)' when the student asks to set a timer, reminder, or study countdown (e.g. 'set a 10 min timer', 'remind me in 5 minutes')."
         )
 
         config = types.LiveConnectConfig(
@@ -444,7 +556,12 @@ class GeminiLiveWorker(QThread):
             realtime_input_config=types.RealtimeInputConfig(
                 turn_coverage="TURN_INCLUDES_ONLY_ACTIVITY",
             ),
-            tools=[play_animation, open_website, play_music, stop_voice_chat, navigate_webapp, trigger_puzzle_hint, trigger_pet_action, capture_user_screen, point_to_screen_location]
+            tools=[
+                play_animation, open_website, play_music, stop_voice_chat, navigate_webapp,
+                trigger_puzzle_hint, trigger_pet_action, capture_user_screen, point_to_screen_location,
+                recall_previous_questions, search_learning_memory, update_student_profile,
+                save_student_memory, clear_student_memory, set_study_timer
+            ]
         )
 
         try:
@@ -480,10 +597,32 @@ class GeminiLiveWorker(QThread):
                 print("[GeminiLiveWorker] Connected successfully.")
                 self.client.connection_established.emit()
                 
-                # Automatically send initial academic voice tutor greeting prompt
-                await session.send_realtime_input(
-                    text="Greet me by saying exactly: 'Hi, I am Vedika, what's going on?' and wave to me."
+                # Fetch most recent student question to enable natural follow-up reconnect greeting
+                prev_questions = MemoryManager().get_previous_student_questions(limit=1)
+                prev_q = prev_questions[0].get("text", "") if prev_questions else ""
+                # Filter out trivial greetings/control commands
+                is_meaningful_prev_q = (
+                    bool(prev_q) and len(prev_q.split()) >= 2 and
+                    not any(w in prev_q.lower() for w in ["bye", "stop", "pause", "hello", "hi vedika", "what was my previous", "what did i ask"])
                 )
+
+                if is_meaningful_prev_q and student_name and student_name.lower() != "there":
+                    clean_q = prev_q.strip().rstrip("?").strip()
+                    greeting_text = (
+                        f"Speak this exact sentence warmly out loud: 'Hi {student_name}! Vedika here. Last time you asked about {clean_q} - did that make sense, or should we review it? What are we studying today?' and wave to me."
+                    )
+                elif is_meaningful_prev_q:
+                    clean_q = prev_q.strip().rstrip("?").strip()
+                    greeting_text = (
+                        f"Speak this exact sentence warmly out loud: 'Hi there! Vedika here. Last time we talked about {clean_q} - how is that going? What are we exploring today?' and wave to me."
+                    )
+                elif student_name and student_name.lower() != "there":
+                    greeting_text = f"Speak this exact sentence warmly out loud: 'Hi {student_name}, I am Vedika! What are we exploring today?' and wave to me."
+                else:
+                    greeting_text = "Speak this exact sentence warmly out loud: 'Hi, I am Vedika! What are we exploring today?' and wave to me."
+
+                print(f"[GeminiLiveWorker] Initial greeting prompt: {greeting_text}")
+                await session.send_realtime_input(text=greeting_text)
 
                 # Run audio streaming, receiving, and playing concurrently until session is stopped
                 tasks = [
@@ -732,24 +871,82 @@ class GeminiLiveWorker(QThread):
                                 print("[GeminiLiveWorker] Gemini Server VAD emitted interrupted=True! Halting local speaker.")
                                 self.client.interrupted.emit()
                         
-                        if sc.input_transcription and sc.input_transcription.text:
-                            user_text = sc.input_transcription.text.strip()
+                        # Extract incoming streaming user speech transcription chunks
+                        user_delta = ""
+                        if hasattr(sc, "input_transcription") and sc.input_transcription and getattr(sc.input_transcription, "text", None):
+                            user_delta = sc.input_transcription.text
+                        elif hasattr(sc, "input_audio_transcription") and sc.input_audio_transcription and getattr(sc.input_audio_transcription, "text", None):
+                            user_delta = sc.input_audio_transcription.text
+                        
+                        if user_delta:
+                            self.current_turn_user_transcription += user_delta
+                            user_text = self.current_turn_user_transcription.strip()
                             if user_text:
+                                self.last_user_query = user_text
                                 sentiment = analyze_sentiment(user_text)
-                                print(f"[VoiceTutor] Input transcription: '{user_text}' -> Sentiment: {sentiment['label']} ({sentiment['emoji']})")
+                                self.last_user_sentiment = sentiment
+                                self.client.user_dialogue_buffer = user_text
                                 self.client.user_sentiment_detected.emit(user_text, sentiment)
+                                # Live chunk by chunk user transcript preview on Line 1, status on Line 2
+                                self.client.say_dialogue_requested.emit(user_text, "Thinking... 🤔", 6.0)
                             self.client.thinking_started.emit()
+                        
+                        # Extract incoming streaming AI spoken audio & transcript chunks
+                        ai_delta = ""
+                        if hasattr(sc, "output_transcription") and sc.output_transcription and getattr(sc.output_transcription, "text", None):
+                            ai_delta = sc.output_transcription.text
+                        elif hasattr(sc, "output_audio_transcription") and sc.output_audio_transcription and getattr(sc.output_audio_transcription, "text", None):
+                            ai_delta = sc.output_audio_transcription.text
+
+                        if ai_delta:
+                            self.current_turn_model_text += ai_delta
+                            self.client.text_received.emit(ai_delta)
                         
                         model_turn = sc.model_turn
                         if model_turn:
                             for part in model_turn.parts:
-                                if part.text:
+                                if hasattr(part, "text") and part.text:
+                                    self.current_turn_model_text += part.text
                                     self.client.text_received.emit(part.text)
-                                if part.inline_data:
+                                if hasattr(part, "inline_data") and part.inline_data:
                                     self.client.audio_received.emit(part.inline_data.data)
                         
                         if sc.turn_complete:
                             self.client.turn_completed.emit()
+                            user_q = self.current_turn_user_transcription.strip()
+                            tutor_ans = self.current_turn_model_text.strip()
+                            t_subj = getattr(self.client, "tutor_subject", "general")
+                            t_subj = t_subj if t_subj != "all" else "general"
+
+                            if user_q:
+                                self.in_session_history.append({"role": "student", "text": user_q})
+                                try:
+                                    MemoryManager().log_voice_turn(
+                                        role="student",
+                                        text=user_q,
+                                        sentiment=self.last_user_sentiment,
+                                        subject=t_subj,
+                                        session_id=self.session_id
+                                    )
+                                except Exception as e:
+                                    print(f"[GeminiLiveWorker] Error logging student voice turn: {e}")
+
+                            if tutor_ans:
+                                self.in_session_history.append({"role": "tutor", "text": tutor_ans})
+                                try:
+                                    MemoryManager().log_voice_turn(
+                                        role="tutor",
+                                        text=tutor_ans,
+                                        subject=t_subj,
+                                        session_id=self.session_id
+                                    )
+                                except Exception as e:
+                                    print(f"[GeminiLiveWorker] Error logging tutor voice turn: {e}")
+
+                            # Reset current turn buffers
+                            self.current_turn_user_transcription = ""
+                            self.current_turn_model_text = ""
+                            self.last_user_sentiment = None
                     
                     tc = response.tool_call
                     if tc:
@@ -896,6 +1093,108 @@ class GeminiLiveWorker(QThread):
                                         response={"status": "success", "pointing_at": {"x": x_val, "y": y_val, "label": label_str}}
                                     )
                                 )
+                            elif func_name == "recall_previous_questions":
+                                try:
+                                    limit = int(args.get("limit", 3))
+                                except Exception:
+                                    limit = 3
+                                in_session_questions = [t["text"] for t in self.in_session_history if t["role"] == "student"]
+                                mm = MemoryManager()
+                                db_questions = mm.get_previous_student_questions(limit=limit + 3)
+                                all_questions = []
+                                for q_text in reversed(in_session_questions):
+                                    if q_text not in all_questions:
+                                        all_questions.append(q_text)
+                                for row in db_questions:
+                                    txt = row.get("text", "")
+                                    if txt and txt not in all_questions:
+                                        all_questions.append(txt)
+                                final_list = all_questions[:limit]
+                                print(f"[GeminiLiveWorker] Executing tool recall_previous_questions -> {final_list}")
+                                function_responses.append(
+                                    types.FunctionResponse(
+                                        name=func_name,
+                                        id=fc.id,
+                                        response={
+                                            "status": "success",
+                                            "count": len(final_list),
+                                            "previous_questions": final_list,
+                                            "latest_question": final_list[0] if final_list else "No prior question recorded"
+                                        }
+                                    )
+                                )
+                            elif func_name == "search_learning_memory":
+                                q_str = str(args.get("query", ""))
+                                cat_str = str(args.get("category", "all"))
+                                print(f"[GeminiLiveWorker] Executing tool search_learning_memory: query='{q_str}', category='{cat_str}'")
+                                mm = MemoryManager()
+                                mems = mm.search_memories(query=q_str, category=cat_str)
+                                convs = mm.search_conversation_history(query=q_str, limit=5)
+                                function_responses.append(
+                                    types.FunctionResponse(
+                                        name=func_name,
+                                        id=fc.id,
+                                        response={"status": "success", "memories": mems, "dialogue_matches": convs}
+                                    )
+                                )
+                            elif func_name == "update_student_profile":
+                                n = args.get("name")
+                                st = args.get("stage")
+                                fld = args.get("field_of_study")
+                                hb = args.get("hobbies")
+                                fav = args.get("favorite_topics")
+                                print(f"[GeminiLiveWorker] Executing tool update_student_profile: name={n}, stage={st}, field={fld}")
+                                upm = UserProfileManager()
+                                upm.update_user_info(name=n, stage=st, field_of_study=fld, hobbies=hb, favorite_topics=fav)
+                                function_responses.append(
+                                    types.FunctionResponse(
+                                        name=func_name,
+                                        id=fc.id,
+                                        response={"status": "success", "message": "Student profile updated successfully."}
+                                    )
+                                )
+                            elif func_name == "save_student_memory":
+                                cat = str(args.get("category", "struggling"))
+                                subj = str(args.get("subject", "general"))
+                                top = str(args.get("topic", ""))
+                                note = str(args.get("note", ""))
+                                print(f"[GeminiLiveWorker] Executing tool save_student_memory: [{cat} | {subj}] {top} - '{note}'")
+                                mm = MemoryManager()
+                                res = mm.save_memory(cat, subj, top, note)
+                                function_responses.append(
+                                    types.FunctionResponse(
+                                        name=func_name,
+                                        id=fc.id,
+                                        response={"status": "success" if res else "failed", "saved": {"category": cat, "subject": subj, "topic": top}}
+                                    )
+                                )
+                            elif func_name == "clear_student_memory":
+                                print("[GeminiLiveWorker] Executing tool clear_student_memory")
+                                mm = MemoryManager()
+                                mm.clear_all_memories()
+                                function_responses.append(
+                                    types.FunctionResponse(
+                                        name=func_name,
+                                        id=fc.id,
+                                        response={"status": "success", "message": "All student memories cleared."}
+                                    )
+                                )
+                            elif func_name == "set_study_timer":
+                                try:
+                                    dur = int(args.get("duration_seconds", 300))
+                                except Exception:
+                                    dur = 300
+                                lbl = str(args.get("label", "Study Timer"))
+                                print(f"[GeminiLiveWorker] Executing tool set_study_timer: duration={dur}s, label='{lbl}'")
+                                self.client.timer_requested.emit(dur, lbl)
+                                mins = max(1, dur // 60)
+                                function_responses.append(
+                                    types.FunctionResponse(
+                                        name=func_name,
+                                        id=fc.id,
+                                        response={"status": "success", "timer_started": f"{mins} minutes for {lbl}"}
+                                    )
+                                )
                         
                         if function_responses and self.session and self.client.is_active:
                             try:
@@ -920,13 +1219,16 @@ class GeminiLiveClient(QObject):
     play_music_requested = Signal(str)  # query string
     stop_voice_requested = Signal()  # stop signal
     navigate_webapp_requested = Signal(str)  # route string
+    trigger_hint_requested = Signal(int)  # hint level
     trigger_action_requested = Signal(str, str)  # action, target
     screen_capture_requested = Signal(object, object)  # future, loop
     point_location_requested = Signal(float, float, str, str)  # x, y, label, action
+    timer_requested = Signal(int, str)  # duration_seconds, label
     session_activated = Signal()
     speaking_started = Signal()
     speaking_stopped = Signal()
 
+    say_dialogue_requested = Signal(str, str, float)  # user_text, ai_text, duration
     user_sentiment_detected = Signal(str, dict)  # user_text, sentiment dict
 
     # Communication bridge signals (Worker -> Client)
@@ -953,6 +1255,7 @@ class GeminiLiveClient(QObject):
         
         self.is_active = False
         self.text_buffer = ""
+        self.user_dialogue_buffer = ""
         self.status = "disconnected"
         self.gemini_keys = []
         self.current_key_index = 0
@@ -977,6 +1280,15 @@ class GeminiLiveClient(QObject):
         # Audio prebuffering layout (pyaudio handles buffering natively)
         self.playback_buffer = bytearray()
         
+        # Sentence-by-Sentence Teleprompter streaming state
+        self.sentence_chunks = []
+        self.current_chunk_index = 0
+        self.current_chunk_words_displayed = 0
+        self.chunk_pause_ticks = 0
+        self.word_stream_timer = QTimer(self)
+        self.word_stream_timer.setInterval(80) # 80ms per word tick (~12.5 words/sec matching natural speech)
+        self.word_stream_timer.timeout.connect(self._step_word_stream)
+
         # Dedicated timer to re-enable mic after speaking (moved thread safe)
         self.mic_enable_timer = QTimer(self)
         self.mic_enable_timer.setSingleShot(True)
@@ -1207,15 +1519,82 @@ class GeminiLiveClient(QObject):
 
     # Unused on_ready_read_mic slot (mic capture migrated to read_mic_loop inside GeminiLiveWorker).
 
+    def _group_into_sentence_chunks(self, text, max_words_per_chunk=10):
+        """Groups raw streamed text into crisp, readable sentence chunks."""
+        import re
+        if not text or not text.strip():
+            return []
+        
+        raw_parts = [p.strip() for p in re.split(r'(?<=[.!?\n])\s+', text.strip()) if p.strip()]
+        if not raw_parts:
+            return [text.strip()]
+            
+        chunks = []
+        current_chunk = ""
+        for part in raw_parts:
+            if not current_chunk:
+                current_chunk = part
+            else:
+                combined_words = len((current_chunk + " " + part).split())
+                if combined_words <= max_words_per_chunk:
+                    current_chunk += " " + part
+                else:
+                    chunks.append(current_chunk)
+                    current_chunk = part
+        if current_chunk:
+            chunks.append(current_chunk)
+        return chunks
+
+    def _step_word_stream(self):
+        """Streams AI speech bubble sentence-by-sentence in sync with voice audio playback."""
+        if not self.is_active:
+            self.word_stream_timer.stop()
+            return
+            
+        self.sentence_chunks = self._group_into_sentence_chunks(self.text_buffer)
+        if not self.sentence_chunks:
+            return
+
+        if self.current_chunk_index >= len(self.sentence_chunks):
+            if self.turn_completed_received:
+                self.word_stream_timer.stop()
+            return
+
+        active_chunk = self.sentence_chunks[self.current_chunk_index]
+        chunk_words = active_chunk.split()
+
+        # Stream words progressively within the active sentence
+        if self.current_chunk_words_displayed < len(chunk_words):
+            self.current_chunk_words_displayed += 1
+            visible_words = chunk_words[:self.current_chunk_words_displayed]
+            current_text = " ".join(visible_words)
+            user_txt = getattr(self, "user_dialogue_buffer", "")
+            if user_txt:
+                self.say_dialogue_requested.emit(user_txt, current_text, 7.0)
+            else:
+                self.say_requested.emit(current_text, 7.0)
+        else:
+            # Current sentence is completely displayed
+            # If more sentences exist from the speaker, wait a brief breathing pause (~320ms) then advance to next sentence!
+            if self.current_chunk_index + 1 < len(self.sentence_chunks):
+                if self.chunk_pause_ticks < 4:
+                    self.chunk_pause_ticks += 1
+                else:
+                    self.chunk_pause_ticks = 0
+                    self.current_chunk_index += 1
+                    self.current_chunk_words_displayed = 0
+            else:
+                if self.turn_completed_received:
+                    self.word_stream_timer.stop()
+
     @Slot(str)
     def on_text_received(self, text):
         self.text_buffer += text
-        # Bug 5 Sync: delay bubble emission by 150ms buffer latency
-        QTimer.singleShot(150, lambda: self.emit_speech_bubble(text))
-
-    def emit_speech_bubble(self, text):
-        if self.is_active:
-            self.say_requested.emit(self.text_buffer, 5.0)
+        if not self.word_stream_timer.isActive():
+            self.current_chunk_index = 0
+            self.current_chunk_words_displayed = 0
+            self.chunk_pause_ticks = 0
+            self.word_stream_timer.start()
 
     @Slot(bytes)
     def on_audio_received(self, audio_bytes):
@@ -1240,7 +1619,20 @@ class GeminiLiveClient(QObject):
 
     @Slot()
     def on_turn_completed(self):
+        # Keep the final sentence or full thought pinned for reading
+        self.sentence_chunks = self._group_into_sentence_chunks(self.text_buffer)
+        if self.sentence_chunks:
+            final_sentence = self.sentence_chunks[-1]
+            user_txt = getattr(self, "user_dialogue_buffer", "")
+            if user_txt:
+                self.say_dialogue_requested.emit(user_txt, final_sentence, 8.0)
+            else:
+                self.say_requested.emit(final_sentence, 8.0)
+        self.word_stream_timer.stop()
         self.text_buffer = ""
+        self.current_chunk_index = 0
+        self.current_chunk_words_displayed = 0
+        self.chunk_pause_ticks = 0
         self.turn_completed_received = True
         
         # Check if speaker has already finished playing all chunks
@@ -1287,6 +1679,11 @@ class GeminiLiveClient(QObject):
                     except Exception:
                         break
 
+        self.word_stream_timer.stop()
+        self.sentence_chunks = []
+        self.current_chunk_index = 0
+        self.current_chunk_words_displayed = 0
+        self.chunk_pause_ticks = 0
         self.text_buffer = ""
         self.say_requested.emit("...", 1.5)
 

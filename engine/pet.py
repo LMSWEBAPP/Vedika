@@ -20,8 +20,9 @@ class Pet:
 
         # Read dimensions
         sprite_cfg = config.get("sprite", {})
-        self.width = sprite_cfg.get("width", 128)
-        self.height = sprite_cfg.get("height", 128)
+        base_scale = float(config.get("scale", 1.0))
+        self.width = max(32, int(sprite_cfg.get("width", 128) * base_scale))
+        self.height = max(32, int(sprite_cfg.get("height", 128) * base_scale))
 
         # Screen boundaries (updated dynamically by transparent window)
         self.screen_w = 1920
@@ -52,9 +53,13 @@ class Pet:
         self.interaction = InteractionManager(self)
         self.renderer = Renderer(self)
 
-    def say(self, text, duration=2.5):
-        """Triggers a text speech bubble."""
-        self.renderer.set_speech(text, duration)
+    def say(self, text, duration=2.5, user_text=None):
+        """Triggers a text speech bubble (supports optional user_text for dual live chat subtitles)."""
+        self.renderer.set_speech(text, duration, user_text=user_text)
+
+    def set_dialogue(self, user_text, ai_text, duration=5.0):
+        """Sets live dual-line subtitles for User and AI dialogue."""
+        self.renderer.set_dialogue(user_text, ai_text, duration)
 
     def play_sound(self, sound_name):
         """

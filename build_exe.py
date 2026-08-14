@@ -30,6 +30,7 @@ def build_standalone_exe():
         "--hidden-import=PySide6.QtMultimedia",
         "--hidden-import=google.genai",
         "--hidden-import=engine.user_profile",
+        "--hidden-import=engine.memory",
         "--hidden-import=engine.presentation_manager",
         "main.py"
     ]

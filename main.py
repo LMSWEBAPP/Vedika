@@ -148,6 +148,7 @@ class DesktopPetApp(QObject):
         
         # Connect signals for thread-safe UI updates
         self.gemini_client.say_requested.connect(self.pet.say)
+        self.gemini_client.say_dialogue_requested.connect(self.pet.set_dialogue)
         self.gemini_client.animation_requested.connect(self.set_active_animation)
         self.gemini_client.open_url_requested.connect(self.open_url_by_gemini)
         self.gemini_client.play_music_requested.connect(self.play_music_by_gemini)
@@ -156,6 +157,7 @@ class DesktopPetApp(QObject):
         self.gemini_client.navigate_webapp_requested.connect(self.on_navigate_webapp_requested)
         self.gemini_client.trigger_hint_requested.connect(self.on_trigger_hint_requested)
         self.gemini_client.trigger_action_requested.connect(self.on_trigger_action_requested)
+        self.gemini_client.timer_requested.connect(self.on_timer_requested)
 
         # Initialize PointerOverlay & ScreenCapturer on Main GUI Thread
         from ui.pointer_overlay import PointerOverlay
@@ -331,11 +333,12 @@ class DesktopPetApp(QObject):
             self.pet.interaction.handle_hover(cursor.x(), cursor.y())
 
             # 3. Align physical window position with coordinates
-            # Window top-left is shifted up by bubble offset * scale
+            # Window top-left is shifted up by bubble offset * scale and centered horizontally
             if not self.pet.physics.is_dragging:
                 bubble_offset = int(self.window.bubble_offset * self.scale_factor)
+                pet_offset_x = (self.window.width() - int(self.pet.physics.width)) // 2
                 self.window.move(
-                    int(self.pet.physics.x), 
+                    int(self.pet.physics.x - pet_offset_x), 
                     int(self.pet.physics.y - bubble_offset)
                 )
 
@@ -579,6 +582,15 @@ class DesktopPetApp(QObject):
                 "type": "PET_ACTION_REQUESTED",
                 "payload": {"action": action, "target": target}
             }))
+
+    @Slot(int, str)
+    def on_timer_requested(self, duration_seconds, label="Study Timer"):
+        """Starts aesthetic study timer countdown beneath the pet when requested by voice or user."""
+        print(f"[Main] Timer requested: {duration_seconds}s ({label})")
+        if self.pet and hasattr(self.pet, "renderer"):
+            self.pet.renderer.start_timer(duration_seconds, label)
+            mins = max(1, duration_seconds // 60)
+            self.pet.say(f"Timer set for {mins} mins! ⏱️", duration=2.5)
 
     @Slot(str)
     def _do_open_url(self, target_url):

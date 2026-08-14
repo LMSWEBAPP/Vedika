@@ -1,4 +1,7 @@
-from PySide6.QtWidgets import QWidget, QMenu
+from PySide6.QtWidgets import (
+    QWidget, QMenu, QDialog, QVBoxLayout, QHBoxLayout, QLabel,
+    QLineEdit, QComboBox, QPushButton, QTabWidget, QTextBrowser, QMessageBox
+)
 from PySide6.QtGui import QPainter, QAction, QCursor, QShortcut, QKeySequence
 from PySide6.QtCore import Qt, QPoint
 
@@ -8,7 +11,8 @@ class TransparentWindow(QWidget):
         self.pet = pet
         self.main_app = main_app
         self.scale_factor = scale_factor
-        self.bubble_offset = 45  # Height for speech bubble offset
+        self.bubble_offset = 48  # Height for 2-line speech bubble offset
+        self.timer_offset = 26   # Height for bottom timer capsule
 
         # Window styling
         self.setWindowFlags(
@@ -95,13 +99,14 @@ class TransparentWindow(QWidget):
 
     def update_window_size(self):
         """Updates the physical window size and physics bounds based on scale."""
-        scaled_w = int(self.pet.width * self.scale_factor)
-        scaled_h = int((self.pet.height + self.bubble_offset) * self.scale_factor)
+        scaled_pet_w = int(self.pet.width * self.scale_factor)
+        window_w = max(scaled_pet_w + 140, int(290 * self.scale_factor))
+        scaled_h = int((self.pet.height + self.bubble_offset + self.timer_offset) * self.scale_factor)
         
-        self.setFixedSize(scaled_w, scaled_h)
+        self.setFixedSize(window_w, scaled_h)
         
         # Propagate scaling sizes to the physics engine bounds
-        self.pet.physics.width = int(self.pet.width * self.scale_factor)
+        self.pet.physics.width = scaled_pet_w
         self.pet.physics.height = int(self.pet.height * self.scale_factor)
 
     def paintEvent(self, event):
@@ -110,7 +115,7 @@ class TransparentWindow(QWidget):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         
-        self.pet.renderer.draw(painter, self.scale_factor)
+        self.pet.renderer.draw(painter, self.scale_factor, window_w=self.width())
         painter.end()
 
     # --- Mouse Event Triggers ---
@@ -131,8 +136,9 @@ class TransparentWindow(QWidget):
             new_window_x = global_pos.x() - self.drag_offset.x()
             new_window_y = global_pos.y() - self.drag_offset.y()
             
-            # Calculate where the pet body box is located (shifted down by speech bubble height)
-            pet_x = new_window_x
+            # Calculate where the pet body box is located
+            pet_offset_x = (self.width() - self.pet.physics.width) // 2
+            pet_x = new_window_x + pet_offset_x
             pet_y = new_window_y + int(self.bubble_offset * self.scale_factor)
             
             self.pet.interaction.handle_drag(pet_x, pet_y)
@@ -238,6 +244,20 @@ class TransparentWindow(QWidget):
         vyom_act = menu.addAction("🚀 Open Vyomantha (vyomanta-ai.vercel.app)")
         vyom_act.triggered.connect(self.main_app.open_vyomantha_website)
 
+        # 3b-2. Study Timer Submenu
+        timer_menu = menu.addMenu("⏱️ Study Timer")
+        timer_menu.setStyleSheet(menu.styleSheet())
+        t5 = timer_menu.addAction("5 mins (Quick Quiz)")
+        t5.triggered.connect(lambda: self.start_timer_duration(300, "Quick Quiz"))
+        t15 = timer_menu.addAction("15 mins (Practice Session)")
+        t15.triggered.connect(lambda: self.start_timer_duration(900, "Practice"))
+        t25 = timer_menu.addAction("25 mins (Pomodoro Focus)")
+        t25.triggered.connect(lambda: self.start_timer_duration(1500, "Pomodoro"))
+        if hasattr(self.pet, "renderer") and self.pet.renderer.timer_active:
+            timer_menu.addSeparator()
+            t_stop = timer_menu.addAction("🛑 Stop Active Timer")
+            t_stop.triggered.connect(self.pet.renderer.stop_timer)
+
         # 3c. Gemini Live Voice Chat Toggle (Alt+V)
         client = self.main_app.gemini_client
         if client.status == "disconnected":
@@ -308,6 +328,14 @@ class TransparentWindow(QWidget):
             pet_menu.addAction(action)
 
         menu.addSeparator()
+
+        # 4b. Student Profile & Memory Manager Dialog
+        profile_act = menu.addAction("👤 Student Profile & Memory")
+        profile_act.triggered.connect(self.open_student_profile_dialog)
+
+        # 4c. Clear Long-Term Memory (Privacy)
+        clear_mem = menu.addAction("🗑️ Clear Learning Memory")
+        clear_mem.triggered.connect(self.clear_student_memory)
 
         # 5. Position Reset
         reset = menu.addAction("Reset Position")
@@ -388,6 +416,29 @@ class TransparentWindow(QWidget):
             self.pet.say(f"Tutor Subject set to {name}! 🎓", duration=2.5)
         print(f"[TransparentWindow] Changed tutor subject to {subj}")
 
+    def open_student_profile_dialog(self):
+        """Opens the Student Profile & Memory Manager dialog."""
+        dialog = StudentProfileDialog(self)
+        dialog.exec()
+
+    def clear_student_memory(self):
+        """Clears all stored student learning memories and conversation history from SQLite."""
+        try:
+            from engine.memory import MemoryManager
+            MemoryManager().clear_all_memories()
+            if self.pet:
+                self.pet.say("Memory reset! Starting fresh. 🧠", duration=3.0)
+        except Exception as e:
+            print(f"[TransparentWindow] Error clearing memory: {e}")
+
+    def start_timer_duration(self, seconds: int, label: str = "Study Timer"):
+        """Starts a visual countdown timer capsule beneath the desktop pet."""
+        if hasattr(self.pet, "renderer"):
+            self.pet.renderer.start_timer(seconds, label)
+            mins = seconds // 60
+            if self.pet:
+                self.pet.say(f"Timer set for {mins} mins! ⏱️", duration=2.5)
+
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Tab:
             self.main_app.cycle_animation()
@@ -404,3 +455,215 @@ class TransparentWindow(QWidget):
             event.accept()
         else:
             super().keyPressEvent(event)
+
+
+class StudentProfileDialog(QDialog):
+    """Modern dark-themed Student Profile & Memory Manager dialog."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Student Profile & Memory - Vedika AI")
+        self.setFixedSize(540, 500)
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #12131a;
+                color: #e2e2ec;
+                font-family: 'Segoe UI', sans-serif;
+            }
+            QLabel {
+                color: #b0b4c8;
+                font-size: 12px;
+                font-weight: 500;
+            }
+            QLineEdit, QComboBox {
+                background-color: #1c1d28;
+                color: #ffffff;
+                border: 1px solid #2d324d;
+                border-radius: 6px;
+                padding: 6px 10px;
+                font-size: 13px;
+            }
+            QLineEdit:focus, QComboBox:focus {
+                border: 1px solid #4f7df9;
+            }
+            QTabWidget::pane {
+                border: 1px solid #2d324d;
+                background-color: #161722;
+                border-radius: 6px;
+            }
+            QTabBar::tab {
+                background-color: #1c1d28;
+                color: #8c90a4;
+                padding: 8px 16px;
+                border-top-left-radius: 6px;
+                border-top-right-radius: 6px;
+                margin-right: 4px;
+            }
+            QTabBar::tab:selected {
+                background-color: #2a3356;
+                color: #ffffff;
+                font-weight: bold;
+            }
+            QTextBrowser {
+                background-color: #161722;
+                color: #d1d5e5;
+                border: none;
+                padding: 8px;
+                font-size: 12px;
+            }
+            QPushButton {
+                background-color: #3b5bdb;
+                color: #ffffff;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-weight: bold;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: #4c6ef5;
+            }
+            QPushButton#dangerBtn {
+                background-color: #c92a2a;
+            }
+            QPushButton#dangerBtn:hover {
+                background-color: #e03131;
+            }
+            QPushButton#cancelBtn {
+                background-color: #2b2c3d;
+            }
+            QPushButton#cancelBtn:hover {
+                background-color: #3a3b4f;
+            }
+        """)
+
+        from engine.user_profile import UserProfileManager
+        from engine.memory import MemoryManager
+
+        self.upm = UserProfileManager()
+        self.mm = MemoryManager()
+        user = self.upm.profile.get("user", {})
+        learned = self.upm.profile.get("learned_traits", {})
+
+        layout = QVBoxLayout(self)
+
+        tabs = QTabWidget()
+        layout.addWidget(tabs)
+
+        # Tab 1: Profile
+        prof_widget = QWidget()
+        p_layout = QVBoxLayout(prof_widget)
+        p_layout.setSpacing(8)
+
+        p_layout.addWidget(QLabel("Student Name:"))
+        self.name_edit = QLineEdit(user.get("name", "Alex"))
+        p_layout.addWidget(self.name_edit)
+
+        p_layout.addWidget(QLabel("Stage / Grade Level:"))
+        self.stage_combo = QComboBox()
+        self.stage_combo.addItems(["School", "College", "PG", "Self-Learner"])
+        curr_stage = user.get("stage", "College")
+        idx = self.stage_combo.findText(curr_stage)
+        if idx >= 0:
+            self.stage_combo.setCurrentIndex(idx)
+        p_layout.addWidget(self.stage_combo)
+
+        p_layout.addWidget(QLabel("Field of Study / Subjects:"))
+        self.field_edit = QLineEdit(user.get("field_of_study", "Computer Science"))
+        p_layout.addWidget(self.field_edit)
+
+        p_layout.addWidget(QLabel("Key Hobbies (comma-separated):"))
+        self.hobbies_edit = QLineEdit(", ".join(user.get("hobbies", [])))
+        p_layout.addWidget(self.hobbies_edit)
+
+        p_layout.addWidget(QLabel("Favorite / Focus Topics (comma-separated):"))
+        self.favs_edit = QLineEdit(", ".join(learned.get("favorite_topics", [])))
+        p_layout.addWidget(self.favs_edit)
+        p_layout.addStretch()
+
+        tabs.addTab(prof_widget, "👤 Profile")
+
+        # Tab 2: Voice Chat History
+        chat_widget = QWidget()
+        c_layout = QVBoxLayout(chat_widget)
+        self.chat_browser = QTextBrowser()
+        turns = self.mm.get_recent_conversations(limit=25)
+        if turns:
+            html = ""
+            for t in turns:
+                is_student = t["role"] == "student"
+                color = "#4dabf7" if is_student else "#69db7c"
+                speaker = "Student" if is_student else "Vedika (Tutor)"
+                time_str = t.get("created_at", "")[:19]
+                html += f"<div style='margin-bottom: 8px;'><b style='color: {color};'>[{time_str}] {speaker}:</b><br><span style='color: #e2e2ec;'>{t['text']}</span></div>"
+            self.chat_browser.setHtml(html)
+        else:
+            self.chat_browser.setPlainText("No voice chat history recorded yet.")
+        c_layout.addWidget(self.chat_browser)
+        tabs.addTab(chat_widget, "🎙️ Voice History")
+
+        # Tab 3: Academic Concept Memories
+        mem_widget = QWidget()
+        m_layout = QVBoxLayout(mem_widget)
+        self.mem_browser = QTextBrowser()
+        mems = self.mm.search_memories(query="", category="all")
+        if mems:
+            html = ""
+            for m in mems:
+                cat = m["category"].upper()
+                subj = m["subject"].capitalize()
+                top = m["topic"]
+                note = m["note"]
+                cnt = m["occurrence_count"]
+                cnt_str = f" (x{cnt})" if cnt > 1 else ""
+                html += f"<div style='margin-bottom: 8px;'><b style='color: #ffd43b;'>[{cat} | {subj}] {top}{cnt_str}:</b><br><span style='color: #e2e2ec;'>{note}</span></div>"
+            self.mem_browser.setHtml(html)
+        else:
+            self.mem_browser.setPlainText("No concept memories recorded yet.")
+        m_layout.addWidget(self.mem_browser)
+        tabs.addTab(mem_widget, "🧠 Concept Memory")
+
+        # Bottom Buttons
+        btn_layout = QHBoxLayout()
+        clear_btn = QPushButton("Clear All Memory")
+        clear_btn.setObjectName("dangerBtn")
+        clear_btn.clicked.connect(self.clear_memory)
+        btn_layout.addWidget(clear_btn)
+
+        btn_layout.addStretch()
+
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.setObjectName("cancelBtn")
+        cancel_btn.clicked.connect(self.reject)
+        btn_layout.addWidget(cancel_btn)
+
+        save_btn = QPushButton("Save Profile")
+        save_btn.clicked.connect(self.save_profile)
+        btn_layout.addWidget(save_btn)
+
+        layout.addLayout(btn_layout)
+
+    def save_profile(self):
+        name = self.name_edit.text().strip()
+        stage = self.stage_combo.currentText().strip()
+        field = self.field_edit.text().strip()
+        hobbies = [h.strip() for h in self.hobbies_edit.text().split(",") if h.strip()]
+        favs = [f.strip() for f in self.favs_edit.text().split(",") if f.strip()]
+
+        self.upm.update_user_info(
+            name=name if name else "Alex",
+            stage=stage if stage else "College",
+            field_of_study=field if field else "Computer Science",
+            hobbies=hobbies,
+            favorite_topics=favs
+        )
+        self.accept()
+
+    def clear_memory(self):
+        reply = QMessageBox.question(
+            self, "Clear Memory", "Are you sure you want to clear all learning memories and voice history?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self.mm.clear_all_memories()
+            self.chat_browser.setPlainText("All conversation memories cleared.")
+            self.mem_browser.setPlainText("All concept memories cleared.")

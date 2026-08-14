@@ -12727,3 +12727,31 @@ Traceback (most recent call last):
                ^^^^^^^^^^^^
 NameError: name 'QApplication' is not defined
 
+
+--- Crash Log [Thu Aug 13 21:46:18 2026] ---
+Traceback (most recent call last):
+  File "E:\vyomantha\vyomanta-pet\bot-v2\Vedika\main.py", line 1022, in <module>
+    app = DesktopPetApp()
+          ^^^^^^^^^^^^^^^
+  File "E:\vyomantha\vyomanta-pet\bot-v2\Vedika\main.py", line 157, in __init__
+    self.gemini_client.trigger_hint_requested.connect(self.on_trigger_hint_requested)
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'GeminiLiveClient' object has no attribute 'trigger_hint_requested'. Did you mean: 'trigger_action_requested'?
+
+
+--- Crash Log [Thu Aug 13 21:47:30 2026] ---
+Traceback (most recent call last):
+  File "<string>", line 8, in <module>
+  File "E:\vyomantha\vyomanta-pet\bot-v2\Vedika\main.py", line 84, in __init__
+    self.app = QApplication(sys.argv)
+               ^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: libshiboken: Please destroy the QApplication singleton before creating a new QApplication instance.
+
+
+--- Crash Log [Fri Aug 14 10:51:47 2026] ---
+Traceback (most recent call last):
+  File "E:\vyomantha\vyomanta-pet\bot-v2\Vedika\main.py", line 309, in game_loop
+    def game_loop(self):
+    
+KeyboardInterrupt
+

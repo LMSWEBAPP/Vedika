@@ -79,3 +79,18 @@ MANIFEST
 *.njsproj
 *.sln
 *.swp
+
+# ==========================================
+# Local SQLite Databases & Logs
+# ==========================================
+*.db
+*.sqlite
+*.sqlite3
+*.db-wal
+*.db-shm
+*.log
+crash.log
+data/*.db
+data/*.db-wal
+data/*.db-shm
+scratch/
