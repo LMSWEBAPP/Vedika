@@ -119,8 +119,8 @@ with open(path, 'w') as f:
     json.dump(config, f, indent=4)
 "
 
-# Set default active site
-echo "lms.render" > sites/currentsite.txt
+# Default active site is set via bench use
+bench use lms.render
 
 # Check if the database has tables and is fully initialized (checks for tabUser table)
 echo "Checking database initialization state..."
@@ -214,13 +214,17 @@ done
 
 # Shutdown the dummy server to free port for Frappe Bench
 echo "Stopping dummy server..."
-kill -9 "$DUMMY_PID" 2>/dev/null || true
-DUMMY_PID=""
-sleep 2
+if [ -n "$DUMMY_PID" ]; then
+    kill "$DUMMY_PID" 2>/dev/null || true
+    wait "$DUMMY_PID" 2>/dev/null || true
+    DUMMY_PID=""
+fi
+sleep 1
 
 # Update Procfile port mapping to Render's dynamic binding
-sed -i "s/bench serve.*/bench serve --port ${PORT:-8000} --noreload/g" ./Procfile
+sed -i "s/bench serve.*/bench serve --host 0.0.0.0 --port ${PORT:-8000} --noreload/g" ./Procfile
 
-# Start the Frappe Bench server (binds instantly to port 8000/dynamic port)
-echo "Starting Frappe Bench web server on port ${PORT:-8000}..."
-bench --site lms.render serve --port "${PORT:-8000}" --noreload
+# Start the Frappe Bench server (binds to 0.0.0.0 for external routing)
+echo "Starting Frappe Bench web server on 0.0.0.0:${PORT:-8000}..."
+bench --site lms.render serve --host 0.0.0.0 --port "${PORT:-8000}" --noreload
+
