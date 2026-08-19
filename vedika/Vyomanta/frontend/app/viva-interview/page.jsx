@@ -7,7 +7,7 @@ import {
   AlertCircle, ShieldAlert, CheckCircle, Volume2, VolumeX, RotateCcw, 
   BookOpen, Code, Brain, Settings, Sparkles, Loader2, FlaskConical, 
   Upload, Mic, MicOff, Check, RefreshCw, Printer, AlertTriangle, FileCheck,
-  Edit3, ListFilter, Gauge, Zap, Search, Activity, BarChart2
+  Edit3, ListFilter, Gauge, Zap, Search, Activity, BarChart2, Trash2
 } from 'lucide-react';
 import { useMediaQuery, isMobileMQ } from '@/lib/useMediaQuery';
 import { getJwtToken } from '@/lib/jwtCache';
@@ -63,6 +63,16 @@ export default function VivaInterviewPage() {
   const recognitionRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
+  const isRecordingRef = useRef(false);
+  const userAnswerRef = useRef('');
+  const baseTextRef = useRef('');
+  const sessionFinalRef = useRef('');
+  const silenceTimeoutRef = useRef(null);
+
+  // Keep userAnswerRef synchronized with state for callbacks
+  useEffect(() => {
+    userAnswerRef.current = userAnswer;
+  }, [userAnswer]);
 
   // Setup Presets
   const subjects = ['Physics', 'Chemistry', 'Biology', 'Computer Science', 'Mathematics'];
@@ -90,45 +100,37 @@ export default function VivaInterviewPage() {
     }
   }, []);
 
-  // Initialize Speech Recognition
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (SpeechRecognition) {
-        const recognition = new SpeechRecognition();
-        recognition.continuous = true;
-        recognition.interimResults = true;
-        recognition.lang = 'en-US';
-
-        recognition.onresult = (event) => {
-          let fullFinal = '';
-          let fullInterim = '';
-          for (let i = 0; i < event.results.length; ++i) {
-            const res = event.results[i];
-            if (res.isFinal) {
-              fullFinal += res[0].transcript + ' ';
-            } else {
-              fullInterim += res[0].transcript;
-            }
-          }
-          const combined = (fullFinal + fullInterim).trim();
-          if (combined) {
-            setUserAnswer(combined);
-          }
-        };
-
-        recognition.onerror = (event) => {
-          console.warn('[SpeechRecognition] error:', event.error);
-          setIsRecording(false);
-        };
-
-        recognition.onend = () => {
-          setIsRecording(false);
-        };
-
-        recognitionRef.current = recognition;
-      }
+  // Teardown speech recognition and reset flags
+  const cleanupRecognition = () => {
+    isRecordingRef.current = false;
+    if (silenceTimeoutRef.current) {
+      clearTimeout(silenceTimeoutRef.current);
+      silenceTimeoutRef.current = null;
     }
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.onresult = null;
+        recognitionRef.current.onerror = null;
+        recognitionRef.current.onend = null;
+        recognitionRef.current.abort();
+      } catch (e) {}
+      recognitionRef.current = null;
+    }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      try { mediaRecorderRef.current.stop(); } catch (e) {}
+      mediaRecorderRef.current = null;
+    }
+    setIsRecording(false);
+  };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      cleanupRecognition();
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+    };
   }, []);
 
   // Text-To-Speech Output
@@ -150,74 +152,213 @@ export default function VivaInterviewPage() {
     }
   };
 
-  // Toggle Microphone (Start / Stop Recording)
-  const toggleRecording = async () => {
-    if (isRecording) {
-      if (recognitionRef.current) {
-        try { recognitionRef.current.stop(); } catch {}
-      }
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-        mediaRecorderRef.current.stop();
-      }
-      setIsRecording(false);
-    } else {
-      setUserAnswer('');
-      setIsRecording(true);
+  // Start Web Speech API Recognition with incremental turn accumulation
+  const startSpeechRecognition = (initialBaseText = '') => {
+    if (typeof window === 'undefined') return;
 
+    // Teardown any existing instance first
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.onresult = null;
+        recognitionRef.current.onerror = null;
+        recognitionRef.current.onend = null;
+        recognitionRef.current.abort();
+      } catch (e) {}
+      recognitionRef.current = null;
+    }
+
+    baseTextRef.current = initialBaseText;
+    sessionFinalRef.current = '';
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (SpeechRecognition) {
+      try {
+        const recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'en-US';
+
+        recognition.onstart = () => {
+          setIsRecording(true);
+          isRecordingRef.current = true;
+        };
+
+        recognition.onresult = (event) => {
+          let interim = '';
+          let newlyFinalized = '';
+
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            const res = event.results[i];
+            const transcript = res[0]?.transcript || '';
+            if (res.isFinal) {
+              newlyFinalized += transcript + ' ';
+            } else {
+              interim += transcript;
+            }
+          }
+
+          if (newlyFinalized) {
+            sessionFinalRef.current = (sessionFinalRef.current + ' ' + newlyFinalized).replace(/\s+/g, ' ').trim();
+          }
+
+          const curFinal = sessionFinalRef.current;
+          const curInterim = interim.trim();
+
+          let speech = curFinal;
+          if (curInterim) {
+            speech = speech ? `${speech} ${curInterim}` : curInterim;
+          }
+
+          const base = (baseTextRef.current || '').trim();
+          let combined = base;
+          if (speech) {
+            combined = base ? `${base} ${speech}` : speech;
+          }
+
+          setUserAnswer(combined);
+        };
+
+        recognition.onerror = (event) => {
+          if (event.error === 'no-speech' || event.error === 'aborted') {
+            return;
+          }
+          console.warn('[SpeechRecognition] error:', event.error);
+          if (event.error === 'not-allowed') {
+            setIsRecording(false);
+            isRecordingRef.current = false;
+          }
+        };
+
+        recognition.onend = () => {
+          // If the user hasn't explicitly stopped, restart seamlessly on silence timeout
+          if (isRecordingRef.current) {
+            baseTextRef.current = userAnswerRef.current;
+            sessionFinalRef.current = '';
+
+            try {
+              recognition.start();
+            } catch (err) {
+              setTimeout(() => {
+                if (isRecordingRef.current) {
+                  startSpeechRecognition(userAnswerRef.current);
+                }
+              }, 250);
+            }
+          } else {
+            setIsRecording(false);
+          }
+        };
+
+        recognitionRef.current = recognition;
+        recognition.start();
+        setIsRecording(true);
+        isRecordingRef.current = true;
+      } catch (e) {
+        console.warn('[SpeechRecognition] startup failed, falling back:', e);
+        startMediaRecorderFallback();
+      }
+    } else {
+      startMediaRecorderFallback();
+    }
+  };
+
+  // Fallback MediaRecorder for unsupported browsers
+  const startMediaRecorderFallback = async () => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert("Speech recognition is not supported in this browser. Please type your answer or use Google Chrome / Microsoft Edge.");
+      setIsRecording(false);
+      isRecordingRef.current = false;
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) audioChunksRef.current.push(event.data);
+      };
+
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        stream.getTracks().forEach(track => track.stop());
+
+        const reader = new FileReader();
+        reader.onloadend = async () => {
+          try {
+            const token = await getJwtToken();
+            const res = await fetch('/api/viva-interview', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify({
+                action: 'transcribe-audio',
+                audioBase64: reader.result,
+                audioMimeType: 'audio/webm'
+              })
+            });
+            const data = await res.json();
+            if (data.text) {
+              const base = baseTextRef.current ? baseTextRef.current.trim() : '';
+              const newText = base ? `${base} ${data.text.trim()}` : data.text.trim();
+              setUserAnswer(newText);
+              baseTextRef.current = newText;
+            }
+          } catch (err) {
+            console.error('[Audio Transcribe Error]:', err);
+          }
+        };
+        reader.readAsDataURL(audioBlob);
+      };
+
+      mediaRecorder.start();
+      mediaRecorderRef.current = mediaRecorder;
+      setIsRecording(true);
+      isRecordingRef.current = true;
+    } catch (err) {
+      console.warn('[MediaRecorder Error]:', err);
+      setIsRecording(false);
+      isRecordingRef.current = false;
+    }
+  };
+
+  // Toggle Microphone (Start / Stop Recording)
+  const toggleRecording = () => {
+    if (isRecording || isRecordingRef.current) {
+      cleanupRecognition();
+    } else {
       if (typeof window !== 'undefined' && window.speechSynthesis) {
         window.speechSynthesis.cancel();
         setIsSpeaking(false);
       }
+      startSpeechRecognition(userAnswer);
+    }
+  };
 
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.start();
-        } catch (e) {
-          console.warn('[SpeechRecognition] start err:', e);
-        }
-      } else if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          const mediaRecorder = new MediaRecorder(stream);
-          audioChunksRef.current = [];
-          mediaRecorder.ondataavailable = (event) => {
-            if (event.data.size > 0) audioChunksRef.current.push(event.data);
-          };
-          mediaRecorder.onstop = async () => {
-            const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-            stream.getTracks().forEach(track => track.stop());
-            
-            const reader = new FileReader();
-            reader.onloadend = async () => {
-              try {
-                const token = await getJwtToken();
-                const res = await fetch('/api/viva-interview', {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                  },
-                  body: JSON.stringify({
-                    action: 'transcribe-audio',
-                    audioBase64: reader.result,
-                    audioMimeType: 'audio/webm'
-                  })
-                });
-                const data = await res.json();
-                if (data.text) setUserAnswer(data.text);
-              } catch (err) {
-                console.error('[Audio Transcribe Error]:', err);
-              }
-            };
-            reader.readAsDataURL(audioBlob);
-          };
-          mediaRecorder.start();
-          mediaRecorderRef.current = mediaRecorder;
-        } catch (err) {
-          console.warn('[MediaRecorder Error]:', err);
-          setIsRecording(false);
-        }
-      }
+  // Handle manual textarea edits & sync with recognition accumulator
+  const handleUserAnswerChange = (e) => {
+    const newVal = e.target.value;
+    setUserAnswer(newVal);
+    baseTextRef.current = newVal;
+    sessionFinalRef.current = '';
+
+    // If user cleared the text completely while recording, restart recognition so browser buffer resets
+    if (newVal.trim() === '' && isRecordingRef.current) {
+      startSpeechRecognition('');
+    }
+  };
+
+  // Handle clear answer button click
+  const handleClearAnswer = () => {
+    setUserAnswer('');
+    baseTextRef.current = '';
+    sessionFinalRef.current = '';
+    if (isRecordingRef.current) {
+      startSpeechRecognition('');
     }
   };
 
@@ -289,11 +430,14 @@ export default function VivaInterviewPage() {
       return;
     }
 
+    cleanupRecognition();
     setLoading(true);
     setStatusMessage(`Examiner is preparing your ${difficulty.toLowerCase()} difficulty question...`);
     setHistory([]);
     setCurrentQIndex(0);
     setUserAnswer('');
+    baseTextRef.current = '';
+    sessionFinalRef.current = '';
     setScorecard(null);
     setSavedSessionFound(null);
 
@@ -363,9 +507,7 @@ export default function VivaInterviewPage() {
       return;
     }
 
-    if (isRecording) {
-      toggleRecording();
-    }
+    cleanupRecognition();
 
     const durationSec = Math.max(1, Math.round((Date.now() - turnStartTime) / 1000));
     const newHistory = [
@@ -379,6 +521,8 @@ export default function VivaInterviewPage() {
 
     setHistory(newHistory);
     setUserAnswer('');
+    baseTextRef.current = '';
+    sessionFinalRef.current = '';
 
     if (currentQIndex >= 4) {
       await handleFinalizeSession(newHistory);
@@ -521,6 +665,7 @@ export default function VivaInterviewPage() {
   // Resume Saved Session
   const resumeSavedSession = () => {
     if (!savedSessionFound) return;
+    cleanupRecognition();
     setSessionMode(savedSessionFound.sessionMode || 'viva');
     setSubject(savedSessionFound.subject || 'Physics');
     setLevel(savedSessionFound.level || 'College');
@@ -534,6 +679,9 @@ export default function VivaInterviewPage() {
     setCurrentQIndex(savedSessionFound.currentQIndex || 0);
     setCurrentQuestion(savedSessionFound.currentQuestion || '');
     setCurrentAcknowledgment(savedSessionFound.currentAcknowledgment || 'Welcome back.');
+    setUserAnswer('');
+    baseTextRef.current = '';
+    sessionFinalRef.current = '';
     setSavedSessionFound(null);
     setGameState('active');
     setTurnStartTime(Date.now());
@@ -1313,12 +1461,60 @@ export default function VivaInterviewPage() {
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'space-between'
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: 8
               }}>
-                <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Candidate Response {isRecording ? '• Live Recording...' : ''}
-                </label>
-                <div style={{ display: 'flex', gap: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Candidate Response
+                  </label>
+                  {isRecording && (
+                    <span style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      fontSize: '0.7rem',
+                      fontWeight: 700,
+                      color: '#EF4444',
+                      background: 'rgba(239, 68, 68, 0.1)',
+                      padding: '2px 8px',
+                      borderRadius: 6,
+                      border: '1px solid rgba(239, 68, 68, 0.25)'
+                    }}>
+                      <span style={{
+                        width: 6,
+                        height: 6,
+                        borderRadius: '50%',
+                        background: '#EF4444',
+                        animation: 'pulse 1s infinite'
+                      }} />
+                      Live Recording
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  {userAnswer && (
+                    <button
+                      onClick={handleClearAnswer}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: 'var(--muted)',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        transition: 'color 0.15s ease'
+                      }}
+                      title="Clear Answer Text"
+                    >
+                      <Trash2 size={13} />
+                      <span>Clear</span>
+                    </button>
+                  )}
                   <button
                     onClick={() => setInputMode(inputMode === 'voice' ? 'text' : 'voice')}
                     style={{
@@ -1390,7 +1586,7 @@ export default function VivaInterviewPage() {
                   rows={4}
                   placeholder={inputMode === 'voice' ? "Your spoken answer will appear here in real time..." : "Type your answer clearly..."}
                   value={userAnswer}
-                  onChange={(e) => setUserAnswer(e.target.value)}
+                  onChange={handleUserAnswerChange}
                   style={{
                     width: '100%',
                     background: 'var(--s2)',
