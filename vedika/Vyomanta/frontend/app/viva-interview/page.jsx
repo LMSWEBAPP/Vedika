@@ -7,10 +7,14 @@ import {
   AlertCircle, ShieldAlert, CheckCircle, Volume2, VolumeX, RotateCcw, 
   BookOpen, Code, Brain, Settings, Sparkles, Loader2, FlaskConical, 
   Upload, Mic, MicOff, Check, RefreshCw, Printer, AlertTriangle, FileCheck,
-  Edit3, ListFilter, Gauge, Zap, Search, Activity, BarChart2, Trash2
+  Edit3, ListFilter, Gauge, Zap, Search, Activity, BarChart2, Trash2,
+  Radio, PhoneOff, Wifi
 } from 'lucide-react';
 import { useMediaQuery, isMobileMQ } from '@/lib/useMediaQuery';
 import { getJwtToken } from '@/lib/jwtCache';
+import dynamic from 'next/dynamic';
+
+const PetAvatar = dynamic(() => import('@/components/PetAvatar'), { ssr: false });
 
 const STORAGE_SESSION_KEY = 'vyomanta_active_viva_session';
 
@@ -47,6 +51,28 @@ export default function VivaInterviewPage() {
   const [currentQuestion, setCurrentQuestion] = useState('');
   const [userAnswer, setUserAnswer] = useState('');
   
+  // Execution Engine & Dynamic Flow States
+  const [executionMode, setExecutionMode] = useState('live'); // 'live' (Gemini Live Voice) | 'turn' (Turn Guided)
+  const [sessionTimeRemaining, setSessionTimeRemaining] = useState(900); // 15-minute global countdown (900 seconds)
+  const [turnTimeRemaining, setTurnTimeRemaining] = useState(90); // 90-second turn countdown for turn-mode
+  const [currentStageInfo, setCurrentStageInfo] = useState({
+    topicName: "Core Principles",
+    questionType: "main",
+    topicIndex: 1,
+    followUpIndex: 0
+  });
+
+  // Gemini Live Runtime States (Identical to Voice Tutor)
+  const [liveConnectionStatus, setLiveConnectionStatus] = useState('disconnected'); // 'disconnected' | 'connecting' | 'connected' | 'tutor-speaking' | 'error'
+  const [liveStatusMessage, setLiveStatusMessage] = useState('Tap start to begin your oral examination');
+  const [liveConversation, setLiveConversation] = useState([]);
+  const [liveIsMuted, setLiveIsMuted] = useState(false);
+  
+  // Realtime Voice Scratchpad & Captions Transcript States
+  const [isScratchpadOpen, setIsScratchpadOpen] = useState(false);
+  const [scratchpadText, setScratchpadText] = useState('');
+  const [isTranscriptOpen, setIsTranscriptOpen] = useState(false);
+  
   // Voice & Audio States
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState(true);
@@ -60,6 +86,7 @@ export default function VivaInterviewPage() {
   const [expandedQ, setExpandedQ] = useState(null);
   const [turnStartTime, setTurnStartTime] = useState(Date.now());
 
+  // Web Speech & MediaRecorder Refs
   const recognitionRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
@@ -68,11 +95,110 @@ export default function VivaInterviewPage() {
   const baseTextRef = useRef('');
   const sessionFinalRef = useRef('');
   const silenceTimeoutRef = useRef(null);
+  const liveLastAudioTimeRef = useRef(Date.now());
+  const globalTimerRef = useRef(null);
+  const turnTimerRef = useRef(null);
+  const isNewExaminerTurnRef = useRef(true);
+
+  // Gemini Live Audio & WebSocket Refs (Identical to VoiceAgentView)
+  const liveWsRef = useRef(null);
+  const liveAudioCtxRef = useRef(null);
+  const liveProcessorRef = useRef(null);
+  const liveSourceRef = useRef(null);
+  const liveMicStreamRef = useRef(null);
+  const liveNextPlayTimeRef = useRef(0);
+  const liveAudioSourcesQueueRef = useRef([]);
+  const liveIsMutedRef = useRef(false);
+  const liveWsHadErrorRef = useRef(false);
+
+  useEffect(() => {
+    liveIsMutedRef.current = liveIsMuted;
+  }, [liveIsMuted]);
 
   // Keep userAnswerRef synchronized with state for callbacks
   useEffect(() => {
     userAnswerRef.current = userAnswer;
   }, [userAnswer]);
+
+  // Teardown all live audio playback
+  const stopAllLiveAudioPlaybacks = () => {
+    liveAudioSourcesQueueRef.current.forEach((src) => {
+      try { src.stop(); } catch (e) {}
+    });
+    liveAudioSourcesQueueRef.current = [];
+    liveNextPlayTimeRef.current = 0;
+  };
+
+  // Play 24kHz PCM chunk received from Gemini Live (Smooth Continuous Queue)
+  const playLivePcmAudioChunk = (base64Data) => {
+    if (liveIsMutedRef.current || !liveAudioCtxRef.current) return;
+    try {
+      const audioCtx = liveAudioCtxRef.current;
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+      const binaryString = atob(base64Data);
+      const buffer = new ArrayBuffer(binaryString.length);
+      const view = new Uint8Array(buffer);
+      for (let i = 0; i < binaryString.length; i++) view[i] = binaryString.charCodeAt(i);
+      const int16Samples = new Int16Array(buffer);
+      const audioBuffer = audioCtx.createBuffer(1, int16Samples.length, 24000);
+      const channelData = audioBuffer.getChannelData(0);
+      for (let i = 0; i < int16Samples.length; i++) channelData[i] = int16Samples[i] / 32768.0;
+      const bufferSource = audioCtx.createBufferSource();
+      bufferSource.buffer = audioBuffer;
+      bufferSource.connect(audioCtx.destination);
+      liveAudioSourcesQueueRef.current.push(bufferSource);
+
+      bufferSource.onended = () => {
+        liveAudioSourcesQueueRef.current = liveAudioSourcesQueueRef.current.filter((src) => src !== bufferSource);
+        if (liveAudioSourcesQueueRef.current.length === 0) {
+          setLiveConnectionStatus('connected');
+          setLiveStatusMessage('Examiner is listening... Feel free to speak.');
+        }
+      };
+
+      const now = audioCtx.currentTime;
+      if (liveNextPlayTimeRef.current < now) {
+        liveNextPlayTimeRef.current = now + 0.05;
+      }
+      setLiveConnectionStatus('tutor-speaking');
+      setLiveStatusMessage('Examiner is speaking...');
+      bufferSource.start(liveNextPlayTimeRef.current);
+      liveNextPlayTimeRef.current += audioBuffer.duration;
+    } catch (err) {
+      console.error('[Gemini Live Playback error]:', err);
+    }
+  };
+
+  // Disconnect Gemini Live WebSocket & Release Audio (Identical to VoiceAgentView)
+  const disconnectGeminiLive = (preserveMessage = false) => {
+    if (liveWsRef.current) {
+      try { liveWsRef.current.close(); } catch (e) {}
+      liveWsRef.current = null;
+    }
+    stopAllLiveAudioPlaybacks();
+    if (liveAudioCtxRef.current) {
+      try { liveAudioCtxRef.current.close(); } catch (e) {}
+      liveAudioCtxRef.current = null;
+    }
+    if (liveProcessorRef.current) {
+      try { liveProcessorRef.current.disconnect(); } catch (e) {}
+      liveProcessorRef.current = null;
+    }
+    if (liveSourceRef.current) {
+      try { liveSourceRef.current.disconnect(); } catch (e) {}
+      liveSourceRef.current = null;
+    }
+    if (liveMicStreamRef.current) {
+      liveMicStreamRef.current.getTracks().forEach((t) => t.stop());
+      liveMicStreamRef.current = null;
+    }
+    setLiveConnectionStatus('disconnected');
+    if (!preserveMessage) {
+      setLiveStatusMessage('Oral examination ended. Press start to begin again.');
+    }
+  };
 
   // Setup Presets
   const subjects = ['Physics', 'Chemistry', 'Biology', 'Computer Science', 'Mathematics'];
@@ -100,9 +226,10 @@ export default function VivaInterviewPage() {
     }
   }, []);
 
-  // Teardown speech recognition and reset flags
+  // Teardown speech recognition and live voice
   const cleanupRecognition = () => {
     isRecordingRef.current = false;
+    disconnectGeminiLive();
     if (silenceTimeoutRef.current) {
       clearTimeout(silenceTimeoutRef.current);
       silenceTimeoutRef.current = null;
@@ -123,10 +250,61 @@ export default function VivaInterviewPage() {
     setIsRecording(false);
   };
 
+  // Global 15-Minute Session Countdown Timer (900s)
+  useEffect(() => {
+    if (gameState === 'active') {
+      globalTimerRef.current = setInterval(() => {
+        setSessionTimeRemaining((prev) => {
+          if (prev <= 1) {
+            clearInterval(globalTimerRef.current);
+            // 15:00 Hard Cutoff
+            if (executionMode === 'live') {
+              handleFinishLiveExam();
+            } else {
+              handleFinalizeSession(history);
+            }
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } else {
+      if (globalTimerRef.current) clearInterval(globalTimerRef.current);
+    }
+    return () => {
+      if (globalTimerRef.current) clearInterval(globalTimerRef.current);
+    };
+  }, [gameState, executionMode, history]);
+
+  // Turn-Guided Mode 90s Per-Turn Countdown Timer
+  useEffect(() => {
+    if (gameState === 'active' && executionMode === 'turn') {
+      setTurnTimeRemaining(90);
+      turnTimerRef.current = setInterval(() => {
+        setTurnTimeRemaining((prev) => {
+          if (prev <= 1) {
+            clearInterval(turnTimerRef.current);
+            // 90s Turn Timeout -> Auto Skip
+            handleSkipQuestion();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } else {
+      if (turnTimerRef.current) clearInterval(turnTimerRef.current);
+    }
+    return () => {
+      if (turnTimerRef.current) clearInterval(turnTimerRef.current);
+    };
+  }, [gameState, executionMode, currentQIndex, currentQuestion]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       cleanupRecognition();
+      if (globalTimerRef.current) clearInterval(globalTimerRef.current);
+      if (turnTimerRef.current) clearInterval(turnTimerRef.current);
       if (typeof window !== 'undefined' && window.speechSynthesis) {
         window.speechSynthesis.cancel();
       }
@@ -150,6 +328,17 @@ export default function VivaInterviewPage() {
       console.warn('[TTS] failed:', e);
       setIsSpeaking(false);
     }
+  };
+
+  // Re-speak or Rephrase Current Question without Penalty or Advancing Turn
+  const handleRepeatQuestion = () => {
+    if (!currentQuestion) return;
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    speakText(currentQuestion);
+    setStatusMessage('Examiner is repeating the question...');
+    setTimeout(() => setStatusMessage(''), 3000);
   };
 
   // Start Web Speech API Recognition with incremental turn accumulation
@@ -196,6 +385,38 @@ export default function VivaInterviewPage() {
             } else {
               interim += transcript;
             }
+          }
+
+          // Intercept repeat voice commands so they don't get written into candidate's answer
+          const latestSpoken = (newlyFinalized || interim).toLowerCase().trim();
+          if (
+            latestSpoken === 'repeat' ||
+            latestSpoken === 'repeat it' ||
+            latestSpoken === 'repeat question' ||
+            latestSpoken === 'repeat the question' ||
+            latestSpoken === 'can you repeat' ||
+            latestSpoken === 'can you repeat the question' ||
+            latestSpoken === 'could you repeat' ||
+            latestSpoken === 'say again' ||
+            latestSpoken === 'say that again' ||
+            latestSpoken === 'pardon'
+          ) {
+            handleRepeatQuestion();
+            return;
+          }
+
+          // Intercept skip voice commands
+          if (
+            latestSpoken === 'skip' ||
+            latestSpoken === 'skip it' ||
+            latestSpoken === 'skip question' ||
+            latestSpoken === 'skip the question' ||
+            latestSpoken === 'pass' ||
+            latestSpoken === 'i don\'t know' ||
+            latestSpoken === 'dont know'
+          ) {
+            handleSkipQuestion();
+            return;
           }
 
           if (newlyFinalized) {
@@ -405,7 +626,293 @@ export default function VivaInterviewPage() {
     reader.readAsDataURL(file);
   };
 
-  // Start Fresh Session
+  // Start Gemini Live Bidirectional WebSocket Voice Examination (100% Identical to VoiceAgentView)
+  const startGeminiLiveSession = async (activeTopic, activeSubject, activeDifficulty, activeLevel) => {
+    try {
+      setLiveConnectionStatus('connecting');
+      setLiveStatusMessage('Initializing audio environment and connecting...');
+      stopAllLiveAudioPlaybacks();
+      setLiveConversation([]);
+      setGameState('active');
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      liveMicStreamRef.current = stream;
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+      liveAudioCtxRef.current = audioCtx;
+
+      const wsHost = process.env.NEXT_PUBLIC_WS_URL || (
+        window.location.hostname === 'localhost'
+          ? 'ws://localhost:5001'
+          : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`
+      );
+
+      const voiceSid = 'viva-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      const wsUrl = `${wsHost}/api/ws?mode=${sessionMode}&topic=${encodeURIComponent(activeTopic)}&difficulty=${activeDifficulty}&level=${activeLevel}&programmingLanguage=${encodeURIComponent(programmingLanguage)}&sessionId=${voiceSid}`;
+      const ws = new WebSocket(wsUrl);
+      liveWsRef.current = ws;
+
+      const connTimeout = setTimeout(() => {
+        if (ws.readyState !== WebSocket.OPEN) {
+          liveWsHadErrorRef.current = true;
+          ws.close();
+          setLiveConnectionStatus('error');
+          setLiveStatusMessage('Connection timed out. Make sure the voice server is running (npm run dev:voice).');
+        }
+      }, 10000);
+
+      ws.onopen = () => {
+        clearTimeout(connTimeout);
+        setLiveConversation([]);
+        setLiveConnectionStatus('connected');
+        setLiveStatusMessage('AI Examiner connected! Oral examination starting...');
+        const source = audioCtx.createMediaStreamSource(stream);
+        liveSourceRef.current = source;
+        const processor = audioCtx.createScriptProcessor(4096, 1, 1);
+        liveProcessorRef.current = processor;
+        
+        // Zero gain node prevents mic input from looping into speakers and causing echo feedback
+        const silentGain = audioCtx.createGain();
+        silentGain.gain.value = 0;
+        source.connect(processor);
+        processor.connect(silentGain);
+        silentGain.connect(audioCtx.destination);
+
+        processor.onaudioprocess = (e) => {
+          // Gating: DO NOT send microphone audio packets while examiner is speaking or muted
+          if (
+            ws.readyState !== WebSocket.OPEN || 
+            liveIsMutedRef.current || 
+            liveAudioSourcesQueueRef.current.length > 0
+          ) return;
+
+          const float32Data = e.inputBuffer.getChannelData(0);
+          const pcmBuffer = new ArrayBuffer(float32Data.length * 2);
+          const dataView = new DataView(pcmBuffer);
+          let offset = 0;
+          for (let i = 0; i < float32Data.length; i++, offset += 2) {
+            let s = Math.max(-1, Math.min(1, float32Data[i]));
+            dataView.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+          }
+          let binary = '';
+          const bytes = new Uint8Array(pcmBuffer);
+          for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+          ws.send(JSON.stringify({ type: 'audio', data: btoa(binary) }));
+        };
+      };
+
+      ws.onmessage = (event) => {
+        const message = JSON.parse(event.data);
+        if (message.type === 'status') {
+          setLiveStatusMessage(message.message);
+        } else if (message.type === 'error') {
+          setLiveStatusMessage(message.message);
+          setLiveConnectionStatus('error');
+        } else if (message.type === 'audio') {
+          playLivePcmAudioChunk(message.data);
+        } else if (message.type === 'interrupted') {
+          stopAllLiveAudioPlaybacks();
+          setLiveConnectionStatus('connected');
+          setLiveStatusMessage('Examiner was interrupted. Listening now...');
+          isNewExaminerTurnRef.current = true;
+        } else if (message.type === 'flow-update') {
+          setCurrentStageInfo({
+            topicName: message.topicName || activeTopic,
+            questionType: message.questionType || 'main',
+            topicIndex: message.topicIndex || 1,
+            followUpIndex: message.followUpIndex || 0
+          });
+          isNewExaminerTurnRef.current = true;
+        } else if (message.type === 'agent-transcription') {
+          const textChunk = message.text || '';
+          
+          // Detect topic shifts or questions in text transcript as dynamic fallback
+          if (/next\s+key\s+topic|move\s+to\s+our\s+next\s+topic/i.test(textChunk)) {
+            setCurrentStageInfo((prev) => ({
+              ...prev,
+              topicIndex: prev.topicIndex + 1,
+              questionType: 'main',
+              followUpIndex: 0
+            }));
+          }
+
+          // Auto-open scratchpad if examiner asks to write code / program / query
+          if (/(write\s+(a\s+)?(program|code|function|query|script|algorithm)|in\s+the\s+scratchpad|open\s+the\s+scratchpad)/i.test(textChunk)) {
+            setIsScratchpadOpen(true);
+          }
+
+          // Check if examiner concluded the examination
+          const isConclusion = /concludes\s+your\s+oral\s+examination|scorecard\s+report\s+is\s+ready/i.test(textChunk);
+          if (isConclusion) {
+            // Auto-submit after examiner finishes speaking farewell
+            setTimeout(() => {
+              handleFinishLiveExam();
+            }, 3500);
+          }
+
+          setLiveConversation((prev) => {
+            if (!isNewExaminerTurnRef.current && prev.length > 0 && prev[prev.length - 1].sender === 'examiner') {
+              const updated = [...prev];
+              updated[updated.length - 1] = { ...updated[updated.length - 1], text: updated[updated.length - 1].text + ' ' + textChunk };
+              return updated;
+            }
+            isNewExaminerTurnRef.current = false;
+            return [...prev, { id: Math.random().toString(36).slice(2), sender: 'examiner', text: textChunk, timestamp: new Date() }];
+          });
+        } else if (message.type === 'user-transcription') {
+          isNewExaminerTurnRef.current = true;
+          setLiveConversation((prev) => [...prev, { id: Math.random().toString(36).slice(2), sender: 'candidate', text: message.text, timestamp: new Date() }]);
+        }
+      };
+
+      ws.onclose = () => {
+        clearTimeout(connTimeout);
+        if (!liveWsHadErrorRef.current) disconnectGeminiLive(false);
+      };
+
+      ws.onerror = () => {
+        clearTimeout(connTimeout);
+        liveWsHadErrorRef.current = true;
+        setLiveConnectionStatus('error');
+        setLiveStatusMessage('Connection failed. Verify the voice server is running.');
+      };
+    } catch (err) {
+      setLiveConnectionStatus('error');
+      setLiveStatusMessage(`Unable to access mic: ${err.message || err}. Please permit microphone access.`);
+    }
+  };
+
+  // Attach Scratchpad Notes/Code to candidate's answer
+  const handleAttachScratchpadToAnswer = () => {
+    if (scratchpadText.trim()) {
+      const codeBlock = `\n[Candidate Written Code/Notes]:\n${scratchpadText.trim()}`;
+      setLiveConversation((prev) => {
+        if (prev.length > 0 && prev[prev.length - 1].sender === 'candidate') {
+          const updated = [...prev];
+          updated[updated.length - 1] = {
+            ...updated[updated.length - 1],
+            text: updated[updated.length - 1].text + codeBlock
+          };
+          return updated;
+        }
+        return [
+          ...prev,
+          {
+            id: Math.random().toString(36).slice(2),
+            sender: 'candidate',
+            text: codeBlock.trim(),
+            timestamp: new Date()
+          }
+        ];
+      });
+      setScratchpadText('');
+    }
+    setIsScratchpadOpen(false);
+  };
+
+  // Complete Live Exam and generate Scorecard from conversation
+  const handleFinishLiveExam = async () => {
+    disconnectGeminiLive(true);
+
+    const isRepeatClarification = (txt) => {
+      const t = (txt || '').toLowerCase().trim();
+      return (
+        t === 'repeat' ||
+        t === 'repeat it' ||
+        t === 'repeat please' ||
+        t === 'repeat the question' ||
+        t === 'can you repeat' ||
+        t === 'can you repeat the question' ||
+        t === 'could you repeat that' ||
+        t === 'say again' ||
+        t === 'say that again' ||
+        t === 'pardon' ||
+        t === 'i didn\'t understand' ||
+        t === 'i dont understand'
+      );
+    };
+
+    // Consolidate consecutive messages from the same sender
+    const consolidated = [];
+    liveConversation.forEach((msg) => {
+      const txt = (msg.text || '').trim();
+      if (!txt) return;
+      if (consolidated.length > 0 && consolidated[consolidated.length - 1].sender === msg.sender) {
+        consolidated[consolidated.length - 1].text += ' ' + txt;
+      } else {
+        consolidated.push({ sender: msg.sender, text: txt });
+      }
+    });
+
+    const parsedTurns = [];
+    let currentQuestion = '';
+    let currentAnswer = '';
+
+    consolidated.forEach((item) => {
+      const txt = item.text.trim();
+      if (!txt) return;
+
+      if (item.sender === 'examiner') {
+        const isConclusion = /conclude|scorecard|official evaluation report|thank you for your responses/i.test(txt);
+        if (!isConclusion) {
+          if (currentQuestion && currentAnswer.trim()) {
+            parsedTurns.push({
+              question: currentQuestion.trim(),
+              answer: currentAnswer.trim(),
+              durationSec: 45
+            });
+            currentQuestion = txt;
+            currentAnswer = '';
+          } else if (!currentQuestion) {
+            currentQuestion = txt;
+          } else {
+            currentQuestion += ' ' + txt;
+          }
+        }
+      } else if (item.sender === 'candidate') {
+        if (!isRepeatClarification(txt)) {
+          currentAnswer = (currentAnswer ? currentAnswer + ' ' : '') + txt;
+        }
+      }
+    });
+
+    if (currentQuestion) {
+      parsedTurns.push({
+        question: currentQuestion.trim(),
+        answer: currentAnswer.trim() || 'Candidate participated orally during live session.',
+        durationSec: 45
+      });
+    }
+
+    // Group parsed turns into TopicUnits (Main question + follow-ups)
+    const topicUnits = [];
+    let currentUnit = null;
+
+    parsedTurns.forEach((turn, idx) => {
+      const isFollowUp = /follow-up|probe|clarify|furthermore|specifically|elaborate/i.test(turn.question);
+      if (!currentUnit || (!isFollowUp && currentUnit.turns.length > 0)) {
+        if (currentUnit) topicUnits.push(currentUnit);
+        currentUnit = {
+          topicIndex: topicUnits.length + 1,
+          topicName: `${sessionMode === 'viva' ? (vivaSource === 'custom' ? customVivaTopic : selectedExperiment) : (topic || programmingLanguage)} - Topic ${topicUnits.length + 1}`,
+          turns: []
+        };
+      }
+      currentUnit.turns.push({
+        questionType: isFollowUp ? 'follow_up' : 'main',
+        question: turn.question,
+        answer: turn.answer,
+        durationSec: turn.durationSec
+      });
+    });
+
+    if (currentUnit && currentUnit.turns.length > 0) {
+      topicUnits.push(currentUnit);
+    }
+
+    await handleFinalizeSession(parsedTurns, topicUnits);
+  };
+
+  // Start Fresh Session (Live Voice or Turn Guided)
   const handleStartSession = async () => {
     let activeTopic = '';
     let activeSubject = subject;
@@ -431,8 +938,6 @@ export default function VivaInterviewPage() {
     }
 
     cleanupRecognition();
-    setLoading(true);
-    setStatusMessage(`Examiner is preparing your ${difficulty.toLowerCase()} difficulty question...`);
     setHistory([]);
     setCurrentQIndex(0);
     setUserAnswer('');
@@ -440,6 +945,24 @@ export default function VivaInterviewPage() {
     sessionFinalRef.current = '';
     setScorecard(null);
     setSavedSessionFound(null);
+    setSessionTimeRemaining(900);
+    setTurnTimeRemaining(90);
+    setCurrentStageInfo({
+      topicName: activeTopic,
+      questionType: 'main',
+      topicIndex: 1,
+      followUpIndex: 0
+    });
+
+    // If Gemini Live Voice Mode is chosen:
+    if (executionMode === 'live') {
+      await startGeminiLiveSession(activeTopic, activeSubject, difficulty, level);
+      return;
+    }
+
+    // Otherwise standard turn-by-turn mode:
+    setLoading(true);
+    setStatusMessage(`Examiner is preparing your ${difficulty.toLowerCase()} difficulty question...`);
 
     try {
       const token = await getJwtToken();
@@ -598,8 +1121,100 @@ export default function VivaInterviewPage() {
     }
   };
 
-  // Finalize Session & Generate Holistic Scorecard with Responsive Analyzing Animation
-  const handleFinalizeSession = async (finalHistory) => {
+  // Skip Question (candidate passes or doesn't know answer)
+  const handleSkipQuestion = async () => {
+    cleanupRecognition();
+    const durationSec = Math.max(1, Math.round((Date.now() - turnStartTime) / 1000));
+    const newHistory = [
+      ...history,
+      {
+        question: currentQuestion,
+        answer: 'Candidate skipped the question and provided no answer.',
+        durationSec
+      }
+    ];
+
+    setHistory(newHistory);
+    setUserAnswer('');
+    baseTextRef.current = '';
+    sessionFinalRef.current = '';
+
+    if (currentQIndex >= 4) {
+      await handleFinalizeSession(newHistory);
+      return;
+    }
+
+    const nextIdx = currentQIndex + 1;
+    setCurrentQIndex(nextIdx);
+    setLoading(true);
+    setStatusMessage('Examiner is proceeding to the next question...');
+
+    try {
+      const token = await getJwtToken();
+      const activeTopic = sessionMode === 'viva' 
+        ? (vivaSource === 'custom' ? customVivaTopic : selectedExperiment) 
+        : (topic || programmingLanguage);
+
+      const activeSubject = sessionMode === 'viva' && vivaSource === 'custom' ? customVivaTopic : subject;
+
+      const response = await fetch('/api/viva-interview', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          action: 'question',
+          type: sessionMode,
+          subject: activeSubject,
+          topic: activeTopic,
+          level,
+          difficulty,
+          experimentName: activeTopic,
+          programmingLanguage,
+          jdText,
+          resumeBlueprint,
+          history: newHistory,
+          questionIndex: nextIdx
+        })
+      });
+
+      const data = await response.json();
+      if (response.ok && data.question) {
+        setCurrentAcknowledgment(data.acknowledgment || 'Understood. Let us proceed.');
+        setCurrentQuestion(data.question);
+        setTurnStartTime(Date.now());
+        speakText(`${data.acknowledgment || ''} ${data.question}`);
+
+        localStorage.setItem(STORAGE_SESSION_KEY, JSON.stringify({
+          sessionMode,
+          subject: activeSubject,
+          level,
+          difficulty,
+          topic: activeTopic,
+          selectedExperiment: activeTopic,
+          programmingLanguage,
+          jdText,
+          resumeBlueprint,
+          history: newHistory,
+          currentQIndex: nextIdx,
+          currentQuestion: data.question,
+          currentAcknowledgment: data.acknowledgment
+        }));
+      } else {
+        alert(data.error || "Failed to fetch next question.");
+      }
+    } catch (e) {
+      console.error(e);
+      alert("API request error.");
+    } finally {
+      setLoading(false);
+      setStatusMessage('');
+    }
+  };
+
+  // Finalize Session & Generate Holistic Scorecard with Fast Responsive Loading
+  const handleFinalizeSession = async (finalHistory, topicUnits = []) => {
     // Transition to dedicated analyzing loading screen
     setGameState('analyzing');
     setAnalysisStep(0);
@@ -609,7 +1224,7 @@ export default function VivaInterviewPage() {
         if (prev < 3) return prev + 1;
         return prev;
       });
-    }, 1400);
+    }, 350);
 
     try {
       const token = await getJwtToken();
@@ -636,7 +1251,8 @@ export default function VivaInterviewPage() {
           programmingLanguage,
           jdText,
           resumeBlueprint,
-          history: finalHistory
+          history: finalHistory,
+          topicUnits
         })
       });
 
@@ -649,7 +1265,7 @@ export default function VivaInterviewPage() {
           setScorecard(scorecardData);
           setGameState('summary');
           localStorage.removeItem(STORAGE_SESSION_KEY);
-        }, 800);
+        }, 200);
       } else {
         alert(scorecardData.error || "Failed to generate evaluation scorecard.");
         setGameState('active');
@@ -754,6 +1370,53 @@ export default function VivaInterviewPage() {
               </p>
             </div>
           </div>
+
+          {/* ACTIVE SESSION TIMER & STAGE BADGE */}
+          {gameState === 'active' && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              flexWrap: 'wrap'
+            }}>
+              {/* Dynamic Topic Stage Badge */}
+              <div style={{
+                padding: '6px 14px',
+                borderRadius: 12,
+                background: 'rgba(139, 92, 246, 0.12)',
+                border: '1px solid var(--purple)',
+                fontSize: '0.8rem',
+                fontWeight: 700,
+                color: 'var(--purple)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6
+              }}>
+                <Sparkles size={14} />
+                <span>Topic {currentStageInfo.topicIndex}: {currentStageInfo.topicName}</span>
+                {currentStageInfo.questionType === 'follow_up' && (
+                  <span style={{ fontSize: '0.7rem', opacity: 0.85 }}> (Probe {currentStageInfo.followUpIndex})</span>
+                )}
+              </div>
+
+              {/* 15-Minute Session Timer Badge */}
+              <div style={{
+                padding: '6px 14px',
+                borderRadius: 12,
+                background: sessionTimeRemaining < 180 ? 'rgba(239, 68, 68, 0.15)' : 'var(--s2)',
+                border: `1px solid ${sessionTimeRemaining < 180 ? '#EF4444' : 'var(--border)'}`,
+                fontSize: '0.85rem',
+                fontWeight: 800,
+                color: sessionTimeRemaining < 180 ? '#EF4444' : 'var(--text)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6
+              }}>
+                <Activity size={16} style={{ color: sessionTimeRemaining < 180 ? '#EF4444' : 'var(--purple)' }} />
+                <span>{Math.floor(sessionTimeRemaining / 60)}:{(sessionTimeRemaining % 60).toString().padStart(2, '0')}</span>
+              </div>
+            </div>
+          )}
 
           {/* Mode Switcher Tabs */}
           {gameState === 'setup' && (
@@ -892,6 +1555,74 @@ export default function VivaInterviewPage() {
                   ? 'Choose standard lab experiments or enter any custom topic. Select your desired difficulty level before starting.' 
                   : 'Upload your resume or enter a target stack/JD. Select difficulty to calibrate examiner depth.'}
               </p>
+            </div>
+
+            {/* VOICE ENGINE SELECTOR */}
+            <div>
+              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 800, color: 'var(--text)', textTransform: 'uppercase', marginBottom: 8, letterSpacing: '0.05em' }}>
+                Select Oral Interview Engine
+              </label>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+                gap: 12
+              }}>
+                <div
+                  onClick={() => setExecutionMode('live')}
+                  style={{
+                    padding: '14px 16px',
+                    borderRadius: 14,
+                    border: `2px solid ${executionMode === 'live' ? 'var(--purple)' : 'var(--border)'}`,
+                    background: executionMode === 'live' ? 'rgba(139, 92, 246, 0.12)' : 'var(--s2)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 6,
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <Radio size={18} style={{ color: executionMode === 'live' ? 'var(--purple)' : 'var(--muted)' }} />
+                      <span style={{ fontSize: '0.85rem', fontWeight: 800, color: executionMode === 'live' ? 'var(--purple)' : 'var(--text)' }}>
+                        Realtime Voice Examiner
+                      </span>
+                    </div>
+                    {executionMode === 'live' && <Check size={16} style={{ color: 'var(--purple)' }} />}
+                  </div>
+                  <span style={{ fontSize: '0.725rem', color: 'var(--muted)', lineHeight: 1.35 }}>
+                    Real-time bidirectional 16kHz/24kHz PCM oral examination with natural examiner voice, zero spoilers, and live conversation flow.
+                  </span>
+                </div>
+
+                <div
+                  onClick={() => setExecutionMode('turn')}
+                  style={{
+                    padding: '14px 16px',
+                    borderRadius: 14,
+                    border: `2px solid ${executionMode === 'turn' ? 'var(--accent)' : 'var(--border)'}`,
+                    background: executionMode === 'turn' ? 'rgba(79, 131, 246, 0.12)' : 'var(--s2)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 6,
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <Edit3 size={18} style={{ color: executionMode === 'turn' ? 'var(--accent)' : 'var(--muted)' }} />
+                      <span style={{ fontSize: '0.85rem', fontWeight: 800, color: executionMode === 'turn' ? 'var(--accent)' : 'var(--text)' }}>
+                        Turn-by-Turn Guided Viva
+                      </span>
+                    </div>
+                    {executionMode === 'turn' && <Check size={16} style={{ color: 'var(--accent)' }} />}
+                  </div>
+                  <span style={{ fontSize: '0.725rem', color: 'var(--muted)', lineHeight: 1.35 }}>
+                    Step-by-step 5-question examination with tap-to-speak Web Speech transcription and manual answer editing.
+                  </span>
+                </div>
+              </div>
             </div>
 
             {/* DIFFICULTY LEVEL SELECTOR (FOR BOTH MODES) */}
@@ -1339,9 +2070,423 @@ export default function VivaInterviewPage() {
         )}
 
         {/* ============================================================== */}
-        {/* ACTIVE SESSION VIEW (PURE EXAMINER VOICE LOOP) */}
+        {/* ACTIVE SESSION VIEW (GEMINI LIVE REAL-TIME OR GUIDED TURN) */}
         {/* ============================================================== */}
-        {gameState === 'active' && (
+        {gameState === 'active' && executionMode === 'live' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            
+            {/* LIVE EXAMINER HUD CARD */}
+            <div style={{
+              background: 'var(--s1)',
+              border: `1px solid var(--border)`,
+              borderRadius: 24,
+              padding: isMobile ? '20px 14px' : '28px 24px',
+              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.05)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 20
+            }}>
+              {/* TOP STATUS BAR */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: 10,
+                borderBottom: `1px solid var(--border)`,
+                paddingBottom: 14
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: '50%',
+                    background: liveConnectionStatus === 'tutor-speaking' 
+                      ? 'var(--purple)' 
+                      : liveConnectionStatus === 'connected' 
+                      ? '#10B981' 
+                      : liveConnectionStatus === 'connecting' 
+                      ? '#F59E0B' 
+                      : 'var(--muted)',
+                    animation: (liveConnectionStatus === 'tutor-speaking' || liveConnectionStatus === 'connected') ? 'pulse 1s infinite' : 'none'
+                  }} />
+                  <span style={{
+                    fontSize: '0.85rem',
+                    fontWeight: 700,
+                    color: liveConnectionStatus === 'tutor-speaking' ? 'var(--purple)' : liveConnectionStatus === 'connected' ? '#10B981' : 'var(--text)'
+                  }}>
+                    {liveConnectionStatus === 'tutor-speaking' && '🎙️ AI Examiner Speaking...'}
+                    {liveConnectionStatus === 'connected' && '👂 AI Examiner Listening (Speak in English)...'}
+                    {liveConnectionStatus === 'connecting' && 'Connecting to Live Gemini Examiner...'}
+                    {liveConnectionStatus === 'disconnected' && 'Live Examiner Offline'}
+                    {liveConnectionStatus === 'error' && 'Connection Error'}
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <button
+                    onClick={() => setIsScratchpadOpen((prev) => !prev)}
+                    style={{
+                      padding: '5px 12px',
+                      borderRadius: 8,
+                      background: isScratchpadOpen ? 'rgba(139, 92, 246, 0.2)' : 'var(--s2)',
+                      color: isScratchpadOpen ? 'var(--purple)' : 'var(--text)',
+                      border: `1px solid ${isScratchpadOpen ? 'var(--purple)' : 'var(--border)'}`,
+                      fontSize: '0.725rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    <Code size={13} />
+                    <span>{isScratchpadOpen ? 'Hide Scratchpad' : '📝 Code Scratchpad'}</span>
+                  </button>
+
+                  <button
+                    onClick={() => setIsTranscriptOpen((prev) => !prev)}
+                    style={{
+                      padding: '5px 12px',
+                      borderRadius: 8,
+                      background: isTranscriptOpen ? 'rgba(16, 185, 129, 0.2)' : 'var(--s2)',
+                      color: isTranscriptOpen ? '#10B981' : 'var(--text)',
+                      border: `1px solid ${isTranscriptOpen ? '#10B981' : 'var(--border)'}`,
+                      fontSize: '0.725rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    <FileText size={13} />
+                    <span>{isTranscriptOpen ? 'CC Captions On' : 'CC Captions Off'}</span>
+                  </button>
+
+                  <span style={{
+                    padding: '3px 8px',
+                    borderRadius: 6,
+                    background: difficulty === 'Easy' ? 'rgba(16, 185, 129, 0.15)' : difficulty === 'Hard' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(79, 131, 246, 0.15)',
+                    color: difficulty === 'Easy' ? '#10B981' : difficulty === 'Hard' ? '#EF4444' : 'var(--accent)',
+                    fontSize: '0.7rem',
+                    fontWeight: 700
+                  }}>
+                    {difficulty} Difficulty
+                  </span>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
+                    • {sessionMode === 'viva' ? (vivaSource === 'custom' ? customVivaTopic : selectedExperiment) : (topic || programmingLanguage)}
+                  </span>
+                </div>
+              </div>
+
+              {/* FLOATING PLAIN TEXTAREA SCRATCHPAD FOR CODE / NOTES */}
+              {isScratchpadOpen && (
+                <div style={{
+                  background: 'var(--s2)',
+                  border: '1px solid rgba(139, 92, 246, 0.35)',
+                  borderRadius: 16,
+                  padding: 14,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 10,
+                  boxShadow: '0 4px 16px rgba(0, 0, 0, 0.08)'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Code size={15} style={{ color: 'var(--purple)' }} />
+                      <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text)' }}>
+                        Code & Notes Scratchpad
+                      </span>
+                    </div>
+                    <span style={{ fontSize: '0.675rem', color: 'var(--muted)' }}>
+                      Type plain code/notes below • Speak your thoughts simultaneously
+                    </span>
+                  </div>
+
+                  <textarea
+                    rows={6}
+                    placeholder="Type your code, query, or notes here... (e.g. Python / Java / SQL)"
+                    value={scratchpadText}
+                    onChange={(e) => setScratchpadText(e.target.value)}
+                    style={{
+                      width: '100%',
+                      background: 'var(--s1)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 10,
+                      padding: 12,
+                      fontSize: '0.825rem',
+                      fontFamily: 'monospace',
+                      color: 'var(--text)',
+                      outline: 'none',
+                      resize: 'vertical',
+                      boxSizing: 'border-box',
+                      lineHeight: 1.45
+                    }}
+                  />
+
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
+                    <button
+                      onClick={() => setIsScratchpadOpen(false)}
+                      style={{
+                        padding: '5px 10px',
+                        borderRadius: 8,
+                        background: 'transparent',
+                        color: 'var(--muted)',
+                        border: '1px solid var(--border)',
+                        fontSize: '0.725rem',
+                        fontWeight: 600,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Close
+                    </button>
+
+                    <button
+                      onClick={handleAttachScratchpadToAnswer}
+                      disabled={!scratchpadText.trim()}
+                      style={{
+                        padding: '6px 14px',
+                        borderRadius: 8,
+                        background: 'linear-gradient(135deg, var(--purple) 0%, var(--accent) 100%)',
+                        color: '#FFFFFF',
+                        border: 'none',
+                        fontSize: '0.725rem',
+                        fontWeight: 700,
+                        cursor: scratchpadText.trim() ? 'pointer' : 'not-allowed',
+                        opacity: scratchpadText.trim() ? 1 : 0.5,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6
+                      }}
+                    >
+                      <Check size={13} />
+                      <span>Attach Code to Answer</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* MAIN STAGE CONTENT (PET CENTER CONSTANT + OPTIONAL CC SIDE TRANSCRIPT) */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: (isTranscriptOpen && !isMobile) ? '1fr 340px' : '1fr',
+                gap: 20,
+                alignItems: 'start',
+                minHeight: 340
+              }}>
+                {/* CENTER CONSTANT STAGE WITH PET & SPEECH BUBBLE POPUP */}
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: isMobile ? '20px 12px' : '28px 20px',
+                  background: 'var(--s2)',
+                  borderRadius: 20,
+                  border: '1px solid var(--border)',
+                  gap: 18,
+                  position: 'relative',
+                  minHeight: 340
+                }}>
+                  {/* DYNAMIC SPEECH / THINKING BUBBLE POPUP */}
+                  <div style={{
+                    maxWidth: isMobile ? '95%' : '80%',
+                    width: '100%',
+                    background: 'var(--s1)',
+                    border: (liveConnectionStatus === 'tutor-speaking' || isSpeaking)
+                      ? '1px solid rgba(139, 92, 246, 0.5)'
+                      : (isRecording || liveConnectionStatus === 'connected')
+                      ? '1px solid rgba(16, 185, 129, 0.5)'
+                      : '1px solid var(--border)',
+                    borderRadius: 18,
+                    padding: '16px 20px',
+                    boxShadow: (liveConnectionStatus === 'tutor-speaking' || isSpeaking)
+                      ? '0 8px 24px rgba(139, 92, 246, 0.15)'
+                      : '0 4px 16px rgba(0, 0, 0, 0.05)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 6,
+                    textAlign: 'center',
+                    position: 'relative',
+                    transition: 'all 0.2s ease'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                      <span style={{
+                        fontSize: '0.675rem',
+                        fontWeight: 800,
+                        letterSpacing: '0.08em',
+                        color: 'var(--purple)',
+                        textTransform: 'uppercase'
+                      }}>
+                        🎙️ AI EXAMINER QUESTION
+                      </span>
+                    </div>
+
+                    <p style={{
+                      margin: 0,
+                      fontSize: isMobile ? '0.9rem' : '1.025rem',
+                      fontWeight: 600,
+                      color: 'var(--text)',
+                      lineHeight: 1.55
+                    }}>
+                      {(() => {
+                        const examinerMsg = liveConversation.slice().reverse().find(m => m.sender === 'examiner')?.text;
+                        return examinerMsg || liveStatusMessage || 'AI Examiner is ready! Oral examination starting...';
+                      })()}
+                    </p>
+
+                    {/* Speech bubble pointer pointing down to Pet Mascot */}
+                    <div style={{
+                      position: 'absolute',
+                      bottom: -8,
+                      left: '50%',
+                      transform: 'translateX(-50%) rotate(45deg)',
+                      width: 14,
+                      height: 14,
+                      background: 'var(--s1)',
+                      borderRight: '1px solid var(--border)',
+                      borderBottom: '1px solid var(--border)'
+                    }} />
+                  </div>
+
+                  {/* CONSTANT CENTER PET MASCOT */}
+                  <PetAvatar
+                    size={isMobile ? 180 : 220}
+                    isSpeaking={liveConnectionStatus === 'tutor-speaking' || isSpeaking}
+                    isListening={isRecording || (liveConnectionStatus === 'connected' && !isSpeaking)}
+                    isThinking={liveConnectionStatus === 'connecting'}
+                  />
+
+                  <span style={{ fontSize: '0.75rem', color: 'var(--muted)', marginTop: 4 }}>
+                    Vedika Mascot AI Examiner • Speak naturally through your microphone
+                  </span>
+                </div>
+
+                {/* SIDE CC TRANSCRIPT WINDOW (TOGGLED VIA CC CAPTIONS BUTTON) */}
+                {isTranscriptOpen && (
+                  <div style={{
+                    background: 'var(--s2)',
+                    borderRadius: 20,
+                    border: '1px solid var(--border)',
+                    padding: 16,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 12,
+                    maxHeight: 380,
+                    overflowY: 'auto'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: 8 }}>
+                      <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text)' }}>
+                        📜 CC Live Transcript History
+                      </span>
+                      <button
+                        onClick={() => setIsTranscriptOpen(false)}
+                        style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: '0.75rem' }}
+                      >
+                        Close
+                      </button>
+                    </div>
+
+                    {liveConversation.length === 0 ? (
+                      <span style={{ fontSize: '0.75rem', color: 'var(--muted)', textAlign: 'center', padding: '20px 0' }}>
+                        Transcript history will stream here as you speak.
+                      </span>
+                    ) : (
+                      liveConversation.map((msg) => {
+                        const isCandidate = msg.sender === 'candidate';
+                        return (
+                          <div key={msg.id} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            <span style={{ fontSize: '0.65rem', fontWeight: 700, color: isCandidate ? '#10B981' : 'var(--purple)' }}>
+                              {isCandidate ? 'You:' : 'Examiner:'}
+                            </span>
+                            <div style={{
+                              padding: '8px 12px',
+                              borderRadius: 10,
+                              background: isCandidate ? 'rgba(16, 185, 129, 0.1)' : 'var(--s1)',
+                              border: '1px solid var(--border)',
+                              fontSize: '0.8rem',
+                              color: 'var(--text)'
+                            }}>
+                              {msg.text}
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* FOOTER ACTIONS */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: 12,
+                borderTop: `1px solid var(--border)`,
+                paddingTop: 16
+              }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
+                  {liveStatusMessage}
+                </span>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <button
+                    onClick={handleFinishLiveExam}
+                    style={{
+                      padding: '10px 20px',
+                      borderRadius: 12,
+                      background: 'linear-gradient(135deg, var(--purple) 0%, var(--accent) 100%)',
+                      color: '#FFFFFF',
+                      border: 'none',
+                      fontSize: '0.825rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      boxShadow: '0 4px 16px rgba(139, 92, 246, 0.3)'
+                    }}
+                  >
+                    <Award size={16} />
+                    <span>Finish Exam & View Scorecard</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      disconnectGeminiLive();
+                      setGameState('setup');
+                    }}
+                    style={{
+                      padding: '10px 14px',
+                      borderRadius: 12,
+                      background: 'var(--s2)',
+                      color: 'var(--muted)',
+                      border: `1px solid var(--border)`,
+                      fontSize: '0.825rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6
+                    }}
+                  >
+                    <PhoneOff size={15} />
+                    <span>Exit</span>
+                  </button>
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+        )}
+
+        {gameState === 'active' && executionMode === 'turn' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
             
             {/* EXAMINER QUESTION CARD */}
@@ -1373,7 +2518,7 @@ export default function VivaInterviewPage() {
                     fontWeight: 800,
                     letterSpacing: '0.05em'
                   }}>
-                    QUESTION {currentQIndex + 1} OF 5
+                    TOPIC {currentQIndex + 1}
                   </span>
                   <span style={{
                     padding: '3px 8px',
@@ -1385,39 +2530,79 @@ export default function VivaInterviewPage() {
                   }}>
                     {difficulty}
                   </span>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
-                    • {sessionMode === 'viva' ? (vivaSource === 'custom' ? customVivaTopic : selectedExperiment) : (programmingLanguage || 'Technical Stack')}
+                  <span style={{ fontSize: '0.75rem', color: turnTimeRemaining < 20 ? '#EF4444' : 'var(--muted)', fontWeight: turnTimeRemaining < 20 ? 700 : 500 }}>
+                    • Turn Timer: {turnTimeRemaining}s remaining {turnTimeRemaining < 20 && '⏱️'}
                   </span>
                 </div>
 
-                <button
-                  onClick={() => {
-                    const next = !ttsEnabled;
-                    setTtsEnabled(next);
-                    if (!next && typeof window !== 'undefined' && window.speechSynthesis) {
-                      window.speechSynthesis.cancel();
-                      setIsSpeaking(false);
-                    } else if (next) {
-                      speakText(currentQuestion);
-                    }
-                  }}
-                  style={{
-                    padding: '6px 10px',
-                    background: 'var(--s2)',
-                    border: `1px solid var(--border)`,
-                    color: ttsEnabled ? 'var(--accent)' : 'var(--muted)',
-                    borderRadius: 8,
-                    fontSize: '0.75rem',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6
-                  }}
-                >
-                  {ttsEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />}
-                  <span>{isSpeaking ? 'Speaking...' : ttsEnabled ? 'Voice On' : 'Muted'}</span>
-                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <button
+                    onClick={handleRepeatQuestion}
+                    style={{
+                      padding: '6px 12px',
+                      background: 'rgba(139, 92, 246, 0.12)',
+                      border: `1px solid var(--purple)`,
+                      color: 'var(--purple)',
+                      borderRadius: 8,
+                      fontSize: '0.75rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 5,
+                      transition: 'all 0.15s ease'
+                    }}
+                    title="Ask Examiner to Repeat or Rephrase Question"
+                  >
+                    <RotateCcw size={13} />
+                    <span>Repeat Question</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      const next = !ttsEnabled;
+                      setTtsEnabled(next);
+                      if (!next && typeof window !== 'undefined' && window.speechSynthesis) {
+                        window.speechSynthesis.cancel();
+                        setIsSpeaking(false);
+                      } else if (next) {
+                        speakText(currentQuestion);
+                      }
+                    }}
+                    style={{
+                      padding: '6px 10px',
+                      background: 'var(--s2)',
+                      border: `1px solid var(--border)`,
+                      color: ttsEnabled ? 'var(--accent)' : 'var(--muted)',
+                      borderRadius: 8,
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6
+                    }}
+                  >
+                    {ttsEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />}
+                    <span>{isSpeaking ? 'Speaking...' : ttsEnabled ? 'Voice On' : 'Muted'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* 90s TURN TIMER PROGRESS BAR */}
+              <div style={{
+                width: '100%',
+                height: 4,
+                background: 'var(--s2)',
+                borderRadius: 2,
+                overflow: 'hidden'
+              }}>
+                <div style={{
+                  height: '100%',
+                  width: `${(turnTimeRemaining / 90) * 100}%`,
+                  background: turnTimeRemaining < 20 ? '#EF4444' : turnTimeRemaining < 40 ? '#F59E0B' : 'var(--purple)',
+                  transition: 'width 1s linear'
+                }} />
               </div>
 
               {/* EXAMINER ACKNOWLEDGMENT BUBBLE */}
@@ -1602,39 +2787,67 @@ export default function VivaInterviewPage() {
                 />
               </div>
 
-              {/* SUBMIT BUTTON */}
+              {/* SUBMIT & SKIP BUTTONS */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
                 <span style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
                   {loading && (statusMessage || 'Examiner is evaluating your answer...')}
                 </span>
 
-                <button
-                  onClick={handleAnswerSubmit}
-                  disabled={loading || !userAnswer.trim()}
-                  style={{
-                    padding: '12px 24px',
-                    background: currentQIndex >= 4 ? 'var(--accent)' : 'var(--purple)',
-                    color: '#FFFFFF',
-                    border: 'none',
-                    borderRadius: 14,
-                    fontSize: '0.85rem',
-                    fontWeight: 700,
-                    cursor: (loading || !userAnswer.trim()) ? 'not-allowed' : 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    boxShadow: '0 4px 14px rgba(139, 92, 246, 0.25)',
-                    opacity: (loading || !userAnswer.trim()) ? 0.5 : 1,
-                    transition: 'all 0.15s ease'
-                  }}
-                >
-                  {loading ? (
-                    <Loader2 className="animate-spin" size={16} />
-                  ) : (
-                    <Send size={16} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  {currentQIndex < 4 && (
+                    <button
+                      onClick={handleSkipQuestion}
+                      disabled={loading}
+                      style={{
+                        padding: '10px 18px',
+                        background: 'var(--s2)',
+                        color: 'var(--muted)',
+                        border: `1px solid var(--border)`,
+                        borderRadius: 14,
+                        fontSize: '0.825rem',
+                        fontWeight: 600,
+                        cursor: loading ? 'not-allowed' : 'pointer',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      Skip Question
+                    </button>
                   )}
-                  <span>{currentQIndex >= 4 ? 'Submit Final Answer & View Scorecard' : 'Submit & Next Question'}</span>
-                </button>
+
+                  <button
+                    onClick={handleAnswerSubmit}
+                    disabled={loading || !userAnswer.trim()}
+                    style={{
+                      padding: '12px 24px',
+                      background: currentQIndex >= 4 
+                        ? 'linear-gradient(135deg, var(--purple) 0%, var(--accent) 100%)' 
+                        : 'var(--purple)',
+                      color: '#FFFFFF',
+                      border: 'none',
+                      borderRadius: 14,
+                      fontSize: '0.85rem',
+                      fontWeight: 800,
+                      cursor: (loading || !userAnswer.trim()) ? 'not-allowed' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      boxShadow: currentQIndex >= 4 
+                        ? '0 0 20px rgba(139, 92, 246, 0.45)' 
+                        : '0 4px 14px rgba(139, 92, 246, 0.25)',
+                      opacity: (loading || !userAnswer.trim()) ? 0.5 : 1,
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    {loading ? (
+                      <Loader2 className="animate-spin" size={16} />
+                    ) : currentQIndex >= 4 ? (
+                      <Award size={16} />
+                    ) : (
+                      <Send size={16} />
+                    )}
+                    <span>{currentQIndex >= 4 ? '🎉 Finish Exam & View Scorecard' : 'Submit & Next Question'}</span>
+                  </button>
+                </div>
               </div>
 
             </div>
@@ -1928,91 +3141,6 @@ export default function VivaInterviewPage() {
                   </div>
                 );
               })}
-            </div>
-
-            {/* QUESTION-BY-QUESTION AUDIT ACCORDION */}
-            <div style={{
-              background: 'var(--s1)',
-              border: `1px solid var(--border)`,
-              borderRadius: 24,
-              padding: isMobile ? 18 : 28,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 16
-            }}>
-              <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: 'var(--text)' }}>
-                Detailed Question-by-Question Audit ({difficulty} Difficulty)
-              </h3>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {(scorecard.perQuestionAnalysis || []).map((qItem, idx) => {
-                  const isExpanded = expandedQ === idx;
-                  const isLowScore = (qItem.score || 0) <= 3;
-                  return (
-                    <div key={idx} style={{
-                      borderRadius: 16,
-                      background: 'var(--s2)',
-                      border: `1px solid ${isLowScore ? 'rgba(239, 68, 68, 0.4)' : 'var(--border)'}`,
-                      overflow: 'hidden',
-                      transition: 'all 0.15s ease'
-                    }}>
-                      <div 
-                        onClick={() => setExpandedQ(isExpanded ? null : idx)}
-                        style={{
-                          padding: '14px 18px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                          <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--purple)' }}>
-                            Q{idx + 1}
-                          </span>
-                          <span style={{ fontSize: '0.825rem', fontWeight: 600, color: 'var(--text)' }}>
-                            {qItem.question}
-                          </span>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                          <span style={{ 
-                            fontSize: '0.8rem', 
-                            fontWeight: 800, 
-                            color: qItem.score >= 7 ? '#10B981' : qItem.score >= 4 ? 'var(--accent)' : '#EF4444' 
-                          }}>
-                            Score: {qItem.score}/10
-                          </span>
-                          <ChevronRight size={16} style={{ transform: isExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }} />
-                        </div>
-                      </div>
-
-                      {isExpanded && (
-                        <div style={{
-                          padding: '0 18px 16px 18px',
-                          borderTop: `1px solid var(--border)`,
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: 10,
-                          fontSize: '0.8rem'
-                        }}>
-                          <div style={{ marginTop: 10 }}>
-                            <strong style={{ color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Candidate Answer:</strong>
-                            <p style={{ margin: 0, color: 'var(--text)' }}>"{qItem.candidateAnswer}"</p>
-                          </div>
-                          <div>
-                            <strong style={{ color: 'var(--purple)', display: 'block', marginBottom: 4 }}>Reference Model Answer:</strong>
-                            <p style={{ margin: 0, color: 'var(--text)' }}>{qItem.idealAnswer}</p>
-                          </div>
-                          <div>
-                            <strong style={{ color: '#EF4444', display: 'block', marginBottom: 4 }}>Identified Conceptual Gaps:</strong>
-                            <p style={{ margin: 0, color: 'var(--muted)' }}>{qItem.keyGaps}</p>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
             </div>
 
             {/* STRENGTHS & ACTIONABLE PREPARATION ROADMAP */}

@@ -106,31 +106,66 @@ nextApp.prepare().then(() => {
   wss.on('connection', async (clientWs, request) => {
     console.log('[WS] Client connected');
     const searchParams = new URL(request.url || '', 'http://localhost').searchParams;
+    const mode = searchParams.get('mode') || 'tutor';
     const language = searchParams.get('language') || 'all';
     const subject = searchParams.get('subject') || 'all';
+    const topic = searchParams.get('topic') || '';
+    const level = searchParams.get('level') || 'College';
+    const difficulty = searchParams.get('difficulty') || 'Medium';
+    const programmingLanguage = searchParams.get('programmingLanguage') || '';
+    const jdText = searchParams.get('jdText') || '';
+    const experimentName = searchParams.get('experimentName') || topic;
 
-    let systemInstruction =
-      'You are a friendly, patient, and highly expert academic tutor supporting school students. ' +
-      'Your goal is to guide students and encourage their curiosity. ' +
-      'Keep answers extremely conversational and concise (usually strictly 1 to 3 sentences maximum) so that it is easy and comfortable to listen to of the speech delivery. ' +
-      'Do not output long formulas or dense blocks of texts. Break it down or offer to explain details when they ask. ';
+    let systemInstruction = '';
 
-    if (language === 'telugu') systemInstruction += 'You must speak in Telugu only (unless referring to specific scientific/mathematical English terms). Frame your explanations sweetly in Telugu.';
-    else if (language === 'hindi') systemInstruction += 'You must speak in Hindi. Use simple, easily understandable Hindi terms with a helpful academic tutoring style.';
-    else if (language === 'english') systemInstruction += 'Please speak in clear, expressive English. Keep explanations simplified and kid-friendly.';
-    else systemInstruction += 'You are multilingual. Support Telugu, Hindi, and English. Respond in the exact language the student speaks to you, or blend them naturally if they use a blend.';
+    if (mode === 'viva' || mode === 'interview') {
+      const isViva = mode === 'viva';
+      const targetTopic = topic || experimentName || (isViva ? 'Academic Lab Experiment' : (programmingLanguage || 'Technical Stack'));
+      const seniority = isViva ? `${level} Student` : `${level} Software Engineer`;
 
-    if (subject === 'math') systemInstruction += ' Currently helping with Mathematics! Help explain concepts like addition, fractions, algebra, or geometry using simple physical analogies.';
-    else if (subject === 'science') systemInstruction += ' Currently helping with Science! Help explain concepts like gravity, photosynthesis, planets, or animals with fun, exciting facts.';
-    else if (subject === 'languages') systemInstruction += ' Currently helping with Languages & Reading! Help expand vocabulary, teach correct grammar, or guide reading comprehensions with interesting sentences.';
-    else systemInstruction += ' You are ready to tutor on any academic school subject: math, science, history, geography, languages, or reading.';
+      systemInstruction =
+        `You are a distinguished, formal, and articulate ${isViva ? 'Academic Viva Examiner' : 'Senior Technical Interviewer'}.\n` +
+        `You are conducting a live oral ${isViva ? 'viva examination' : 'technical job interview'} in English.\n` +
+        `Topic/Focus: "${targetTopic}"\n` +
+        `Target Level: ${seniority}\n` +
+        `Difficulty Tier: ${difficulty.toUpperCase()} (${difficulty === 'Easy' ? 'fundamental definitions & core principles' : difficulty === 'Hard' ? 'low-level mechanics, edge cases, formulas, failure modes & deep trade-offs' : 'standard analytical questions & practical problem solving'}).\n` +
+        `${jdText ? `Target Job Description: "${jdText.slice(0, 400)}..."\n` : ''}` +
+        `\nEXAMINATION RULES:\n` +
+        `1. SPEAK IN CLEAR ENGLISH ONLY. Speak continuously and naturally at a comfortable speaking pace.\n` +
+        `2. NEVER reveal, explain, hint, or solve the answers. You are strictly evaluating the candidate's understanding.\n` +
+        `3. Exactly 5 questions total. Always prefix each question clearly: "Question 1 of 5:", "Question 2 of 5:", "Question 3 of 5:", "Question 4 of 5:", "Question 5 of 5:".\n` +
+        `4. After the candidate finishes answering, give a short 1-sentence acknowledgment (e.g. "Thank you for that explanation.", "Understood.", "Let us proceed.") and immediately ask the next question.\n` +
+        `5. If the candidate asks to repeat or clarify (e.g. "repeat please", "say again", "pardon"), politely repeat the current question without penalty and wait for their answer.\n` +
+        `6. On Question 5 (the final question), after the candidate answers, conclude warmly: "Thank you for your responses. That concludes your oral examination! Your scorecard report is ready."\n` +
+        `7. START IMMEDIATELY: As soon as the session begins, welcome the candidate briefly and ask Question 1 of 5.`;
+    } else {
+      // ─────────────────────────────────────────────────────────────
+      // EXISTING VOICE TUTOR PERSONA (100% UNTOUCHED)
+      // ─────────────────────────────────────────────────────────────
+      systemInstruction =
+        'You are a friendly, patient, and highly expert academic tutor supporting school students. ' +
+        'Your goal is to guide students and encourage their curiosity. ' +
+        'Keep answers extremely conversational and concise (usually strictly 1 to 3 sentences maximum) so that it is easy and comfortable to listen to of the speech delivery. ' +
+        'Do not output long formulas or dense blocks of texts. Break it down or offer to explain details when they ask. ';
 
-    const sessionId = searchParams.get('sessionId');
-    const userId = searchParams.get('userId');
-    const memoryCtx = await loadMemoryContext(sessionId, userId);
-    if (memoryCtx) systemInstruction += memoryCtx;
+      if (language === 'telugu') systemInstruction += 'You must speak in Telugu only (unless referring to specific scientific/mathematical English terms). Frame your explanations sweetly in Telugu.';
+      else if (language === 'hindi') systemInstruction += 'You must speak in Hindi. Use simple, easily understandable Hindi terms with a helpful academic tutoring style.';
+      else if (language === 'english') systemInstruction += 'Please speak in clear, expressive English. Keep explanations simplified and kid-friendly.';
+      else systemInstruction += 'You are multilingual. Support Telugu, Hindi, and English. Respond in the exact language the student speaks to you, or blend them naturally if they use a blend.';
+
+      if (subject === 'math') systemInstruction += ' Currently helping with Mathematics! Help explain concepts like addition, fractions, algebra, or geometry using simple physical analogies.';
+      else if (subject === 'science') systemInstruction += ' Currently helping with Science! Help explain concepts like gravity, photosynthesis, planets, or animals with fun, exciting facts.';
+      else if (subject === 'languages') systemInstruction += ' Currently helping with Languages & Reading! Help expand vocabulary, teach correct grammar, or guide reading comprehensions with interesting sentences.';
+      else systemInstruction += ' You are ready to tutor on any academic school subject: math, science, history, geography, languages, or reading.';
+
+      const sessionId = searchParams.get('sessionId');
+      const userId = searchParams.get('userId');
+      const memoryCtx = await loadMemoryContext(sessionId, userId);
+      if (memoryCtx) systemInstruction += memoryCtx;
+    }
 
     let geminiSession = null;
+
     try {
       clientWs.send(JSON.stringify({ type: 'status', message: 'Establishing low-latency connection to Gemini...' }));
       const ai = getGeminiClient();
@@ -139,25 +174,26 @@ nextApp.prepare().then(() => {
         callbacks: {
           onmessage: (message) => {
             const content = message.serverContent;
-            if (!content) return;
-            for (const part of content.modelTurn?.parts || []) {
-              if (part.inlineData?.data) {
-                clientWs.send(JSON.stringify({ type: 'audio', data: part.inlineData.data }));
+            if (content) {
+              for (const part of content.modelTurn?.parts || []) {
+                if (part.inlineData?.data) {
+                  clientWs.send(JSON.stringify({ type: 'audio', data: part.inlineData.data }));
+                }
               }
-            }
-            if (content.outputTranscription?.text) {
-              clientWs.send(JSON.stringify({ type: 'agent-transcription', text: content.outputTranscription.text }));
-            }
-            if (content.interrupted) {
-              clientWs.send(JSON.stringify({ type: 'interrupted' }));
-            }
-            if (content.inputTranscription?.text?.trim()) {
-              const sentiment = analyzeSentiment(content.inputTranscription.text);
-              clientWs.send(JSON.stringify({ type: 'user-transcription', text: content.inputTranscription.text, sentiment }));
+              if (content.outputTranscription?.text) {
+                clientWs.send(JSON.stringify({ type: 'agent-transcription', text: content.outputTranscription.text }));
+              }
+              if (content.interrupted) {
+                clientWs.send(JSON.stringify({ type: 'interrupted' }));
+              }
+              if (content.inputTranscription?.text?.trim()) {
+                const sentiment = analyzeSentiment(content.inputTranscription.text);
+                clientWs.send(JSON.stringify({ type: 'user-transcription', text: content.inputTranscription.text, sentiment }));
+              }
             }
           },
           onclose: () => {
-            clientWs.send(JSON.stringify({ type: 'status', message: 'Tutor connection closed.' }));
+            clientWs.send(JSON.stringify({ type: 'status', message: 'Session connection closed.' }));
           },
           onerror: (error) => {
             console.error('[WS] Session error:', error);
@@ -174,10 +210,39 @@ nextApp.prepare().then(() => {
       });
 
       console.log('[WS] Connected with Gemini Live API');
-      clientWs.send(JSON.stringify({ type: 'status', message: 'Tutor is ready! Ask your academic questions.' }));
+      const readyMessage = mode === 'viva' 
+        ? 'AI Examiner is ready! Oral viva examination starting..., say hello!' 
+        : mode === 'interview'
+        ? 'Technical Interviewer is ready! Technical interview starting...'
+        : 'Tutor is ready! Ask your academic questions.';
+
+      clientWs.send(JSON.stringify({ type: 'status', message: readyMessage }));
+
+      // Send initial kickoff prompt for viva/interview so Gemini immediately begins speaking Question 1
+      if (mode === 'viva' || mode === 'interview') {
+        try {
+          geminiSession.send({
+            clientContent: {
+              turns: [
+                {
+                  role: 'user',
+                  parts: [
+                    {
+                      text: `Start the oral examination now. Greet the candidate with "Welcome to your oral examination on ${targetTopic}. Let's begin!" and immediately ask Question 1 of 5 out loud in English.`
+                    }
+                  ]
+                }
+              ],
+              turnComplete: true
+            }
+          });
+        } catch (kickoffErr) {
+          console.warn('[WS] Kickoff turn error:', kickoffErr);
+        }
+      }
     } catch (err) {
       console.error('[WS] Failed connecting to Gemini Live API:', err.message);
-      clientWs.send(JSON.stringify({ type: 'error', message: `Tutoring setup failed: ${err.message}` }));
+      clientWs.send(JSON.stringify({ type: 'error', message: `Setup failed: ${err.message}` }));
       clientWs.close();
       return;
     }
