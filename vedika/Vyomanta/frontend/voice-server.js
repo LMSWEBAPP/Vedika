@@ -215,8 +215,12 @@ wss.on('connection', async (clientWs, request) => {
     // Send initial kickoff prompt for viva/interview so Gemini immediately begins speaking Question 1
     if (mode === 'viva' || mode === 'interview') {
       try {
-        geminiSession.send({
-          clientContent: {
+        const sendFn = typeof geminiSession.sendClientContent === 'function' 
+          ? geminiSession.sendClientContent.bind(geminiSession)
+          : (typeof geminiSession.send === 'function' ? geminiSession.send.bind(geminiSession) : null);
+
+        if (sendFn) {
+          sendFn({
             turns: [
               {
                 role: 'user',
@@ -228,10 +232,10 @@ wss.on('connection', async (clientWs, request) => {
               }
             ],
             turnComplete: true
-          }
-        });
+          });
+        }
       } catch (kickoffErr) {
-        console.warn('[VoiceWS] Kickoff turn error:', kickoffErr);
+        console.warn('[VoiceWS] Kickoff turn warning:', kickoffErr?.message || kickoffErr);
       }
     }
   } catch (err) {
