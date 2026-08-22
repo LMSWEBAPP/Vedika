@@ -100,17 +100,18 @@ wss.on('connection', async (clientWs, request) => {
   const targetTopic = topic || experimentName || (isViva ? 'Academic Lab Experiment' : (programmingLanguage || 'Technical Stack'));
 
   let systemInstruction = '';
+  const isReconnect = searchParams.get('reconnect') === 'true';
+  const historyParam = searchParams.get('history');
 
   if (mode === 'viva' || mode === 'interview') {
-    // ─────────────────────────────────────────────────────────────
-    // STRICT EXAMINER PERSONA (ADAPTIVE VIVA & TECHNICAL INTERVIEWS)
-    // ─────────────────────────────────────────────────────────────
+    const isViva = mode === 'viva';
+    const targetTopic = topic || experimentName || (isViva ? 'Academic Lab Experiment' : (programmingLanguage || 'Technical Stack'));
     const seniority = isViva ? `${level} Student` : `${level} Software Engineer`;
 
     systemInstruction =
       `You are a distinguished, formal, and articulate ${isViva ? 'Academic Viva Examiner' : 'Senior Technical Interviewer'}.\n` +
       `You are conducting a live oral ${isViva ? 'viva examination' : 'technical job interview'} in English.\n` +
-      `Topic/Focus Domain: "${targetTopic}"\n` +
+      `Topic/Focus: "${targetTopic}"\n` +
       `Target Level: ${seniority}\n` +
       `Difficulty Tier: ${difficulty.toUpperCase()} (${difficulty === 'Easy' ? 'fundamental definitions & core principles' : difficulty === 'Hard' ? 'low-level mechanics, edge cases, formulas, failure modes & deep trade-offs' : 'standard analytical questions & practical problem solving'}).\n` +
       `${jdText ? `Target Job Description: "${jdText.slice(0, 400)}..."\n` : ''}` +
@@ -132,6 +133,21 @@ wss.on('connection', async (clientWs, request) => {
       `8. If the candidate asks to repeat or clarify (e.g. "repeat please", "say again", "pardon"), politely repeat the current question naturally.\n` +
       `9. CONCLUSION: When wrapping up the final topic or when notified that session time is closing, conclude warmly: "Thank you for your responses. That concludes your oral examination! Your scorecard report is ready."\n` +
       `10. START IMMEDIATELY: Greet the candidate briefly ("Welcome to your oral examination on ${targetTopic}. Let's begin!") and ask the first main question directly.`;
+
+    if (historyParam) {
+      try {
+        const historyList = JSON.parse(historyParam);
+        if (Array.isArray(historyList) && historyList.length > 0) {
+          systemInstruction += '\n\nPREVIOUS INTERVIEW TURNS IN THIS RECONNECTED SESSION:\n';
+          historyList.forEach((h, idx) => {
+            systemInstruction += `[Turn ${idx + 1}]: ${h.sender === 'examiner' ? 'Examiner' : 'Candidate'}: "${h.text}"\n`;
+          });
+          systemInstruction += '\nRESUME INSTRUCTION: The candidate is reconnecting to continue their examination from the next question turn. Do not restart from Question 1; continue directly where the session left off.';
+        }
+      } catch (e) {
+        console.warn('[VoiceWS] History param parse error:', e);
+      }
+    }
   } else {
     // ─────────────────────────────────────────────────────────────
     // EXISTING VOICE TUTOR PERSONA (100% UNTOUCHED)
@@ -159,55 +175,74 @@ wss.on('connection', async (clientWs, request) => {
   }
 
   let geminiSession = null;
+  let lastConnErr = null;
 
   try {
     clientWs.send(JSON.stringify({ type: 'status', message: 'Establishing low-latency connection to Gemini...' }));
-    const ai = getGeminiClient();
+    
+    const keysToTry = GEMINI_KEYS.length > 0 ? GEMINI_KEYS : [process.env.GEMINI_API_KEY].filter(Boolean);
+    for (let attempt = 0; attempt < Math.max(1, keysToTry.length); attempt++) {
+      try {
+        const apiKey = keysToTry[(connectionCount + attempt) % keysToTry.length];
+        const ai = new GoogleGenAI({ apiKey, httpOptions: { headers: { 'User-Agent': 'aistudio-build' } } });
 
-    geminiSession = await ai.live.connect({
-      model: 'gemini-3.1-flash-live-preview',
-      callbacks: {
-        onmessage: (message) => {
-          const content = message.serverContent;
-          if (content) {
-            for (const part of content.modelTurn?.parts || []) {
-              if (part.inlineData?.data) {
-                clientWs.send(JSON.stringify({ type: 'audio', data: part.inlineData.data }));
+        geminiSession = await ai.live.connect({
+          model: 'gemini-3.1-flash-live-preview',
+          callbacks: {
+            onmessage: (message) => {
+              const content = message.serverContent;
+              if (content) {
+                for (const part of content.modelTurn?.parts || []) {
+                  if (part.inlineData?.data) {
+                    clientWs.send(JSON.stringify({ type: 'audio', data: part.inlineData.data }));
+                  }
+                }
+                if (content.outputTranscription?.text) {
+                  clientWs.send(JSON.stringify({ type: 'agent-transcription', text: content.outputTranscription.text }));
+                }
+                if (content.interrupted) {
+                  clientWs.send(JSON.stringify({ type: 'interrupted' }));
+                }
+                if (content.inputTranscription?.text?.trim()) {
+                  const sentiment = analyzeSentiment(content.inputTranscription.text);
+                  clientWs.send(JSON.stringify({ type: 'user-transcription', text: content.inputTranscription.text, sentiment }));
+                }
               }
-            }
-            if (content.outputTranscription?.text) {
-              clientWs.send(JSON.stringify({ type: 'agent-transcription', text: content.outputTranscription.text }));
-            }
-            if (content.interrupted) {
-              clientWs.send(JSON.stringify({ type: 'interrupted' }));
-            }
-            if (content.inputTranscription?.text?.trim()) {
-              const sentiment = analyzeSentiment(content.inputTranscription.text);
-              clientWs.send(JSON.stringify({ type: 'user-transcription', text: content.inputTranscription.text, sentiment }));
-            }
-          }
-        },
-        onclose: () => {
-          clientWs.send(JSON.stringify({ type: 'status', message: 'Session connection closed.' }));
-        },
-        onerror: (error) => {
-          console.error('[VoiceWS] Session error:', error);
-          clientWs.send(JSON.stringify({ type: 'error', message: 'Session error occurred.' }));
-        },
-      },
-      config: {
-        responseModalities: [Modality.AUDIO],
-        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } } },
-        systemInstruction,
-        outputAudioTranscription: {},
-        inputAudioTranscription: {},
-      },
-    });
+            },
+            onclose: () => {
+              clientWs.send(JSON.stringify({ type: 'status', message: 'Session connection closed.' }));
+            },
+            onerror: (error) => {
+              console.error('[VoiceWS] Session error:', error);
+              clientWs.send(JSON.stringify({ type: 'error', message: 'Session error occurred.' }));
+            },
+          },
+          config: {
+            responseModalities: [Modality.AUDIO],
+            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } } },
+            systemInstruction,
+            outputAudioTranscription: {},
+            inputAudioTranscription: {},
+          },
+        });
+
+        connectionCount += (attempt + 1);
+        lastConnErr = null;
+        break;
+      } catch (err) {
+        lastConnErr = err;
+        console.warn(`[VoiceWS] Gemini Live key attempt ${attempt + 1} failed: ${err.message}. Retrying next key...`);
+      }
+    }
+
+    if (!geminiSession) {
+      throw lastConnErr || new Error('All Gemini API key attempts failed for Live Session.');
+    }
 
     const readyMessage = mode === 'viva' 
-      ? 'AI Examiner is ready! Oral viva examination starting..., say hello!' 
+      ? (isReconnect ? 'Reconnected to AI Examiner! Resuming examination...' : 'AI Examiner is ready! Oral viva examination starting..., say hello!')
       : mode === 'interview'
-      ? 'Technical Interviewer is ready! Technical interview starting...'
+      ? (isReconnect ? 'Reconnected to Technical Interviewer! Resuming interview...' : 'Technical Interviewer is ready! Technical interview starting...')
       : 'Tutor is ready! Ask your academic questions.';
 
     clientWs.send(JSON.stringify({ type: 'status', message: readyMessage }));
@@ -215,6 +250,11 @@ wss.on('connection', async (clientWs, request) => {
     // Send initial kickoff prompt for viva/interview so Gemini immediately begins speaking Question 1
     if (mode === 'viva' || mode === 'interview') {
       try {
+        const targetTopic = topic || experimentName || (mode === 'viva' ? 'Academic Lab Experiment' : (programmingLanguage || 'Technical Stack'));
+        const kickoffText = isReconnect
+          ? `The candidate has reconnected. Briefly say "Welcome back! Let's continue your examination." and proceed directly with the next question turn.`
+          : `Start the oral examination now. Greet the candidate with "Welcome to your ${difficulty} level oral examination on ${targetTopic}. Let's begin!" DYNAMIC SUB-TOPIC DIVERSIFICATION: Dynamically identify 5 core sub-topic pillars within "${targetTopic}" for ${level} level. Select ONE specific sub-topic pillar and immediately ask Question 1 of 5 out loud in English on that chosen sub-domain. Do NOT default to generic textbook definitions (e.g. for Python, do NOT default to mutable/immutable).`;
+
         const sendFn = typeof geminiSession.sendClientContent === 'function' 
           ? geminiSession.sendClientContent.bind(geminiSession)
           : (typeof geminiSession.send === 'function' ? geminiSession.send.bind(geminiSession) : null);
@@ -226,7 +266,7 @@ wss.on('connection', async (clientWs, request) => {
                 role: 'user',
                 parts: [
                   {
-                    text: `Start the oral examination now. Greet the candidate briefly ("Welcome to your oral examination on ${targetTopic}. Let's begin!") and ask the first main question directly without speaking any question numbers.`
+                    text: kickoffText
                   }
                 ]
               }
@@ -248,10 +288,29 @@ wss.on('connection', async (clientWs, request) => {
   clientWs.on('message', (buffer) => {
     try {
       const msg = JSON.parse(buffer.toString());
-      if (msg.type === 'audio' && msg.data && geminiSession) {
-        geminiSession.sendRealtimeInput({ audio: { data: msg.data, mimeType: 'audio/pcm;rate=16000' } });
+      if (msg.type === 'reconnect-history' && Array.isArray(msg.history) && geminiSession) {
+        let historyText = '\n\nPREVIOUS INTERVIEW TURNS IN THIS RECONNECTED SESSION:\n';
+        msg.history.forEach((h, idx) => {
+          historyText += `[Turn ${idx + 1}]: ${h.sender === 'examiner' ? 'Examiner' : 'Candidate'}: "${h.text}"\n`;
+        });
+        historyText += '\nRESUME INSTRUCTION: The candidate has reconnected to continue their examination. Briefly say "Welcome back! Let\'s continue." and proceed directly with the next question turn.';
+
+        const sendFn = typeof geminiSession.sendClientContent === 'function'
+          ? geminiSession.sendClientContent.bind(geminiSession)
+          : (typeof geminiSession.send === 'function' ? geminiSession.send.bind(geminiSession) : null);
+
+        if (sendFn) {
+          sendFn({
+            turns: [{ role: 'user', parts: [{ text: historyText }] }],
+            turnComplete: true
+          });
+        }
+      } else if (msg.type === 'audio' && msg.data && geminiSession) {
+        if (typeof geminiSession.sendRealtimeInput === 'function') {
+          geminiSession.sendRealtimeInput({ audio: { data: msg.data, mimeType: 'audio/pcm;rate=16000' } });
+        }
       }
-    } catch (e) { console.error('[VoiceWS] Audio error:', e); }
+    } catch (e) { console.error('[VoiceWS] Audio/Message error:', e); }
   });
 
   clientWs.on('close', () => {

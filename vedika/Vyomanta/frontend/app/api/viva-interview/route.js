@@ -196,23 +196,52 @@ Extract and return a clean JSON summary object:
         contextText = `Target Stack/Domain: ${stack}\nTarget Seniority: ${level} Engineer\nChosen Difficulty: ${difficulty.toUpperCase()} (${difficulty === 'Easy' ? 'syntax fundamentals & standard patterns' : difficulty === 'Hard' ? 'low-level runtime internals, high-scale bottlenecks & failure modes' : 'production architecture & problem solving'})${resumeDetails}${jdDetails}`;
       }
 
+      const isFirstQuestion = questionIndex === 0 && history.length === 0;
+      const recentQ1s = Array.isArray(body.recentQ1s) ? body.recentQ1s : [];
+      let recentQ1Text = '';
+      if (recentQ1s.length > 0) {
+        recentQ1Text = `\nANTI-REPETITION MANDATE: The candidate recently answered these opening questions in previous sessions for this topic:\n${recentQ1s.map((q, i) => `- "${q}"`).join('\n')}\nYou MUST NOT repeat any of these questions or test the exact same sub-topic concept as Question 1.`;
+      }
+
+      let openingDiversificationInstruction = '';
+      if (isFirstQuestion) {
+        openingDiversificationInstruction = `\nDYNAMIC SUB-TOPIC DIVERSIFICATION FOR QUESTION 1:
+- Dynamically identify 5 distinct core sub-topic pillars within "${experimentName || topic || subject || programmingLanguage}" appropriate for a ${level} level examination.
+- Select ONE specific sub-topic pillar to test for this session's opening question.
+- Do NOT default to generic textbook definitions or the single most common entry-level opening question (e.g., for Python, avoid defaulting to mutable/immutable unless specifically targeted). Pick a specific, meaningful core concept pillar.
+${recentQ1Text}`;
+      }
+
       const systemInstruction = `You are a formal, professional, and rigorous ${type === 'viva' ? 'Academic Viva Examiner' : 'Senior Technical Interviewer'}.
 Context:
 ${contextText}
 
 Question Index: ${questionIndex + 1} of 5.
 Difficulty Tier: ${difficulty.toUpperCase()}.
+${openingDiversificationInstruction}
 
 CRITICAL RULES:
 1. Calibrate question complexity strictly to the ${difficulty.toUpperCase()} difficulty level.
 2. NEVER provide answers, hints, solutions, or explanations during this interview session.
 3. STRICT REFUSAL OF CANDIDATE QUESTIONS: If the candidate asks you a question or asks for explanations (e.g. "What is the answer?", "Can you explain this to me?"), DO NOT answer their question. Refuse politely: "We are in the middle of your examination right now—I am here to question you, not the other way around. Please answer the question."
-4. If the candidate previously answered, provide a brief, professional acknowledgment (e.g. "Understood.", "Got it, thank you.", "Alright, let us proceed to the next question.") in the "acknowledgment" field.
+4. ACKNOWLEDGMENT & RELEVANCE CHECK:
+   - If candidate answered previously, evaluate if the candidate's answer was relevant to the target topic (${topic || subject}) or if it substituted an unrelated domain (e.g. HTML/CSS in a C viva).
+   - ACCEPTABLE COMPARISONS: Candidate using cross-language or cross-domain analogies to illustrate a concept in ${topic || subject} IS ON-TOPIC.
+   - UNACCEPTABLE SUBSTITUTIONS: Candidate answering with concepts from a completely different domain in place of addressing the question is OFF-TOPIC.
+   - If OFF-TOPIC, set acknowledgment to: "Note: your previous response discussed an unrelated domain, which does not address the question on ${topic || subject}. Let us return to the target topic..."
+   - If ON-TOPIC or relevant, provide a brief, professional acknowledgment (e.g. "Understood.", "Got it, thank you.", "Alright, let us proceed.").
 5. Formulate exactly ONE clear, direct question (maximum 2 sentences) testing core principles, underlying logic, edge cases, formulas, or architecture.
 6. If this is question 1, acknowledgment should be a brief opening remark (e.g. "Welcome to your ${difficulty} level ${type === 'viva' ? 'viva examination' : 'technical interview'}. Let us begin.").
-7. Output ONLY a valid JSON object matching this schema:
+7. TOPIC VALIDATION (Mandatory for Question 1): Evaluate if the provided topic/experiment is a legitimate academic subject, lab experiment, scientific domain, or software/hardware tech stack.
+   - VALID TOPIC EXAMPLES: "SQL", "CSS", "JWT", "gRPC", "TCP/IP", "Quantum Mechanics", "Organic Chemistry", "React", "Fluid Dynamics", "PostgreSQL", "C++".
+   - INVALID TOPIC EXAMPLES: Casual greetings ("hi", "hello", "hey"), random keyboard mash ("hjghas", "asdf", "qwerty"), plain numbers ("1234"), or generic non-topics ("test", "temp", "dummy").
+   - Set "isValidTopic" to true for valid topics. Set "isValidTopic" to false ONLY if the topic is unambiguously a greeting, test filler, or random gibberish, and provide a polite "rejectionReason".
+
+8. Output ONLY a valid JSON object matching this schema:
 {
-  "acknowledgment": "Brief professional acknowledgment phrase (max 10 words)",
+  "isValidTopic": true,
+  "rejectionReason": "If topic is invalid, short 1-sentence reason. Leave empty if valid.",
+  "acknowledgment": "Brief professional acknowledgment phrase (max 15 words)",
   "question": "The exact question text ending with a question mark"
 }`;
 
@@ -240,6 +269,8 @@ CRITICAL RULES:
         }
         const parsed = JSON.parse(cleanJson);
         return NextResponse.json({
+          isValidTopic: parsed.isValidTopic !== false,
+          rejectionReason: parsed.rejectionReason || '',
           acknowledgment: parsed.acknowledgment || 'Understood.',
           question: parsed.question || 'Could you explain the core fundamentals of this topic?'
         });
@@ -275,6 +306,11 @@ CRITICAL RULES:
     // ACTION: EVALUATE SESSION (Holistic Topic-Rollup Scorecard)
     // -------------------------------------------------------------
     if (action === 'evaluate-session') {
+      const targetDomain = (experimentName || topic || subject || programmingLanguage || '').trim();
+      if (!targetDomain) {
+        return NextResponse.json({ error: 'Missing evaluation topic or subject parameter. Session evaluation blocked.' }, { status: 400 });
+      }
+
       const topicUnitsInput = body.topicUnits || [];
       const historyInput = history || [];
 
@@ -340,51 +376,49 @@ ${contextSummary}
 
 CRITICAL TOPIC-ROLLUP SCORING & RUBRIC RULES (MANDATORY):
 1. TOPIC ROLLUP EVALUATION:
-   - Evaluate each TOPIC UNIT as ONE single data point (0 to 10 score) combining the main question and any follow-up probes.
+   - Evaluate each TOPIC UNIT as ONE single data point combining the main question and any follow-up probes.
    - Do NOT score turns independently. Evaluate candidate's net understanding of the topic as a whole.
-2. RUBRIC DIMENSIONS PER TOPIC:
-   - Technical Accuracy & Depth (50% weight): Correctness of facts, formulas, equations, architecture.
-   - Problem Solving & Adaptability (30% weight): Handling of edge cases and probed follow-ups. NOTE: If the main answer was so thorough that ZERO follow-ups were needed, award FULL CREDIT matching the technical accuracy score.
-   - Communication Clarity (20% weight): Articulation and structure.
-3. SKIPPED / TIMED-OUT / ADMITTED UNKNOWN TOPICS:
-   - If candidate skipped, timed out, or explicitly admitted "I don't know" / asked for the answer on a topic, ASSIGN TOPIC SCORE: 0/10 with keyGaps: "Candidate explicitly admitted lack of knowledge or skipped topic.";
-4. OVERALL SCORE CALCULATION:
-   - "rawMeanTopicScore" = Average of the ${nTopics} Topic Scores (0 to 10 scale).
-   - "coverageFactor" = min(1.0, 0.5 + 0.15 * ${nTopics}).
-   - "overallScore" = Math.round(rawMeanTopicScore * 10 * coverageFactor), between 0 and 100.
-5. STRICT LETTER GRADE PRECEDENCE:
-   - If total topics attempted (${nTopics}) < 2, letterGrade MUST BE "Incomplete".
-   - If ${nTopics} >= 2, map overallScore: 90-100 = A+, 80-89 = A, 70-79 = B+, 60-69 = B, 50-59 = C, 40-49 = D, < 40 = F.
+2. EVIDENCE-FIRST EXTRACTION & SENIORITY-CALIBRATED REFERENCE FACTS:
+   - For each topic, FIRST extract "candidateClaims" (exact technical facts/formulas stated by candidate).
+   - Generate "levelCalibratedReferenceFacts" required for seniority level "${(level || 'College').toUpperCase()}":
+     * Junior / College: Syntax definitions, primary formulas, standard usage.
+     * Mid: Edge cases, common failure modes, standard architecture patterns.
+     * Senior / Lead: Low-level runtime internals, memory layout, system trade-offs, high-scale bottlenecks.
+   - Compare candidateClaims against levelCalibratedReferenceFacts to generate "matchedConcepts" and "missingConcepts".
+3. RUBRIC DIMENSIONS PER TOPIC (0-10 Scale):
+   - Technical Accuracy & Depth (50% weight): Evaluate correctness against levelCalibratedReferenceFacts.
+   - Problem Solving & Adaptability (30% weight): Handling of probed follow-ups and edge cases. NOTE: If main answer was so thorough that ZERO follow-ups were needed, award FULL CREDIT matching technical accuracy.
+   - Communication Clarity (20% weight): Articulation and structure appropriate for ${level} level.
+4. DOMAIN RELEVANCE & OFF-TOPIC EVALUATION (Rule 3):
+   - Evaluate whether candidate responses genuinely address the target subject/topic (${experimentName || topic || subject}).
+   - ACCEPTABLE COMPARISONS: Candidate using cross-language or cross-domain analogies to illustrate a concept in ${experimentName || topic || subject} IS ON-TOPIC.
+   - UNACCEPTABLE SUBSTITUTIONS: Candidate answering with concepts from a completely different domain in place of addressing the question (e.g. explaining HTML tags when asked about C pointers) IS OFF-TOPIC per Rule 3.
+   - If candidate's response for a topic unit is OFF-TOPIC:
+     * Set rubric: { technicalAccuracy: 0, problemSolving: 0, communicationClarity: 2-5 (based on grammar) }.
+     * Set keyGaps: "Candidate response was off-topic and substituted unrelated domain concepts instead of addressing ${experimentName || topic || subject}."
+5. SKIPPED / TIMED-OUT TOPICS:
+   - If candidate skipped or explicitly admitted "I don't know", set rubric: { technicalAccuracy: 0, problemSolving: 0, communicationClarity: 0 } with keyGaps: "Candidate skipped topic or admitted lack of knowledge."
 
-Return ONLY a valid JSON object matching this schema:
+Return ONLY a valid JSON object matching this EVIDENCE-FIRST schema (perTopicAnalysis MUST come first):
 {
-  "rawMeanTopicScore": number (0 to 10),
-  "coverageFactor": number (0.5 to 1.0),
-  "overallScore": number (0 to 100),
-  "letterGrade": "A+" | "A" | "B+" | "B" | "C" | "D" | "F" | "Incomplete",
-  "summaryCritique": "2 to 3 sentences high-level executive review of candidate performance across topics and pacing",
-  "rubricBreakdown": {
-    "technicalAccuracy": { "score": number (0-10), "feedback": "1 sentence critique" },
-    "problemSolving": { "score": number (0-10), "feedback": "1 sentence critique" },
-    "communicationClarity": { "score": number (0-10), "feedback": "1 sentence critique" },
-    "depthAndCompleteness": { "score": number (0-10), "feedback": "1 sentence critique" }
-  },
   "perTopicAnalysis": [
     {
       "topicIndex": number (1 to N),
       "topicName": "Sub-topic title",
       "turnsCount": number,
-      "topicScore": number (0 to 10),
+      "candidateClaims": "Exact technical claims and formulas stated by the candidate",
+      "levelCalibratedReferenceFacts": "Essential required technical facts for ${level} level",
+      "matchedConcepts": ["Concept 1 matched", "Concept 2 matched"],
+      "missingConcepts": ["Missing concept 1", "Missing concept 2"],
+      "keyGaps": "Specific missing concept, off-topic note, or error",
       "rubric": {
         "technicalAccuracy": number (0-10),
         "problemSolving": number (0-10),
         "communicationClarity": number (0-10)
-      },
-      "candidateSummary": "Summary of candidate responses",
-      "idealModelAnswer": "Reference answer for topic",
-      "keyGaps": "Specific missing concept or error"
+      }
     }
   ],
+  "summaryCritique": "2 to 3 sentences high-level executive review of candidate performance across topics and pacing",
   "strengths": ["Demonstrated strength 1", "Demonstrated strength 2"],
   "criticalImprovements": ["Priority improvement 1", "Priority improvement 2"],
   "recommendedStudyTopics": ["Topic 1 to study", "Topic 2 to study"]
@@ -414,15 +448,61 @@ Return ONLY a valid JSON object matching this schema:
 
         const scorecard = JSON.parse(cleanJson);
 
-        // Enforce math rules programmatically to prevent LLM arithmetic drift
-        const coverageFactor = Math.min(1.0, 0.5 + 0.15 * nTopics);
-        let calculatedScore = scorecard.overallScore;
-        if (scorecard.perTopicAnalysis && scorecard.perTopicAnalysis.length > 0) {
-          const rawMean = scorecard.perTopicAnalysis.reduce((acc, t) => acc + (t.topicScore || 0), 0) / scorecard.perTopicAnalysis.length;
-          calculatedScore = Math.round(rawMean * 10 * coverageFactor);
+        // Enforce math rules 100% programmatically to prevent LLM arithmetic drift
+        const coverageFactor = nTopics >= 3 ? 1.0 : (nTopics === 2 ? 0.85 : 0.70);
+        let rawMeanTopicScore = 0;
+
+        if (scorecard.perTopicAnalysis && Array.isArray(scorecard.perTopicAnalysis)) {
+          scorecard.perTopicAnalysis = scorecard.perTopicAnalysis.map((t) => {
+            const rub = t.rubric || {};
+            const techAcc = typeof rub.technicalAccuracy === 'number' ? rub.technicalAccuracy : 0;
+            const probSol = typeof rub.problemSolving === 'number' ? rub.problemSolving : 0;
+            const commCla = typeof rub.communicationClarity === 'number' ? rub.communicationClarity : 0;
+            
+            // Programmatically compute weighted topicScore
+            const computedTopicScore = Math.min(10, Math.max(0, Math.round((techAcc * 0.50) + (probSol * 0.30) + (commCla * 0.20))));
+            return {
+              ...t,
+              topicScore: computedTopicScore
+            };
+          });
+
+          const validTopics = scorecard.perTopicAnalysis.filter(t => typeof t.topicScore === 'number' && !t.unscored);
+          rawMeanTopicScore = validTopics.length > 0
+            ? validTopics.reduce((acc, t) => acc + t.topicScore, 0) / validTopics.length
+            : 0;
+
+          // Programmatically aggregate overall rubric breakdown across valid attempted topics
+          const meanTechAcc = validTopics.length > 0
+            ? Math.round((validTopics.reduce((acc, t) => acc + (t.rubric?.technicalAccuracy || 0), 0) / validTopics.length) * 10) / 10
+            : 0;
+          const meanProbSol = validTopics.length > 0
+            ? Math.round((validTopics.reduce((acc, t) => acc + (t.rubric?.problemSolving || 0), 0) / validTopics.length) * 10) / 10
+            : 0;
+          const meanCommCla = validTopics.length > 0
+            ? Math.round((validTopics.reduce((acc, t) => acc + (t.rubric?.communicationClarity || 0), 0) / validTopics.length) * 10) / 10
+            : 0;
+
+          scorecard.rubricBreakdown = {
+            technicalAccuracy: {
+              score: meanTechAcc,
+              feedback: `Evaluated across ${validTopics.length} attempted topic unit(s) against ${level} expectations.`
+            },
+            problemSolving: {
+              score: meanProbSol,
+              feedback: `Evaluated across probed follow-up scenarios and edge-case handling.`
+            },
+            communicationClarity: {
+              score: meanCommCla,
+              feedback: `Evaluated across response structure, articulation, and domain relevance.`
+            }
+          };
         }
 
-        let letterGrade = scorecard.letterGrade;
+        const calculatedScore = Math.min(100, Math.max(0, Math.round(rawMeanTopicScore * 10 * coverageFactor)));
+        const totalQuestionsAsked = topicUnits.reduce((acc, u) => acc + (u.turns?.length || 1), 0);
+
+        let letterGrade = 'F';
         if (nTopics < 2) {
           letterGrade = 'Incomplete';
         } else if (calculatedScore >= 90) letterGrade = 'A+';
@@ -435,52 +515,66 @@ Return ONLY a valid JSON object matching this schema:
 
         return NextResponse.json({
           ...scorecard,
+          nTopics,
+          totalQuestionsAsked,
+          rawMeanTopicScore: Number(rawMeanTopicScore.toFixed(1)),
           coverageFactor: Number(coverageFactor.toFixed(2)),
-          overallScore: Math.min(100, Math.max(0, calculatedScore)),
+          overallScore: calculatedScore,
           letterGrade
         });
       } catch (err) {
         console.error('[Viva API] Session evaluation JSON parsing or generation error:', err);
         
+        // System error fallback: Mark topics as unscored rather than assigning arbitrary fake scores
         const analyzedTopics = topicUnits.map((unit, idx) => {
           const firstAns = (unit.turns?.[0]?.answer || '').trim();
           const ans = firstAns.toLowerCase();
-          let score = 5;
-          let gap = 'Review fundamental concepts and practice explaining in detail.';
+          const isSkipped = !firstAns || ans.includes('skip') || ans.includes('timed out');
           
-          if (!firstAns || ans.includes('skip') || ans.length < 5 || ans.includes('timed out')) {
-            score = 0;
-            gap = 'Candidate skipped or timed out on this sub-topic.';
-          } else if (ans.length < 25) {
-            score = 3;
-            gap = 'Answer was very brief and lacked necessary theoretical depth.';
-          } else {
-            score = 7;
-            gap = 'Provide more exact formulas, boundary conditions, and quantitative details.';
+          if (isSkipped) {
+            return {
+              topicIndex: idx + 1,
+              topicName: unit.topicName || `Topic ${idx + 1}`,
+              turnsCount: unit.turns.length,
+              topicScore: 0,
+              unscored: false,
+              rubric: {
+                technicalAccuracy: 0,
+                problemSolving: 0,
+                communicationClarity: 0
+              },
+              candidateSummary: '(No response recorded / Skipped)',
+              idealModelAnswer: `A comprehensive answer for this topic covers core scientific/engineering definitions.`,
+              keyGaps: 'Candidate skipped or timed out on this sub-topic.'
+            };
           }
 
           return {
             topicIndex: idx + 1,
             topicName: unit.topicName || `Topic ${idx + 1}`,
             turnsCount: unit.turns.length,
-            topicScore: score,
+            topicScore: null,
+            unscored: true,
             rubric: {
-              technicalAccuracy: score,
-              problemSolving: score,
-              communicationClarity: Math.min(10, score + 1)
+              technicalAccuracy: null,
+              problemSolving: null,
+              communicationClarity: null
             },
-            candidateSummary: firstAns || '(No response recorded)',
-            idealModelAnswer: `A comprehensive answer for this topic covers core scientific/engineering definitions and edge cases.`,
-            keyGaps: gap
+            candidateSummary: firstAns,
+            idealModelAnswer: `A comprehensive answer for this topic covers core scientific/engineering definitions.`,
+            keyGaps: 'Unscored: Automated evaluation service experienced a temporary connectivity issue.'
           };
         });
 
-        const rawMeanScore = analyzedTopics.reduce((acc, q) => acc + q.topicScore, 0) / (analyzedTopics.length || 1);
+        const scoredTopics = analyzedTopics.filter(t => !t.unscored && typeof t.topicScore === 'number');
+        const rawMeanScore = scoredTopics.length > 0
+          ? scoredTopics.reduce((acc, q) => acc + q.topicScore, 0) / scoredTopics.length
+          : 0;
         const coverageFactor = Math.min(1.0, 0.5 + 0.15 * nTopics);
         const overallScore = Math.round(rawMeanScore * 10 * coverageFactor);
 
         let letterGrade = 'F';
-        if (nTopics < 2) letterGrade = 'Incomplete';
+        if (nTopics < 2 || scoredTopics.length === 0) letterGrade = 'Incomplete';
         else if (overallScore >= 90) letterGrade = 'A+';
         else if (overallScore >= 80) letterGrade = 'A';
         else if (overallScore >= 70) letterGrade = 'B+';
@@ -494,17 +588,17 @@ Return ONLY a valid JSON object matching this schema:
           coverageFactor: Number(coverageFactor.toFixed(2)),
           overallScore,
           letterGrade,
-          summaryCritique: `The candidate completed ${analyzedTopics.length} sub-topic evaluation(s) at ${difficulty} difficulty. Pacing coverage factor: ${(coverageFactor * 100).toFixed(0)}%.`,
+          systemErrorWarning: 'Automated evaluation service encountered a temporary error. Unscored topics are excluded from the total.',
+          summaryCritique: `The candidate completed ${analyzedTopics.length} sub-topic evaluation(s). Due to a system timeout, certain responses could not be automatically scored.`,
           rubricBreakdown: {
-            technicalAccuracy: { score: Math.round(rawMeanScore), feedback: 'Evaluated based on correctness of core principles.' },
-            problemSolving: { score: Math.max(0, Math.round(rawMeanScore * 0.9)), feedback: 'Evaluated across probed follow-up responses.' },
-            communicationClarity: { score: Math.max(0, Math.round(rawMeanScore * 1.1)), feedback: 'Articulation clarity across recorded answers.' },
-            depthAndCompleteness: { score: Math.round(rawMeanScore), feedback: 'Depth of technical details and formula completeness.' }
+            technicalAccuracy: { score: scoredTopics.length > 0 ? Math.round(rawMeanScore) : 0, feedback: 'Evaluated based on available scored topics.' },
+            problemSolving: { score: scoredTopics.length > 0 ? Math.round(rawMeanScore * 0.9) : 0, feedback: 'Evaluated across available scored topic probes.' },
+            communicationClarity: { score: scoredTopics.length > 0 ? Math.round(rawMeanScore * 1.1) : 0, feedback: 'Articulation clarity across available turns.' }
           },
           perTopicAnalysis: analyzedTopics,
-          strengths: overallScore > 50 ? ['Attempted key sub-topics', 'Spoke clearly during recorded responses'] : ['Completed interview session'],
-          criticalImprovements: ['Do not skip questions; attempt partial definitions and formulas', 'Review core equations and conceptual fundamentals'],
-          recommendedStudyTopics: [topic || subject || 'Core Principles', 'Error Analysis & Practical Applications']
+          strengths: ['Attempted examination topics'],
+          criticalImprovements: ['Review fundamental concepts for all topics'],
+          recommendedStudyTopics: [topic || subject || 'Core Principles']
         });
       }
     }

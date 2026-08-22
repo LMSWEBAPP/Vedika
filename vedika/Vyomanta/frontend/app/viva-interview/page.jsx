@@ -23,18 +23,23 @@ export default function VivaInterviewPage() {
 
   // Configuration States
   const [sessionMode, setSessionMode] = useState('viva'); // 'viva' | 'interview'
-  const [subject, setSubject] = useState('Physics');
+  const [subject, setSubject] = useState('');
   const [level, setLevel] = useState('College'); // Viva: 'School' | 'College' | 'PG', Interview: 'Junior' | 'Mid-Level' | 'Senior'
   const [difficulty, setDifficulty] = useState('Medium'); // 'Easy' | 'Medium' | 'Hard'
-  const [topic, setTopic] = useState("Ohm's Law & Circuit Resistance");
+  const [topic, setTopic] = useState('');
+  const [activeSessionTopic, setActiveSessionTopic] = useState('');
   
   // Custom Viva Setup States
-  const [vivaSource, setVivaSource] = useState('preset'); // 'preset' | 'custom'
-  const [selectedExperiment, setSelectedExperiment] = useState("Ohm's Law & Circuit Resistance");
+  const [vivaSource, setVivaSource] = useState('custom');
+  const [selectedExperiment, setSelectedExperiment] = useState('');
   const [customVivaTopic, setCustomVivaTopic] = useState('');
 
+  // Topic Validation & Strike Counter States
+  const [topicRejectionCount, setTopicRejectionCount] = useState(0);
+  const [topicValidationAlert, setTopicValidationAlert] = useState('');
+
   // Interview Setup States
-  const [programmingLanguage, setProgrammingLanguage] = useState('Python');
+  const [programmingLanguage, setProgrammingLanguage] = useState('');
   const [jdText, setJdText] = useState('');
   const [resumeFile, setResumeFile] = useState(null);
   const [resumeBase64, setResumeBase64] = useState('');
@@ -110,6 +115,7 @@ export default function VivaInterviewPage() {
   const liveAudioSourcesQueueRef = useRef([]);
   const liveIsMutedRef = useRef(false);
   const liveWsHadErrorRef = useRef(false);
+  const reconnectAttemptsRef = useRef(0);
 
   useEffect(() => {
     liveIsMutedRef.current = liveIsMuted;
@@ -626,28 +632,42 @@ export default function VivaInterviewPage() {
     reader.readAsDataURL(file);
   };
 
-  // Start Gemini Live Bidirectional WebSocket Voice Examination (100% Identical to VoiceAgentView)
-  const startGeminiLiveSession = async (activeTopic, activeSubject, activeDifficulty, activeLevel) => {
+  // Start Gemini Live Bidirectional WebSocket Voice Examination (with Dual-Port Fallback & Auto-Reconnect History Replay)
+  const startGeminiLiveSession = async (activeTopic, activeSubject, activeDifficulty, activeLevel, isReconnect = false, forcePort = null) => {
     try {
       setLiveConnectionStatus('connecting');
-      setLiveStatusMessage('Initializing audio environment and connecting...');
-      stopAllLiveAudioPlaybacks();
-      setLiveConversation([]);
+      setLiveStatusMessage(isReconnect ? 'Re-establishing live session with history replay...' : 'Initializing audio environment and connecting...');
+      
+      if (!isReconnect) {
+        stopAllLiveAudioPlaybacks();
+        setLiveConversation([]);
+        reconnectAttemptsRef.current = 0;
+      }
       setGameState('active');
 
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      const stream = liveMicStreamRef.current || await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
       liveMicStreamRef.current = stream;
-      const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+      
+      const audioCtx = liveAudioCtxRef.current || new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
       liveAudioCtxRef.current = audioCtx;
+      if (audioCtx.state === 'suspended') {
+        try { await audioCtx.resume(); } catch (e) {}
+      }
 
-      const wsHost = process.env.NEXT_PUBLIC_WS_URL || (
+      // Dual-Port Strategy: Try port 5001 first, fallback to current window host (port 3000) if port 5001 is offline
+      const primaryWsHost = process.env.NEXT_PUBLIC_WS_URL || (
         window.location.hostname === 'localhost'
           ? 'ws://localhost:5001'
           : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`
       );
 
+      const fallbackWsHost = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`;
+      const targetWsHost = forcePort || primaryWsHost;
+
       const voiceSid = 'viva-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-      const wsUrl = `${wsHost}/api/ws?mode=${sessionMode}&topic=${encodeURIComponent(activeTopic)}&difficulty=${activeDifficulty}&level=${activeLevel}&programmingLanguage=${encodeURIComponent(programmingLanguage)}&sessionId=${voiceSid}`;
+      let wsUrl = `${targetWsHost}/api/ws?mode=${sessionMode}&topic=${encodeURIComponent(activeTopic)}&difficulty=${activeDifficulty}&level=${activeLevel}&programmingLanguage=${encodeURIComponent(programmingLanguage)}&sessionId=${voiceSid}`;
+      if (isReconnect) wsUrl += `&reconnect=true`;
+
       const ws = new WebSocket(wsUrl);
       liveWsRef.current = ws;
 
@@ -655,49 +675,67 @@ export default function VivaInterviewPage() {
         if (ws.readyState !== WebSocket.OPEN) {
           liveWsHadErrorRef.current = true;
           ws.close();
+          if (!forcePort && targetWsHost !== fallbackWsHost) {
+            console.warn('[WS] Primary port 5001 timed out. Falling back to port 3000...');
+            startGeminiLiveSession(activeTopic, activeSubject, activeDifficulty, activeLevel, isReconnect, fallbackWsHost);
+            return;
+          }
           setLiveConnectionStatus('error');
-          setLiveStatusMessage('Connection timed out. Make sure the voice server is running (npm run dev:voice).');
+          setLiveStatusMessage('Connection timed out. Verify the voice server or web application server is running.');
         }
-      }, 10000);
+      }, 5000);
 
       ws.onopen = () => {
         clearTimeout(connTimeout);
-        setLiveConversation([]);
+        liveWsHadErrorRef.current = false;
         setLiveConnectionStatus('connected');
-        setLiveStatusMessage('AI Examiner connected! Oral examination starting...');
-        const source = audioCtx.createMediaStreamSource(stream);
-        liveSourceRef.current = source;
-        const processor = audioCtx.createScriptProcessor(4096, 1, 1);
-        liveProcessorRef.current = processor;
+        setLiveStatusMessage(isReconnect ? 'Reconnected! Examiner is resuming examination...' : 'AI Examiner connected! Oral examination starting...');
         
-        // Zero gain node prevents mic input from looping into speakers and causing echo feedback
-        const silentGain = audioCtx.createGain();
-        silentGain.gain.value = 0;
-        source.connect(processor);
-        processor.connect(silentGain);
-        silentGain.connect(audioCtx.destination);
-
-        processor.onaudioprocess = (e) => {
-          // Gating: DO NOT send microphone audio packets while examiner is speaking or muted
-          if (
-            ws.readyState !== WebSocket.OPEN || 
-            liveIsMutedRef.current || 
-            liveAudioSourcesQueueRef.current.length > 0
-          ) return;
-
-          const float32Data = e.inputBuffer.getChannelData(0);
-          const pcmBuffer = new ArrayBuffer(float32Data.length * 2);
-          const dataView = new DataView(pcmBuffer);
-          let offset = 0;
-          for (let i = 0; i < float32Data.length; i++, offset += 2) {
-            let s = Math.max(-1, Math.min(1, float32Data[i]));
-            dataView.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+        // Transmit history replay via WebSocket message (prevents URL length caps and log exposure)
+        if (isReconnect && liveConversation.length > 0) {
+          try {
+            ws.send(JSON.stringify({
+              type: 'reconnect-history',
+              history: liveConversation.slice(-10)
+            }));
+          } catch (e) {
+            console.warn('[WS] History replay send warning:', e);
           }
-          let binary = '';
-          const bytes = new Uint8Array(pcmBuffer);
-          for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
-          ws.send(JSON.stringify({ type: 'audio', data: btoa(binary) }));
-        };
+        }
+
+        if (!liveSourceRef.current) {
+          const source = audioCtx.createMediaStreamSource(stream);
+          liveSourceRef.current = source;
+          const processor = audioCtx.createScriptProcessor(4096, 1, 1);
+          liveProcessorRef.current = processor;
+          
+          const silentGain = audioCtx.createGain();
+          silentGain.gain.value = 0;
+          source.connect(processor);
+          processor.connect(silentGain);
+          silentGain.connect(audioCtx.destination);
+
+          processor.onaudioprocess = (e) => {
+            if (
+              ws.readyState !== WebSocket.OPEN || 
+              liveIsMutedRef.current || 
+              liveAudioSourcesQueueRef.current.length > 0
+            ) return;
+
+            const float32Data = e.inputBuffer.getChannelData(0);
+            const pcmBuffer = new ArrayBuffer(float32Data.length * 2);
+            const dataView = new DataView(pcmBuffer);
+            let offset = 0;
+            for (let i = 0; i < float32Data.length; i++, offset += 2) {
+              let s = Math.max(-1, Math.min(1, float32Data[i]));
+              dataView.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+            }
+            let binary = '';
+            const bytes = new Uint8Array(pcmBuffer);
+            for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+            ws.send(JSON.stringify({ type: 'audio', data: btoa(binary) }));
+          };
+        }
       };
 
       ws.onmessage = (event) => {
@@ -725,7 +763,6 @@ export default function VivaInterviewPage() {
         } else if (message.type === 'agent-transcription') {
           const textChunk = message.text || '';
           
-          // Detect topic shifts or questions in text transcript as dynamic fallback
           if (/next\s+key\s+topic|move\s+to\s+our\s+next\s+topic/i.test(textChunk)) {
             setCurrentStageInfo((prev) => ({
               ...prev,
@@ -735,15 +772,12 @@ export default function VivaInterviewPage() {
             }));
           }
 
-          // Auto-open scratchpad if examiner asks to write code / program / query
           if (/(write\s+(a\s+)?(program|code|function|query|script|algorithm)|in\s+the\s+scratchpad|open\s+the\s+scratchpad)/i.test(textChunk)) {
             setIsScratchpadOpen(true);
           }
 
-          // Check if examiner concluded the examination
           const isConclusion = /concludes\s+your\s+oral\s+examination|scorecard\s+report\s+is\s+ready/i.test(textChunk);
           if (isConclusion) {
-            // Auto-submit after examiner finishes speaking farewell
             setTimeout(() => {
               handleFinishLiveExam();
             }, 3500);
@@ -766,14 +800,30 @@ export default function VivaInterviewPage() {
 
       ws.onclose = () => {
         clearTimeout(connTimeout);
-        if (!liveWsHadErrorRef.current) disconnectGeminiLive(false);
+        // Auto-reconnect if session dropped unexpectedly during an active exam
+        if (!liveWsHadErrorRef.current && liveConversation.length > 0 && reconnectAttemptsRef.current < 2 && gameState === 'active') {
+          reconnectAttemptsRef.current += 1;
+          console.warn(`[WS] Mid-session WebSocket drop. Auto-reconnecting (attempt ${reconnectAttemptsRef.current}/2)...`);
+          setLiveStatusMessage(`Reconnecting to AI Examiner (Attempt ${reconnectAttemptsRef.current}/2)...`);
+          setTimeout(() => {
+            startGeminiLiveSession(activeTopic, activeSubject, activeDifficulty, activeLevel, true, forcePort);
+          }, 1500);
+        } else if (!liveWsHadErrorRef.current) {
+          disconnectGeminiLive(false);
+        }
       };
 
       ws.onerror = () => {
         clearTimeout(connTimeout);
         liveWsHadErrorRef.current = true;
+        // Dual-port fallback on error if we haven't tried port 3000 yet
+        if (!forcePort && targetWsHost !== fallbackWsHost) {
+          console.warn('[WS] Primary port 5001 error. Falling back to port 3000...');
+          startGeminiLiveSession(activeTopic, activeSubject, activeDifficulty, activeLevel, isReconnect, fallbackWsHost);
+          return;
+        }
         setLiveConnectionStatus('error');
-        setLiveStatusMessage('Connection failed. Verify the voice server is running.');
+        setLiveStatusMessage('Connection failed. Verify the voice server or web application server is running.');
       };
     } catch (err) {
       setLiveConnectionStatus('error');
@@ -914,28 +964,33 @@ export default function VivaInterviewPage() {
 
   // Start Fresh Session (Live Voice or Turn Guided)
   const handleStartSession = async () => {
-    let activeTopic = '';
-    let activeSubject = subject;
+    let resolvedTopic = '';
 
     if (sessionMode === 'viva') {
-      if (vivaSource === 'custom') {
-        if (!customVivaTopic.trim()) {
-          alert("Please enter your custom viva topic/subject.");
+      if (vivaSource === 'preset') {
+        if (!selectedExperiment) {
+          alert("Please select a lab experiment from the presets before starting.");
           return;
         }
-        activeTopic = customVivaTopic.trim();
-        activeSubject = customVivaTopic.trim();
+        resolvedTopic = selectedExperiment;
       } else {
-        activeTopic = selectedExperiment;
+        if (!customVivaTopic.trim()) {
+          alert("Please enter your custom viva topic/subject before starting.");
+          return;
+        }
+        resolvedTopic = customVivaTopic.trim();
       }
     } else {
-      activeTopic = topic || programmingLanguage;
+      resolvedTopic = topic.trim() || programmingLanguage;
+      if (!resolvedTopic) {
+        alert("Please select or enter your target tech stack or interview topic before starting.");
+        return;
+      }
     }
 
-    if (!activeTopic.trim()) {
-      alert("Please select or enter a topic / experiment.");
-      return;
-    }
+    const activeTopic = resolvedTopic;
+    const activeSubject = resolvedTopic;
+    setActiveSessionTopic(activeTopic);
 
     cleanupRecognition();
     setHistory([]);
@@ -945,24 +1000,18 @@ export default function VivaInterviewPage() {
     sessionFinalRef.current = '';
     setScorecard(null);
     setSavedSessionFound(null);
-    setSessionTimeRemaining(900);
-    setTurnTimeRemaining(90);
-    setCurrentStageInfo({
-      topicName: activeTopic,
-      questionType: 'main',
-      topicIndex: 1,
-      followUpIndex: 0
-    });
 
-    // If Gemini Live Voice Mode is chosen:
-    if (executionMode === 'live') {
-      await startGeminiLiveSession(activeTopic, activeSubject, difficulty, level);
-      return;
-    }
-
-    // Otherwise standard turn-by-turn mode:
     setLoading(true);
-    setStatusMessage(`Examiner is preparing your ${difficulty.toLowerCase()} difficulty question...`);
+    setStatusMessage(`Examiner is evaluating topic and preparing your session...`);
+
+    const recentQ1s = (() => {
+      try {
+        const raw = localStorage.getItem('VEDIKA_RECENT_Q1_CACHE');
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed[activeTopic]) ? parsed[activeTopic] : [];
+      } catch { return []; }
+    })();
 
     try {
       const token = await getJwtToken();
@@ -984,17 +1033,49 @@ export default function VivaInterviewPage() {
           jdText,
           resumeBlueprint,
           history: [],
-          questionIndex: 0
+          questionIndex: 0,
+          recentQ1s
         })
       });
 
       const data = await response.json();
+
+      // Check Joint Topic Validation Result
+      if (response.ok && data.isValidTopic === false) {
+        setTopicRejectionCount((prev) => prev + 1);
+        setTopicValidationAlert(
+          data.rejectionReason || `"${activeTopic}" does not appear to be a valid academic subject or technical topic. Please specify a valid topic.`
+        );
+        setLoading(false);
+        setStatusMessage('');
+        return;
+      }
+
+      // Topic is Valid (or Fail-Open fallback)
+      setTopicValidationAlert('');
+      setTopicRejectionCount(0);
+      setSessionTimeRemaining(900);
+      setTurnTimeRemaining(90);
+      setCurrentStageInfo({
+        topicName: activeTopic,
+        questionType: 'main',
+        topicIndex: 1,
+        followUpIndex: 0
+      });
+
       if (response.ok && data.question) {
-        setCurrentAcknowledgment(data.acknowledgment || 'Welcome. Let us begin.');
+        // Save opening question into anti-repetition cache
+        try {
+          const raw = localStorage.getItem('VEDIKA_RECENT_Q1_CACHE');
+          const parsed = raw ? JSON.parse(raw) : {};
+          const existing = Array.isArray(parsed[activeTopic]) ? parsed[activeTopic] : [];
+          parsed[activeTopic] = [data.question, ...existing.filter(q => q !== data.question)].slice(0, 5);
+          localStorage.setItem('VEDIKA_RECENT_Q1_CACHE', JSON.stringify(parsed));
+        } catch {}
+
+        setCurrentAcknowledgment(data.acknowledgment || 'Welcome to your examination. Let us begin.');
         setCurrentQuestion(data.question);
-        setGameState('active');
         setTurnStartTime(Date.now());
-        speakText(`${data.acknowledgment || ''} ${data.question}`);
 
         localStorage.setItem(STORAGE_SESSION_KEY, JSON.stringify({
           sessionMode,
@@ -1002,6 +1083,7 @@ export default function VivaInterviewPage() {
           level,
           difficulty,
           topic: activeTopic,
+          activeSessionTopic: activeTopic,
           selectedExperiment: activeTopic,
           programmingLanguage,
           jdText,
@@ -1011,12 +1093,23 @@ export default function VivaInterviewPage() {
           currentQuestion: data.question,
           currentAcknowledgment: data.acknowledgment
         }));
+
+        if (executionMode === 'live') {
+          await startGeminiLiveSession(activeTopic, activeSubject, difficulty, level);
+        } else {
+          speakText(`${data.acknowledgment || ''} ${data.question}`);
+          setGameState('active');
+        }
       } else {
         alert(data.error || "Failed to initialize interview.");
       }
     } catch (e) {
       console.error(e);
-      alert("API request error.");
+      if (executionMode === 'live') {
+        await startGeminiLiveSession(activeTopic, activeSubject, difficulty, level);
+      } else {
+        alert("API request error.");
+      }
     } finally {
       setLoading(false);
       setStatusMessage('');
@@ -1059,11 +1152,11 @@ export default function VivaInterviewPage() {
 
     try {
       const token = await getJwtToken();
-      const activeTopic = sessionMode === 'viva' 
-        ? (vivaSource === 'custom' ? customVivaTopic : selectedExperiment) 
-        : (topic || programmingLanguage);
+      const activeTopic = activeSessionTopic || (sessionMode === 'viva' 
+        ? (vivaSource === 'preset' ? selectedExperiment : customVivaTopic.trim()) 
+        : (topic.trim() || programmingLanguage));
 
-      const activeSubject = sessionMode === 'viva' && vivaSource === 'custom' ? customVivaTopic : subject;
+      const activeSubject = activeTopic;
 
       const response = await fetch('/api/viva-interview', {
         method: 'POST',
@@ -1100,6 +1193,7 @@ export default function VivaInterviewPage() {
           level,
           difficulty,
           topic: activeTopic,
+          activeSessionTopic: activeTopic,
           selectedExperiment: activeTopic,
           programmingLanguage,
           jdText,
@@ -1151,11 +1245,11 @@ export default function VivaInterviewPage() {
 
     try {
       const token = await getJwtToken();
-      const activeTopic = sessionMode === 'viva' 
-        ? (vivaSource === 'custom' ? customVivaTopic : selectedExperiment) 
-        : (topic || programmingLanguage);
+      const activeTopic = activeSessionTopic || (sessionMode === 'viva' 
+        ? (vivaSource === 'preset' ? selectedExperiment : customVivaTopic.trim()) 
+        : (topic.trim() || programmingLanguage));
 
-      const activeSubject = sessionMode === 'viva' && vivaSource === 'custom' ? customVivaTopic : subject;
+      const activeSubject = activeTopic;
 
       const response = await fetch('/api/viva-interview', {
         method: 'POST',
@@ -1192,6 +1286,7 @@ export default function VivaInterviewPage() {
           level,
           difficulty,
           topic: activeTopic,
+          activeSessionTopic: activeTopic,
           selectedExperiment: activeTopic,
           programmingLanguage,
           jdText,
@@ -1228,11 +1323,11 @@ export default function VivaInterviewPage() {
 
     try {
       const token = await getJwtToken();
-      const activeTopic = sessionMode === 'viva' 
-        ? (vivaSource === 'custom' ? customVivaTopic : selectedExperiment) 
-        : (topic || programmingLanguage);
+      const activeTopic = activeSessionTopic || (sessionMode === 'viva' 
+        ? (vivaSource === 'preset' ? selectedExperiment : customVivaTopic.trim()) 
+        : (topic.trim() || programmingLanguage));
 
-      const activeSubject = sessionMode === 'viva' && vivaSource === 'custom' ? customVivaTopic : subject;
+      const activeSubject = activeTopic;
 
       const response = await fetch('/api/viva-interview', {
         method: 'POST',
@@ -1311,15 +1406,15 @@ export default function VivaInterviewPage() {
       background: 'var(--bg)',
       color: 'var(--text)',
       fontFamily: 'var(--font-outfit), sans-serif',
-      padding: isMobile ? '16px 12px 64px 12px' : '28px 32px 80px 32px',
+      padding: isMobile ? '12px 10px 32px 10px' : '16px 20px 40px 20px',
       boxSizing: 'border-box'
     }}>
       <div style={{
-        maxWidth: 1040,
+        maxWidth: 960,
         margin: '0 auto',
         display: 'flex',
         flexDirection: 'column',
-        gap: 24
+        gap: 16
       }}>
         
         {/* HEADER BAR */}
@@ -1329,8 +1424,8 @@ export default function VivaInterviewPage() {
           alignItems: 'center',
           justifyContent: 'space-between',
           borderBottom: `1px solid var(--border)`,
-          paddingBottom: 16,
-          gap: 14
+          paddingBottom: 10,
+          gap: 10
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <a 
@@ -1530,32 +1625,88 @@ export default function VivaInterviewPage() {
           <div style={{
             background: 'var(--s1)',
             border: `1px solid var(--border)`,
-            borderRadius: 24,
-            padding: isMobile ? '20px 16px' : '32px 28px',
+            borderRadius: 20,
+            padding: isMobile ? '14px 12px' : '20px 22px',
             boxShadow: '0 8px 32px rgba(0, 0, 0, 0.05)',
             display: 'flex',
             flexDirection: 'column',
-            gap: 24
+            gap: 16
           }}>
-            <div style={{ borderBottom: `1px solid var(--border)`, paddingBottom: 16 }}>
+            <div style={{ borderBottom: `1px solid var(--border)`, paddingBottom: 10 }}>
               <h2 style={{
                 margin: 0,
-                fontSize: '1.25rem',
+                fontSize: '1.15rem',
                 fontWeight: 800,
                 color: 'var(--text)',
                 display: 'flex',
                 alignItems: 'center',
                 gap: 8
               }}>
-                {sessionMode === 'viva' ? <FlaskConical size={22} style={{ color: 'var(--purple)' }} /> : <Code size={22} style={{ color: 'var(--accent)' }} />}
+                {sessionMode === 'viva' ? <FlaskConical size={20} style={{ color: 'var(--purple)' }} /> : <Code size={20} style={{ color: 'var(--accent)' }} />}
                 {sessionMode === 'viva' ? 'Academic Lab Viva Setup' : 'Technical Job Interview Setup'}
               </h2>
-              <p style={{ margin: '6px 0 0 0', fontSize: '0.8rem', color: 'var(--muted)', lineHeight: 1.5 }}>
+              <p style={{ margin: '4px 0 0 0', fontSize: '0.75rem', color: 'var(--muted)', lineHeight: 1.4 }}>
                 {sessionMode === 'viva' 
-                  ? 'Choose standard lab experiments or enter any custom topic. Select your desired difficulty level before starting.' 
-                  : 'Upload your resume or enter a target stack/JD. Select difficulty to calibrate examiner depth.'}
+                  ? 'Enter any custom topic for your viva examination. Select your desired difficulty level before starting.' 
+                  : 'Enter your target tech stack or upload your resume/JD. Select difficulty to calibrate examiner depth.'}
               </p>
             </div>
+
+            {/* TOPIC REJECTION ALERT BANNER & RECOMMENDED BADGES */}
+            {topicValidationAlert && (
+              <div style={{
+                padding: '12px 16px',
+                borderRadius: 14,
+                background: 'rgba(239, 68, 68, 0.1)',
+                border: '1px solid rgba(239, 68, 68, 0.4)',
+                color: '#EF4444',
+                fontSize: '0.825rem',
+                fontWeight: 600,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 8
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <AlertTriangle size={18} />
+                  <span>{topicValidationAlert}</span>
+                </div>
+
+                {/* 3-STRIKE LOCKOUT RECOMMENDATION BADGES */}
+                {topicRejectionCount >= 3 && (
+                  <div style={{ marginTop: 4, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text)' }}>
+                      Suggested valid topics (click to select):
+                    </span>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {['Operating Systems', 'Data Structures', 'Physics', 'React & Next.js', 'Quantum Mechanics'].map((badge) => (
+                        <button
+                          key={badge}
+                          type="button"
+                          onClick={() => {
+                            if (sessionMode === 'viva') setCustomVivaTopic(badge);
+                            else setTopic(badge);
+                            setTopicRejectionCount(0);
+                            setTopicValidationAlert('');
+                          }}
+                          style={{
+                            padding: '4px 10px',
+                            borderRadius: 8,
+                            border: '1px solid var(--purple)',
+                            background: 'rgba(139, 92, 246, 0.15)',
+                            color: 'var(--text)',
+                            fontSize: '0.75rem',
+                            fontWeight: 700,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          {badge}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* VOICE ENGINE SELECTOR */}
             <div>
@@ -1570,27 +1721,27 @@ export default function VivaInterviewPage() {
                 <div
                   onClick={() => setExecutionMode('live')}
                   style={{
-                    padding: '14px 16px',
-                    borderRadius: 14,
+                    padding: '10px 12px',
+                    borderRadius: 12,
                     border: `2px solid ${executionMode === 'live' ? 'var(--purple)' : 'var(--border)'}`,
                     background: executionMode === 'live' ? 'rgba(139, 92, 246, 0.12)' : 'var(--s2)',
                     cursor: 'pointer',
                     display: 'flex',
                     flexDirection: 'column',
-                    gap: 6,
+                    gap: 4,
                     transition: 'all 0.15s ease'
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <Radio size={18} style={{ color: executionMode === 'live' ? 'var(--purple)' : 'var(--muted)' }} />
-                      <span style={{ fontSize: '0.85rem', fontWeight: 800, color: executionMode === 'live' ? 'var(--purple)' : 'var(--text)' }}>
+                      <Radio size={16} style={{ color: executionMode === 'live' ? 'var(--purple)' : 'var(--muted)' }} />
+                      <span style={{ fontSize: '0.825rem', fontWeight: 800, color: executionMode === 'live' ? 'var(--purple)' : 'var(--text)' }}>
                         Realtime Voice Examiner
                       </span>
                     </div>
-                    {executionMode === 'live' && <Check size={16} style={{ color: 'var(--purple)' }} />}
+                    {executionMode === 'live' && <Check size={14} style={{ color: 'var(--purple)' }} />}
                   </div>
-                  <span style={{ fontSize: '0.725rem', color: 'var(--muted)', lineHeight: 1.35 }}>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--muted)', lineHeight: 1.25 }}>
                     Real-time bidirectional 16kHz/24kHz PCM oral examination with natural examiner voice, zero spoilers, and live conversation flow.
                   </span>
                 </div>
@@ -1598,27 +1749,27 @@ export default function VivaInterviewPage() {
                 <div
                   onClick={() => setExecutionMode('turn')}
                   style={{
-                    padding: '14px 16px',
-                    borderRadius: 14,
+                    padding: '10px 12px',
+                    borderRadius: 12,
                     border: `2px solid ${executionMode === 'turn' ? 'var(--accent)' : 'var(--border)'}`,
                     background: executionMode === 'turn' ? 'rgba(79, 131, 246, 0.12)' : 'var(--s2)',
                     cursor: 'pointer',
                     display: 'flex',
                     flexDirection: 'column',
-                    gap: 6,
+                    gap: 4,
                     transition: 'all 0.15s ease'
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <Edit3 size={18} style={{ color: executionMode === 'turn' ? 'var(--accent)' : 'var(--muted)' }} />
-                      <span style={{ fontSize: '0.85rem', fontWeight: 800, color: executionMode === 'turn' ? 'var(--accent)' : 'var(--text)' }}>
+                      <Edit3 size={16} style={{ color: executionMode === 'turn' ? 'var(--accent)' : 'var(--muted)' }} />
+                      <span style={{ fontSize: '0.825rem', fontWeight: 800, color: executionMode === 'turn' ? 'var(--accent)' : 'var(--text)' }}>
                         Turn-by-Turn Guided Viva
                       </span>
                     </div>
-                    {executionMode === 'turn' && <Check size={16} style={{ color: 'var(--accent)' }} />}
+                    {executionMode === 'turn' && <Check size={14} style={{ color: 'var(--accent)' }} />}
                   </div>
-                  <span style={{ fontSize: '0.725rem', color: 'var(--muted)', lineHeight: 1.35 }}>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--muted)', lineHeight: 1.25 }}>
                     Step-by-step 5-question examination with tap-to-speak Web Speech transcription and manual answer editing.
                   </span>
                 </div>
@@ -1667,101 +1818,41 @@ export default function VivaInterviewPage() {
                       key={tier.id}
                       onClick={() => setDifficulty(tier.id)}
                       style={{
-                        padding: '12px 14px',
-                        borderRadius: 14,
+                        padding: '8px 10px',
+                        borderRadius: 12,
                         border: `2px solid ${isSelected ? tier.color : 'var(--border)'}`,
                         background: isSelected ? tier.bg : 'var(--s2)',
                         cursor: 'pointer',
                         display: 'flex',
                         flexDirection: 'column',
-                        gap: 4,
+                        gap: 2,
                         transition: 'all 0.15s ease'
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <span style={{ fontSize: '0.85rem', fontWeight: 800, color: isSelected ? tier.color : 'var(--text)' }}>
+                        <span style={{ fontSize: '0.8rem', fontWeight: 800, color: isSelected ? tier.color : 'var(--text)' }}>
                           {tier.label}
                         </span>
-                        {isSelected && <Check size={16} style={{ color: tier.color }} />}
+                        {isSelected && <Check size={14} style={{ color: tier.color }} />}
                       </div>
-                      <span style={{ fontSize: '0.7rem', color: 'var(--muted)', lineHeight: 1.3 }}>
+                      <span style={{ fontSize: '0.675rem', color: 'var(--muted)', lineHeight: 1.2 }}>
                         {tier.desc}
                       </span>
                     </div>
                   );
                 })}
               </div>
-            </div>
-
-            {/* VIVA MODE OPTIONS */}
+            </div>            {/* VIVA MODE OPTIONS */}
             {sessionMode === 'viva' ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-                
-                {/* SOURCE SELECTOR: PRESET EXPERIMENTS VS CUSTOM TOPIC */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {/* LEVEL SELECTION & CUSTOM TOPIC INPUT */}
                 <div style={{
                   display: 'grid',
                   gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
-                  gap: 12
-                }}>
-                  <div
-                    onClick={() => setVivaSource('preset')}
-                    style={{
-                      padding: 14,
-                      borderRadius: 14,
-                      border: `1px solid ${vivaSource === 'preset' ? 'var(--purple)' : 'var(--border)'}`,
-                      background: vivaSource === 'preset' ? 'rgba(139, 92, 246, 0.12)' : 'var(--s2)',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 10,
-                      transition: 'all 0.15s ease'
-                    }}
-                  >
-                    <ListFilter size={20} style={{ color: vivaSource === 'preset' ? 'var(--purple)' : 'var(--muted)' }} />
-                    <div>
-                      <div style={{ fontSize: '0.85rem', fontWeight: 700, color: vivaSource === 'preset' ? 'var(--purple)' : 'var(--text)' }}>
-                        Standard Lab Experiments
-                      </div>
-                      <div style={{ fontSize: '0.7rem', color: 'var(--muted)' }}>
-                        Choose from curated Physics, Chemistry, Biology & CS labs
-                      </div>
-                    </div>
-                  </div>
-
-                  <div
-                    onClick={() => setVivaSource('custom')}
-                    style={{
-                      padding: 14,
-                      borderRadius: 14,
-                      border: `1px solid ${vivaSource === 'custom' ? 'var(--purple)' : 'var(--border)'}`,
-                      background: vivaSource === 'custom' ? 'rgba(139, 92, 246, 0.12)' : 'var(--s2)',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 10,
-                      transition: 'all 0.15s ease'
-                    }}
-                  >
-                    <Edit3 size={20} style={{ color: vivaSource === 'custom' ? 'var(--purple)' : 'var(--muted)' }} />
-                    <div>
-                      <div style={{ fontSize: '0.85rem', fontWeight: 700, color: vivaSource === 'custom' ? 'var(--purple)' : 'var(--text)' }}>
-                        Custom Subject & Viva Topic
-                      </div>
-                      <div style={{ fontSize: '0.7rem', color: 'var(--muted)' }}>
-                        Type any custom university syllabus or lab topic
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* LEVEL SELECTION */}
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
-                  gap: 18
+                  gap: 14
                 }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 8, letterSpacing: '0.05em' }}>
+                    <label style={{ display: 'block', fontSize: '0.725rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 6, letterSpacing: '0.05em' }}>
                       Academic Education Level
                     </label>
                     <select
@@ -1771,9 +1862,9 @@ export default function VivaInterviewPage() {
                         width: '100%',
                         background: 'var(--s2)',
                         border: `1px solid var(--border)`,
-                        borderRadius: 12,
-                        padding: '10px 14px',
-                        fontSize: '0.875rem',
+                        borderRadius: 10,
+                        padding: '8px 12px',
+                        fontSize: '0.825rem',
                         color: 'var(--text)',
                         outline: 'none',
                         cursor: 'pointer'
@@ -1785,138 +1876,67 @@ export default function VivaInterviewPage() {
                     </select>
                   </div>
 
-                  {/* SUBJECT AREA (ACTIVE IN PRESET MODE, DESELECTED IN CUSTOM MODE) */}
-                  <div style={{ opacity: vivaSource === 'preset' ? 1 : 0.45, transition: 'opacity 0.2s ease' }}>
-                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 8, letterSpacing: '0.05em' }}>
-                      Subject Area {vivaSource === 'custom' ? '(Deselected for Custom Topic)' : ''}
-                    </label>
-                    <select
-                      disabled={vivaSource === 'custom'}
-                      value={subject}
-                      onChange={(e) => {
-                        setSubject(e.target.value);
-                        const defaultExp = experimentPresets[e.target.value]?.[0] || "General Lab";
-                        setSelectedExperiment(defaultExp);
-                      }}
-                      style={{
-                        width: '100%',
-                        background: 'var(--s2)',
-                        border: `1px solid var(--border)`,
-                        borderRadius: 12,
-                        padding: '10px 14px',
-                        fontSize: '0.875rem',
-                        color: 'var(--text)',
-                        outline: 'none',
-                        cursor: vivaSource === 'custom' ? 'not-allowed' : 'pointer'
-                      }}
-                    >
-                      {subjects.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                  </div>
-                </div>
-
-                {/* PRESET EXPERIMENTS LIST */}
-                {vivaSource === 'preset' ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                      Select Experiment in {subject}
-                    </label>
-                    <div style={{
-                      display: 'grid',
-                      gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
-                      gap: 10
-                    }}>
-                      {(experimentPresets[subject] || []).map(exp => {
-                        const isSelected = selectedExperiment === exp;
-                        return (
-                          <button
-                            key={exp}
-                            onClick={() => setSelectedExperiment(exp)}
-                            style={{
-                              padding: '12px 14px',
-                              borderRadius: 12,
-                              border: `1px solid ${isSelected ? 'var(--purple)' : 'var(--border)'}`,
-                              background: isSelected ? 'rgba(139, 92, 246, 0.12)' : 'var(--s2)',
-                              color: isSelected ? 'var(--purple)' : 'var(--text)',
-                              textAlign: 'left',
-                              fontSize: '0.825rem',
-                              fontWeight: isSelected ? 700 : 500,
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 8,
-                              transition: 'all 0.15s ease'
-                            }}
-                          >
-                            <span>🧪</span>
-                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{exp}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : (
-                  /* CUSTOM TOPIC INPUT (SUBJECT DESELECTED) */
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--purple)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                      Enter Custom Viva Topic / Syllabus / Experiment
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <label style={{ fontSize: '0.725rem', fontWeight: 700, color: 'var(--purple)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      Enter Custom Viva Topic / Subject / Syllabus *
                     </label>
                     <input
                       type="text"
-                      placeholder="e.g., Quantum Entanglement, Organic Chemistry Reactions, Operating System Paging, Fluid Dynamics..."
+                      placeholder="e.g., Quantum Mechanics, Organic Chemistry, Operating System Paging, Fluid Dynamics..."
                       value={customVivaTopic}
                       onChange={(e) => setCustomVivaTopic(e.target.value)}
                       style={{
                         width: '100%',
                         background: 'var(--s2)',
                         border: '2px solid var(--purple)',
-                        borderRadius: 14,
-                        padding: '12px 16px',
-                        fontSize: '0.9rem',
+                        borderRadius: 10,
+                        padding: '8px 12px',
+                        fontSize: '0.825rem',
                         color: 'var(--text)',
                         outline: 'none',
                         boxSizing: 'border-box'
                       }}
                     />
-                    <span style={{ fontSize: '0.725rem', color: 'var(--muted)' }}>
-                      Vedika will construct an oral viva examination strictly testing this topic without being constrained to predefined subjects.
-                    </span>
                   </div>
-                )}
+                </div>
 
+                <span style={{ fontSize: '0.7rem', color: 'var(--muted)' }}>
+                  Vedika will construct an oral viva examination strictly testing your entered topic without being constrained to hardcoded subjects.
+                </span>
               </div>
             ) : (
               /* INTERVIEW MODE OPTIONS */
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <div style={{
                   display: 'grid',
                   gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
-                  gap: 18
+                  gap: 14
                 }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 8, letterSpacing: '0.05em' }}>
-                      Primary Tech Stack / Programming Language
+                    <label style={{ display: 'block', fontSize: '0.725rem', fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', marginBottom: 6, letterSpacing: '0.05em' }}>
+                      Enter Target Tech Stack / Technical Topic *
                     </label>
-                    <select
-                      value={programmingLanguage}
-                      onChange={(e) => setProgrammingLanguage(e.target.value)}
+                    <input
+                      type="text"
+                      placeholder="e.g., Python Backend, React & Next.js, System Architecture, DevOps & Kubernetes..."
+                      value={topic}
+                      onChange={(e) => setTopic(e.target.value)}
                       style={{
                         width: '100%',
                         background: 'var(--s2)',
-                        border: `1px solid var(--border)`,
-                        borderRadius: 12,
-                        padding: '10px 14px',
-                        fontSize: '0.875rem',
+                        border: '2px solid var(--accent)',
+                        borderRadius: 10,
+                        padding: '8px 12px',
+                        fontSize: '0.825rem',
                         color: 'var(--text)',
-                        outline: 'none'
+                        outline: 'none',
+                        boxSizing: 'border-box'
                       }}
-                    >
-                      {programmingLanguages.map(lang => <option key={lang} value={lang}>{lang}</option>)}
-                    </select>
+                    />
                   </div>
 
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 8, letterSpacing: '0.05em' }}>
+                    <label style={{ display: 'block', fontSize: '0.725rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 6, letterSpacing: '0.05em' }}>
                       Target Seniority Level
                     </label>
                     <select
@@ -1926,9 +1946,9 @@ export default function VivaInterviewPage() {
                         width: '100%',
                         background: 'var(--s2)',
                         border: `1px solid var(--border)`,
-                        borderRadius: 12,
-                        padding: '10px 14px',
-                        fontSize: '0.875rem',
+                        borderRadius: 10,
+                        padding: '8px 12px',
+                        fontSize: '0.825rem',
                         color: 'var(--text)',
                         outline: 'none'
                       }}
@@ -1942,13 +1962,13 @@ export default function VivaInterviewPage() {
 
                 {/* RESUME UPLOAD SECTION */}
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 8, letterSpacing: '0.05em' }}>
+                  <label style={{ display: 'block', fontSize: '0.725rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 6, letterSpacing: '0.05em' }}>
                     Upload Candidate Resume (Optional - PDF or Text)
                   </label>
                   <div style={{
                     border: '2px dashed var(--border)',
-                    borderRadius: 16,
-                    padding: 20,
+                    borderRadius: 12,
+                    padding: 10,
                     textAlign: 'center',
                     background: 'var(--s2)',
                     cursor: 'pointer',
@@ -1968,34 +1988,31 @@ export default function VivaInterviewPage() {
                         cursor: 'pointer'
                       }}
                     />
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                    <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                       {parsingResume ? (
                         <>
-                          <Loader2 className="animate-spin" size={24} style={{ color: 'var(--accent)' }} />
-                          <span style={{ fontSize: '0.825rem', fontWeight: 600, color: 'var(--text)' }}>
+                          <Loader2 className="animate-spin" size={18} style={{ color: 'var(--accent)' }} />
+                          <span style={{ fontSize: '0.775rem', fontWeight: 600, color: 'var(--text)' }}>
                             Parsing resume document...
                           </span>
                         </>
                       ) : resumeFile ? (
                         <>
-                          <FileCheck size={28} style={{ color: '#10B981' }} />
-                          <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text)' }}>
+                          <FileCheck size={20} style={{ color: '#10B981' }} />
+                          <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text)' }}>
                             {resumeFile.name} (Uploaded)
                           </span>
                           {resumeBlueprint && (
-                            <span style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
-                              Parsed: {resumeBlueprint.targetRole} • Skills: {(resumeBlueprint.keySkills || []).slice(0, 4).join(', ')}
+                            <span style={{ fontSize: '0.725rem', color: 'var(--muted)' }}>
+                              • {resumeBlueprint.targetRole}
                             </span>
                           )}
                         </>
                       ) : (
                         <>
-                          <Upload size={24} style={{ color: 'var(--accent)' }} />
-                          <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text)' }}>
+                          <Upload size={18} style={{ color: 'var(--accent)' }} />
+                          <span style={{ fontSize: '0.775rem', fontWeight: 600, color: 'var(--text)' }}>
                             Drop candidate resume (PDF/Text) or click to browse
-                          </span>
-                          <span style={{ fontSize: '0.725rem', color: 'var(--muted)' }}>
-                            Automatically customizes interview questions to match projects & skills
                           </span>
                         </>
                       )}
@@ -2004,21 +2021,21 @@ export default function VivaInterviewPage() {
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 8, letterSpacing: '0.05em' }}>
+                  <label style={{ display: 'block', fontSize: '0.725rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 6, letterSpacing: '0.05em' }}>
                     Job Description (JD) / Target Role Details (Optional)
                   </label>
                   <textarea
-                    rows={3}
-                    placeholder="Paste target Job Description text here to anchor interview questions to specific company requirements..."
+                    rows={2}
+                    placeholder="Paste target Job Description text here..."
                     value={jdText}
                     onChange={(e) => setJdText(e.target.value)}
                     style={{
                       width: '100%',
                       background: 'var(--s2)',
                       border: `1px solid var(--border)`,
-                      borderRadius: 12,
-                      padding: 12,
-                      fontSize: '0.825rem',
+                      borderRadius: 10,
+                      padding: 8,
+                      fontSize: '0.8rem',
                       color: 'var(--text)',
                       outline: 'none',
                       boxSizing: 'border-box',
@@ -2035,14 +2052,14 @@ export default function VivaInterviewPage() {
               disabled={loading || parsingResume}
               style={{
                 width: '100%',
-                padding: '14px 20px',
-                borderRadius: 16,
+                padding: '11px 16px',
+                borderRadius: 12,
                 border: 'none',
                 background: sessionMode === 'viva'
                   ? 'linear-gradient(135deg, #8B5CF6 0%, #6366F1 100%)'
                   : 'linear-gradient(135deg, #4F83F6 0%, #8B5CF6 100%)',
                 color: '#FFFFFF',
-                fontSize: '0.95rem',
+                fontSize: '0.875rem',
                 fontWeight: 800,
                 cursor: (loading || parsingResume) ? 'not-allowed' : 'pointer',
                 display: 'flex',
@@ -3073,7 +3090,41 @@ export default function VivaInterviewPage() {
                   </div>
                   <span style={{ fontSize: '0.725rem', color: 'var(--muted)', fontWeight: 600 }}>EVALUATION GRADE</span>
                 </div>
+
+                <div style={{
+                  padding: '12px 24px',
+                  borderRadius: 16,
+                  background: 'var(--s2)',
+                  border: `1px solid var(--border)`,
+                  textAlign: 'center'
+                }}>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 900, color: 'var(--purple)' }}>
+                    {scorecard.totalQuestionsAsked || (scorecard.perTopicAnalysis?.length || 0)} Qs
+                  </div>
+                  <span style={{ fontSize: '0.725rem', color: 'var(--muted)', fontWeight: 600 }}>
+                    {scorecard.nTopics || (scorecard.perTopicAnalysis?.length || 0)} TOPICS ATTEMPTED
+                  </span>
+                </div>
               </div>
+
+              {/* SYSTEM WARNING BANNER (IF ANY TOPICS WERE UNSCORED) */}
+              {scorecard.systemErrorWarning && (
+                <div style={{
+                  width: '100%',
+                  maxWidth: 680,
+                  background: 'rgba(245, 158, 11, 0.12)',
+                  border: '1px solid rgba(245, 158, 11, 0.3)',
+                  borderRadius: 14,
+                  padding: '12px 16px',
+                  color: '#D97706',
+                  fontSize: '0.8rem',
+                  fontWeight: 600,
+                  textAlign: 'center',
+                  lineHeight: 1.4
+                }}>
+                  ⚠️ {scorecard.systemErrorWarning}
+                </div>
+              )}
 
               {/* SUMMARY CRITIQUE */}
               <p style={{
@@ -3091,20 +3142,20 @@ export default function VivaInterviewPage() {
               </p>
             </div>
 
-            {/* 4-DIMENSION RUBRIC BREAKDOWN GRID */}
+            {/* 3-DIMENSION RUBRIC BREAKDOWN GRID */}
             <div style={{
               display: 'grid',
-              gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+              gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr',
               gap: 16
             }}>
               {Object.entries(scorecard.rubricBreakdown || {}).map(([dimKey, dimVal]) => {
                 const labels = {
-                  technicalAccuracy: { title: 'Technical Accuracy & Depth', weight: '35%' },
-                  problemSolving: { title: 'Problem Solving & Architecture', weight: '25%' },
-                  communicationClarity: { title: 'Communication & Articulation', weight: '20%' },
-                  depthAndCompleteness: { title: 'Depth & Edge Cases', weight: '20%' }
+                  technicalAccuracy: { title: 'Technical Accuracy & Depth', weight: '50%' },
+                  problemSolving: { title: 'Problem Solving & Adaptability', weight: '30%' },
+                  communicationClarity: { title: 'Communication Clarity', weight: '20%' }
                 };
                 const info = labels[dimKey] || { title: dimKey, weight: '' };
+                const isUnscored = dimVal.score === null || dimVal.score === undefined;
 
                 return (
                   <div key={dimKey} style={{
@@ -3118,17 +3169,17 @@ export default function VivaInterviewPage() {
                   }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text)' }}>
-                        {info.title} <span style={{ fontSize: '0.7rem', color: 'var(--muted)' }}>({info.weight})</span>
+                        {info.title} {info.weight && <span style={{ fontSize: '0.7rem', color: 'var(--muted)' }}>({info.weight})</span>}
                       </span>
-                      <span style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--purple)' }}>
-                        {dimVal.score} / 10
+                      <span style={{ fontSize: '0.85rem', fontWeight: 800, color: isUnscored ? 'var(--muted)' : 'var(--purple)' }}>
+                        {isUnscored ? 'N/A' : `${dimVal.score} / 10`}
                       </span>
                     </div>
 
                     {/* Progress Bar */}
                     <div style={{ width: '100%', height: 6, background: 'var(--s2)', borderRadius: 3, overflow: 'hidden' }}>
                       <div style={{
-                        width: `${(dimVal.score / 10) * 100}%`,
+                        width: isUnscored ? '0%' : `${(dimVal.score / 10) * 100}%`,
                         height: '100%',
                         background: 'linear-gradient(90deg, var(--purple) 0%, var(--accent) 100%)',
                         borderRadius: 3
