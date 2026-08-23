@@ -117,6 +117,8 @@ export async function geminiCall(system, user, maxTokens = 8192, opts = {}) {
     body: JSON.stringify({
       system, user, maxOutputTokens: maxTokens,
       sessionId: opts.sessionId, userId: opts.userId,
+      responseMimeType: opts.responseMimeType,
+      responseSchema: opts.responseSchema,
     }),
   });
   if (!res.ok) {
@@ -194,25 +196,117 @@ export function isMathExpression(input) {
 
 export function evaluateMath(input) {
   const clean = input.trim().toLowerCase();
-  let evalStr = clean
-    .replace(/\bpi\b/g, `(${Math.PI})`)
-    .replace(/\be\b/g, `(${Math.E})`)
-    .replace(/\bsqrt\(/g, 'Math.sqrt(')
-    .replace(/\bsin\(/g, 'Math.sin(')
-    .replace(/\bcos\(/g, 'Math.cos(')
-    .replace(/\btan\(/g, 'Math.tan(')
-    .replace(/\blog\(/g, 'Math.log(')
-    .replace(/\babs\(/g, 'Math.abs(')
-    .replace(/\bround\(/g, 'Math.round(')
-    .replace(/\bfloor\(/g, 'Math.floor(')
-    .replace(/\bceil\(/g, 'Math.ceil(')
-    .replace(/\bpow\(/g, 'Math.pow(')
-    .replace(/\^/g, '**');
+  if (!clean) return 'Error: Empty input';
+
   try {
-    const result = Function(`"use strict"; return (${evalStr})`)();
-    return Number.isFinite(result) ? result : 'Error: result is not finite';
-  } catch (e) {
-    return `Error: ${e.message}`;
+    let expr = clean
+      .replace(/\bpi\b/g, String(Math.PI))
+      .replace(/\be\b/g, String(Math.E))
+      .replace(/\^/g, '**');
+
+    const tokens = [];
+    let i = 0;
+    while (i < expr.length) {
+      const ch = expr[i];
+      if (/\s/.test(ch)) { i++; continue; }
+      if (/\d|\./.test(ch)) {
+        let num = '';
+        while (i < expr.length && (/\d|\./.test(expr[i]))) {
+          num += expr[i++];
+        }
+        tokens.push({ type: 'NUMBER', value: parseFloat(num) });
+        continue;
+      }
+      if (/[a-z]/.test(ch)) {
+        let fn = '';
+        while (i < expr.length && /[a-z]/.test(expr[i])) {
+          fn += expr[i++];
+        }
+        tokens.push({ type: 'FUNC', value: fn });
+        continue;
+      }
+      if (expr.substr(i, 2) === '**') {
+        tokens.push({ type: 'OP', value: '**' });
+        i += 2;
+        continue;
+      }
+      if ('+-*/(),%'.includes(ch)) {
+        tokens.push({ type: 'OP', value: ch });
+        i++;
+        continue;
+      }
+      throw new Error(`Unexpected character: ${ch}`);
+    }
+
+    let pos = 0;
+    function parseExpression() {
+      let left = parseTerm();
+      while (pos < tokens.length && (tokens[pos].value === '+' || tokens[pos].value === '-')) {
+        const op = tokens[pos++].value;
+        const right = parseTerm();
+        left = op === '+' ? left + right : left - right;
+      }
+      return left;
+    }
+
+    function parseTerm() {
+      let left = parsePower();
+      while (pos < tokens.length && (tokens[pos].value === '*' || tokens[pos].value === '/' || tokens[pos].value === '%')) {
+        const op = tokens[pos++].value;
+        const right = parsePower();
+        left = op === '*' ? left * right : op === '/' ? left / right : left % right;
+      }
+      return left;
+    }
+
+    function parsePower() {
+      let left = parseFactor();
+      while (pos < tokens.length && tokens[pos].value === '**') {
+        pos++;
+        const right = parsePower();
+        left = Math.pow(left, right);
+      }
+      return left;
+    }
+
+    function parseFactor() {
+      if (pos >= tokens.length) throw new Error('Unexpected end of expression');
+      const token = tokens[pos++];
+      if (token.type === 'NUMBER') return token.value;
+      if (token.type === 'OP' && token.value === '-') return -parseFactor();
+      if (token.type === 'OP' && token.value === '+') return parseFactor();
+      if (token.type === 'FUNC') {
+        const fnName = token.value;
+        if (pos < tokens.length && tokens[pos].value === '(') {
+          pos++;
+          const arg = parseExpression();
+          if (pos < tokens.length && tokens[pos].value === ')') pos++;
+          switch (fnName) {
+            case 'sqrt': return Math.sqrt(arg);
+            case 'sin': return Math.sin(arg);
+            case 'cos': return Math.cos(arg);
+            case 'tan': return Math.tan(arg);
+            case 'log': return Math.log(arg);
+            case 'abs': return Math.abs(arg);
+            case 'round': return Math.round(arg);
+            case 'floor': return Math.floor(arg);
+            case 'ceil': return Math.ceil(arg);
+            default: throw new Error(`Unknown function: ${fnName}`);
+          }
+        }
+      }
+      if (token.type === 'OP' && token.value === '(') {
+        const exprVal = parseExpression();
+        if (pos < tokens.length && tokens[pos].value === ')') pos++;
+        return exprVal;
+      }
+      throw new Error(`Unexpected token: ${token.value}`);
+    }
+
+    const val = parseExpression();
+    return Number.isFinite(val) ? val : 'Error: result is not finite';
+  } catch (err) {
+    return `Error: ${err.message}`;
   }
 }
 

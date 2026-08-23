@@ -19,7 +19,7 @@ async function fetchGemini(url, payload) {
 
 export async function POST(request) {
   try {
-    const { system, user, image, maxOutputTokens, sessionId, userId } = await request.json();
+    const { system, user, image, maxOutputTokens, responseMimeType, responseSchema, sessionId, userId } = await request.json();
     const allKeys = getAllKeys();
 
     if (!allKeys || allKeys.length === 0) {
@@ -63,12 +63,17 @@ export async function POST(request) {
     const payload = {
       contents: [{ role: 'user', parts: userParts }],
       ...(fullSystem ? { systemInstruction: { parts: [{ text: fullSystem }] } } : {}),
-      generationConfig: { temperature: 0.4, maxOutputTokens: maxOutputTokens || 8192 },
+      generationConfig: {
+        temperature: 0.4,
+        maxOutputTokens: maxOutputTokens || 8192,
+        ...(responseMimeType ? { responseMimeType } : {}),
+        ...(responseSchema ? { responseSchema } : {}),
+      },
     };
 
     // Shuffle keys to distribute traffic across GEMINI_API_KEY, GEMINI_API_KEY_1, GEMINI_API_KEY_2, etc.
     const shuffledKeys = [...allKeys].sort(() => Math.random() - 0.5);
-    const modelsToTry = ['gemini-1.5-flash', 'gemini-2.5-flash', 'gemini-2.0-flash'];
+    const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
 
     let textResult = null;
     let lastError = null;
@@ -86,10 +91,15 @@ export async function POST(request) {
         }
 
         if (data?.error) {
-          lastError = data.error.message || 'API error';
-          console.warn(`[Gemini] Key ${apiKey.slice(0, 8)}... notice (${modelName}): ${data.error.message}`);
-          // If rate limited or error, break model loop and switch to NEXT key immediately!
-          break;
+          const errMsg = data.error.message || 'API error';
+          lastError = errMsg;
+          console.warn(`[Gemini] Key ${apiKey.slice(0, 8)}... notice (${modelName}): ${errMsg}`);
+
+          // If rate limited or quota exceeded or key error, switch to next key immediately!
+          if (data.error.code === 429 || errMsg.includes('Quota') || errMsg.includes('key')) {
+            break;
+          }
+          continue;
         }
 
         const candidateText = data?.candidates?.[0]?.content?.parts?.[0]?.text;

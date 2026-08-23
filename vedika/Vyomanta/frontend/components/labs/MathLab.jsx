@@ -10,23 +10,72 @@ import {
   TrendingUp, Circle, Triangle, Layers, ZoomIn, ZoomOut, RefreshCw, Send, Image as ImageIcon,
   Crop, Mic, MicOff, Square, CheckCircle2, Award, Box, Volume2
 } from 'lucide-react';
-import { T } from '@/lib/lms-data';
+import { T, isMathExpression, evaluateMath, geminiCall } from '@/lib/lms-data';
+import ScenePrimitiveRenderer, { validateScene } from './ScenePrimitiveRenderer';
+import { lookupFormula } from '@/lib/formulaRegistry';
 
 // Preprocess LaTeX math syntax into clean formatted unicode math
 function cleanMathLaTeX(text) {
   if (!text) return '';
-  return text
+  let str = text;
+
+  // Convert block math $$ ... $$ into formatted code blocks for clean formula card rendering
+  str = str.replace(/\$\$\s*([\s\S]*?)\s*\$\$/g, (match, formula) => {
+    return `\n\n\`\`\`math\n${formula.trim()}\n\`\`\`\n\n`;
+  });
+
+  // Convert common LaTeX math symbols into clean Unicode math
+  str = str
     .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '($1 / $2)')
+    .replace(/\\sqrt\{([^}]+)\}/g, '√($1)')
+    .replace(/\\sqrt/g, '√')
+    .replace(/\\sigma/g, 'σ')
+    .replace(/\\mu/g, 'μ')
+    .replace(/\\alpha/g, 'α')
+    .replace(/\\beta/g, 'β')
     .replace(/\\theta/g, 'θ')
     .replace(/\\pi/g, 'π')
+    .replace(/\\lambda/g, 'λ')
+    .replace(/\\delta/g, 'δ')
+    .replace(/\\infty/g, '∞')
     .replace(/\\approx/g, '≈')
     .replace(/\\times/g, '×')
     .replace(/\\cdot/g, '·')
-    .replace(/\^\circ/g, '°')
+    .replace(/\\sim/g, '~')
+    .replace(/\\ge/g, '≥')
+    .replace(/\\le/g, '≤')
+    .replace(/\\neq/g, '≠')
+    .replace(/\\pm/g, '±')
+    .replace(/\\quad/g, ' ')
+    .replace(/\\qquad/g, '  ')
     .replace(/\\text\{([^}]+)\}/g, '$1')
     .replace(/\\left|\\right/g, '')
-    .replace(/\$\$/g, '\n\n$$$\n')
-    .replace(/\\\$/g, '$');
+    .replace(/\^\circ/g, '°')
+    .replace(/\^2/g, '²')
+    .replace(/\^3/g, '³')
+    .replace(/\^n/g, 'ⁿ')
+    // Convert subscripts (_1 to ₁, _n to ₙ, etc.)
+    .replace(/_1\b/g, '₁')
+    .replace(/_2\b/g, '₂')
+    .replace(/_3\b/g, '₃')
+    .replace(/_4\b/g, '₄')
+    .replace(/_5\b/g, '₅')
+    .replace(/_6\b/g, '₆')
+    .replace(/_7\b/g, '₇')
+    .replace(/_8\b/g, '₈')
+    .replace(/_9\b/g, '₉')
+    .replace(/_0\b/g, '₀')
+    .replace(/_n\b/g, 'ₙ')
+    .replace(/_i\b/g, 'ᵢ')
+    .replace(/_k\b/g, 'ₖ')
+    .replace(/_m\b/g, 'ₘ');
+
+  // Clean inline math $...$ delimiters so variables flow inline naturally
+  str = str.replace(/\$([^$\n]+)\$/g, (match, inner) => {
+    return ` ${inner.trim()} `;
+  });
+
+  return str;
 }
 
 // Helper parser to dynamically extract slope, quadratic, or general expression parameters
@@ -54,8 +103,8 @@ function parseMathEquation(rawEq, modeFromAI, paramsFromAI) {
         if (!isNaN(parsedC)) c = parsedC;
       }
     } else if (paramsFromAI) {
-      if (paramsFromAI.a !== undefined) a = paramsFromAI.a;
-      if (paramsFromAI.c !== undefined) c = paramsFromAI.c;
+      if (typeof paramsFromAI.a === 'number' && !isNaN(paramsFromAI.a)) a = paramsFromAI.a;
+      if (typeof paramsFromAI.c === 'number' && !isNaN(paramsFromAI.c)) c = paramsFromAI.c;
     }
 
     const formattedEq = `y = ${a === 1 ? '' : a === -1 ? '-' : a}x ${c >= 0 ? '+ ' + c : '- ' + Math.abs(c)}`;
@@ -78,19 +127,24 @@ function parseMathEquation(rawEq, modeFromAI, paramsFromAI) {
         if (!isNaN(pC)) c = pC;
       }
     } else if (paramsFromAI) {
-      if (paramsFromAI.a !== undefined) a = paramsFromAI.a;
-      if (paramsFromAI.c !== undefined) c = paramsFromAI.c;
+      if (typeof paramsFromAI.a === 'number' && !isNaN(paramsFromAI.a)) a = paramsFromAI.a;
+      if (typeof paramsFromAI.c === 'number' && !isNaN(paramsFromAI.c)) c = paramsFromAI.c;
     }
-    return { eqText: `y = ${a !== 1 ? a : ''}x² ${c >= 0 ? '+ ' + c : '- ' + Math.abs(c)}`, mode: 'quadratic', a, b: 0, c, d: 0 };
+    return { eqText: `y = ${a !== 1 ? (a === -1 ? '-' : a) : ''}x² ${c >= 0 ? '+ ' + c : '- ' + Math.abs(c)}`, mode: 'quadratic', a, b: 0, c, d: 0 };
   }
+
+  const safeA = (paramsFromAI && !isNaN(paramsFromAI.a)) ? paramsFromAI.a : 1;
+  const safeB = (paramsFromAI && !isNaN(paramsFromAI.b)) ? paramsFromAI.b : 0;
+  const safeC = (paramsFromAI && !isNaN(paramsFromAI.c)) ? paramsFromAI.c : 1;
+  const safeD = (paramsFromAI && !isNaN(paramsFromAI.d)) ? paramsFromAI.d : 0;
 
   return {
     eqText: rawEq,
     mode: modeFromAI || 'linear',
-    a: paramsFromAI?.a !== undefined ? paramsFromAI.a : 1,
-    b: paramsFromAI?.b !== undefined ? paramsFromAI.b : 0,
-    c: paramsFromAI?.c !== undefined ? paramsFromAI.c : 1,
-    d: paramsFromAI?.d !== undefined ? paramsFromAI.d : 0
+    a: safeA,
+    b: safeB,
+    c: safeC,
+    d: safeD
   };
 }
 
@@ -98,291 +152,61 @@ function parseMathEquation(rawEq, modeFromAI, paramsFromAI) {
 // DYNAMIC TEXTBOOK MATH VISUALIZER CANVAS COMPONENT
 // ----------------------------------------------------
 function DynamicMathVisualizer({ spec }) {
-  if (!spec || !spec.type) return null;
-
-  const [params, setParams] = useState(spec.params || {});
-
-  useEffect(() => {
-    if (spec.params) setParams(spec.params);
-  }, [spec]);
-
-  const updateParam = (key, val) => {
-    setParams(prev => ({ ...prev, [key]: parseFloat(val) }));
-  };
+  if (!spec || spec.unsupported) {
+    return (
+      <div style={{
+        marginTop: 20,
+        padding: 20,
+        borderRadius: 14,
+        background: `${T.purple}10`,
+        border: `1px solid ${T.purple}30`,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 14
+      }}>
+        <div style={{
+          width: 42,
+          height: 42,
+          borderRadius: 10,
+          background: `${T.purple}20`,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0
+        }}>
+          <Sparkles size={20} color={T.purple} />
+        </div>
+        <div>
+          <h4 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: T.text }}>
+            Interactive Diagram Not Available For This Topic
+          </h4>
+          <p style={{ margin: '4px 0 0', fontSize: 12, color: T.muted, lineHeight: 1.5 }}>
+            Interactive visual models are supported for Geometry, Functions, Calculus Curves, Sequences, Fractions, and Ratios. Click <b>[⚡ Solve]</b> above to view the complete step-by-step math derivation!
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{
       marginTop: 20,
-      background: '#07080F',
+      background: T.s1,
       borderRadius: 14,
-      border: '1px solid rgba(139, 92, 246, 0.3)',
+      border: `1px solid ${T.border}`,
       padding: 20,
-      boxShadow: '0 8px 24px rgba(0,0,0,0.4)'
+      boxShadow: '0 8px 24px rgba(0,0,0,0.06)'
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-        <Box size={20} color="#8B5CF6" />
-        <h4 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: '#FFF' }}>
-          {spec.title || 'Dynamic Math Visualizer'}
+        <Box size={20} color={T.purple} />
+        <h4 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: T.text }}>
+          {spec.concept ? spec.concept.replace(/_/g, ' ').toUpperCase() : 'Dynamic Math Scene'}
         </h4>
-        <span style={{ fontSize: 11, background: 'rgba(139, 92, 246, 0.2)', color: '#C4B5FD', padding: '2px 8px', borderRadius: 12 }}>
-          Interactive Canvas
+        <span style={{ fontSize: 11, background: `${T.purple}20`, color: T.purple, padding: '2px 8px', borderRadius: 12, fontWeight: 600 }}>
+          GeoGebra / Desmos Scene Engine
         </span>
       </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 20, alignItems: 'center' }}>
-        {/* SVG VISUALIZER CANVAS */}
-        <div style={{ background: '#0D1117', borderRadius: 12, border: '1px solid rgba(255,255,255,0.08)', padding: 16, textAlign: 'center' }}>
-          <svg width={380} height={260} style={{ background: '#07080F', borderRadius: 8 }}>
-            
-            {/* 1. TRIANGLE VISUALIZER */}
-            {spec.type === 'triangle' && (() => {
-              const base = params.base || 6;
-              const height = params.height || 8;
-              const ox = 60, oy = 210;
-              const scale = Math.min(240 / Math.max(base, 1), 160 / Math.max(height, 1));
-
-              const bx = base * scale;
-              const hy = height * scale;
-              const hypotenuse = Math.sqrt(base * base + height * height).toFixed(2);
-              const area = (0.5 * base * height).toFixed(2);
-
-              return (
-                <g>
-                  <line x1={0} y1={oy} x2={380} y2={oy} stroke="rgba(255,255,255,0.1)" />
-                  <line x1={ox} y1={0} x2={ox} y2={260} stroke="rgba(255,255,255,0.1)" />
-
-                  <polygon
-                    points={`${ox},${oy} ${ox + bx},${oy} ${ox},${oy - hy}`}
-                    fill="rgba(139, 92, 246, 0.25)"
-                    stroke="#8B5CF6"
-                    strokeWidth="3"
-                  />
-
-                  <path d={`M ${ox + 12},${oy} L ${ox + 12},${oy - 12} L ${ox},${oy - 12}`} fill="none" stroke="#FFF" strokeWidth="1.5" />
-
-                  <text x={ox + bx / 2} y={oy + 18} fill="#06B6D4" fontSize="12" fontWeight="bold" textAnchor="middle">
-                    Base = {base}
-                  </text>
-                  <text x={ox - 16} y={oy - hy / 2} fill="#F59E0B" fontSize="12" fontWeight="bold" textAnchor="middle">
-                    Height = {height}
-                  </text>
-                  <text x={ox + bx / 2 + 10} y={oy - hy / 2 - 6} fill="#EC4899" fontSize="12" fontWeight="bold">
-                    c = {hypotenuse}
-                  </text>
-
-                  <rect x={180} y={20} width={180} height={36} rx={8} fill="rgba(16, 185, 129, 0.2)" stroke="#10B981" />
-                  <text x={270} y={42} fill="#10B981" fontSize="13" fontWeight="bold" textAnchor="middle">
-                    Area = ½ × b × h = {area}
-                  </text>
-                </g>
-              );
-            })()}
-
-            {/* 2. CIRCLE SECTOR VISUALIZER */}
-            {(spec.type === 'sector' || spec.type === 'circle_sector') && (() => {
-              const r = params.radius || 10;
-              const angle = params.angle || 30;
-              const cx = 190, cy = 140;
-              const scale = Math.min(100 / Math.max(r, 1), 18);
-              const cr = r * scale;
-
-              const rad = (angle * Math.PI) / 180;
-              const x2 = cx + cr * Math.cos(rad);
-              const y2 = cy - cr * Math.sin(rad);
-              const largeArc = angle > 180 ? 1 : 0;
-              const sectorPath = `M ${cx},${cy} L ${cx + cr},${cy} A ${cr} ${cr} 0 ${largeArc} 0 ${x2},${y2} Z`;
-              const sectorArea = ((angle / 360) * Math.PI * r * r).toFixed(2);
-
-              return (
-                <g>
-                  <circle cx={cx} cy={cy} r={cr} fill="none" stroke="rgba(255,255,255,0.15)" strokeDasharray="4" />
-                  <path d={sectorPath} fill="rgba(139, 92, 246, 0.35)" stroke="#8B5CF6" strokeWidth="3" />
-                  <line x1={cx} y1={cy} x2={cx + cr} y2={cy} stroke="#06B6D4" strokeWidth="2.5" />
-                  <line x1={cx} y1={cy} x2={x2} y2={y2} stroke="#EC4899" strokeWidth="2.5" />
-                  <circle cx={cx} cy={cy} r={4} fill="#FFF" />
-
-                  <text x={cx + 20} y={cy - 6} fill="#F59E0B" fontSize="12" fontWeight="bold">θ = {angle}°</text>
-                  <text x={cx + cr / 2} y={cy + 16} fill="#06B6D4" fontSize="12" fontWeight="bold">r = {r}</text>
-
-                  <rect x={180} y={15} width={185} height={36} rx={8} fill="rgba(139, 92, 246, 0.2)" stroke="#8B5CF6" />
-                  <text x={272.5} y={37} fill="#A78BFA" fontSize="13" fontWeight="bold" textAnchor="middle">
-                    Sector Area = {sectorArea}
-                  </text>
-                </g>
-              );
-            })()}
-
-            {/* 3. SOLID SURFACE AREA VISUALIZER */}
-            {(spec.type === 'solid_surface' || spec.type === '3d_surface') && (() => {
-              const r = params.radius || 7;
-              const h = params.height || 14;
-              const cx = 190, cy = 130;
-              const cr = 45;
-              const ch = 80;
-
-              const tsa = (2 * Math.PI * r * h + 2 * Math.PI * r * r).toFixed(1);
-
-              return (
-                <g>
-                  <rect x={cx - cr} y={cy - ch / 2} width={cr * 2} height={ch} fill="rgba(139, 92, 246, 0.2)" stroke="#8B5CF6" strokeWidth="2.5" />
-                  <ellipse cx={cx} cy={cy - ch / 2} rx={cr} ry={14} fill="rgba(236, 72, 153, 0.3)" stroke="#EC4899" strokeWidth="2" />
-                  <ellipse cx={cx} cy={cy + ch / 2} rx={cr} ry={14} fill="rgba(139, 92, 246, 0.3)" stroke="#8B5CF6" strokeWidth="2" />
-
-                  <line x1={cx - cr - 15} y1={cy - ch / 2} x2={cx - cr - 15} y2={cy + ch / 2} stroke="#F59E0B" strokeWidth="2" strokeDasharray="4" />
-                  <text x={cx - cr - 25} y={cy} fill="#F59E0B" fontSize="11" fontWeight="bold" textAnchor="end">h = {h}</text>
-
-                  <line x1={cx} y1={cy - ch / 2} x2={cx + cr} y2={cy - ch / 2} stroke="#06B6D4" strokeWidth="2" />
-                  <text x={cx + cr / 2} y={cy - ch / 2 - 6} fill="#06B6D4" fontSize="11" fontWeight="bold" textAnchor="middle">r = {r}</text>
-
-                  <rect x={180} y={15} width={185} height={36} rx={8} fill="rgba(16, 185, 129, 0.2)" stroke="#10B981" />
-                  <text x={272.5} y={37} fill="#10B981" fontSize="12" fontWeight="bold" textAnchor="middle">
-                    Surface Area = {tsa}
-                  </text>
-                </g>
-              );
-            })()}
-
-            {/* 4. FULL CIRCLE VISUALIZER */}
-            {spec.type === 'circle' && (() => {
-              const r = params.radius || 5;
-              const cx = 190, cy = 130;
-              const scale = Math.min(100 / Math.max(r, 1), 18);
-              const cr = r * scale;
-
-              const area = (Math.PI * r * r).toFixed(2);
-              const perimeter = (2 * Math.PI * r).toFixed(2);
-
-              return (
-                <g>
-                  <circle cx={cx} cy={cy} r={cr} fill="rgba(236, 72, 153, 0.2)" stroke="#EC4899" strokeWidth="3" />
-                  <circle cx={cx} cy={cy} r={4} fill="#FFF" />
-                  <line x1={cx} y1={cy} x2={cx + cr} y2={cy} stroke="#F59E0B" strokeWidth="2.5" strokeDasharray="4" />
-                  <text x={cx + cr / 2} y={cy - 8} fill="#F59E0B" fontSize="12" fontWeight="bold" textAnchor="middle">
-                    r = {r}
-                  </text>
-
-                  <rect x={20} y={15} width={140} height={50} rx={8} fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.1)" />
-                  <text x={30} y={35} fill="#EC4899" fontSize="12" fontWeight="bold">Area = πr² = {area}</text>
-                  <text x={30} y={52} fill="#06B6D4" fontSize="12" fontWeight="bold">Perimeter = {perimeter}</text>
-                </g>
-              );
-            })()}
-
-            {/* 5. AREA UNDER CURVE VISUALIZER */}
-            {spec.type === 'area_under_curve' && (() => {
-              const a = params.a !== undefined ? params.a : 0;
-              const b = params.b !== undefined ? params.b : 3;
-              const cx = 80, cy = 200, scaleX = 40, scaleY = 15;
-
-              const f = (x) => (params.func === '2x+1' ? 2 * x + 1 : x * x);
-              const points = [];
-              for (let x = -1; x <= 4; x += 0.1) {
-                const px = cx + x * scaleX;
-                const py = cy - f(x) * scaleY;
-                points.push(`${px},${py}`);
-              }
-
-              const fillPoints = [];
-              fillPoints.push(`${cx + a * scaleX},${cy}`);
-              for (let x = a; x <= b; x += 0.1) {
-                fillPoints.push(`${cx + x * scaleX},${cy - f(x) * scaleY}`);
-              }
-              fillPoints.push(`${cx + b * scaleX},${cy}`);
-
-              const calcArea = params.func === '2x+1' ? (b * b + b) - (a * a + a) : (Math.pow(b, 3) / 3 - Math.pow(a, 3) / 3);
-
-              return (
-                <g>
-                  <line x1={0} y1={cy} x2={380} y2={cy} stroke="rgba(255,255,255,0.2)" />
-                  <line x1={cx} y1={0} x2={cx} y2={260} stroke="rgba(255,255,255,0.2)" />
-
-                  <polygon points={fillPoints.join(' ')} fill="rgba(16, 185, 129, 0.35)" stroke="none" />
-                  <path d={`M ${points.join(' L ')}`} fill="none" stroke="#8B5CF6" strokeWidth="3" />
-
-                  <line x1={cx + a * scaleX} y1={cy} x2={cx + a * scaleX} y2={cy - f(a) * scaleY} stroke="#F59E0B" strokeWidth="2" strokeDasharray="3" />
-                  <line x1={cx + b * scaleX} y1={cy} x2={cx + b * scaleX} y2={cy - f(b) * scaleY} stroke="#F59E0B" strokeWidth="2" strokeDasharray="3" />
-
-                  <text x={cx + a * scaleX} y={cy + 15} fill="#F59E0B" fontSize="11" fontWeight="bold">a={a}</text>
-                  <text x={cx + b * scaleX} y={cy + 15} fill="#F59E0B" fontSize="11" fontWeight="bold">b={b}</text>
-
-                  <rect x={220} y={15} width={145} height={40} rx={8} fill="rgba(16, 185, 129, 0.2)" stroke="#10B981" />
-                  <text x={292} y={38} fill="#10B981" fontSize="12" fontWeight="bold" textAnchor="middle">
-                    ∫ Area = {calcArea.toFixed(2)}
-                  </text>
-                </g>
-              );
-            })()}
-
-            {/* DEFAULT FALLBACK SHAPE */}
-            {(!['triangle', 'circle', 'sector', 'circle_sector', 'solid_surface', '3d_surface', 'area_under_curve'].includes(spec.type)) && (
-              <g>
-                <rect x={90} y={50} width={200} height={140} rx={12} fill="rgba(139,92,246,0.2)" stroke="#8B5CF6" strokeWidth="3" />
-                <text x={190} y={125} fill="#FFF" fontSize="14" fontWeight="bold" textAnchor="middle">
-                  {spec.title || 'Dynamic Diagram'}
-                </text>
-              </g>
-            )}
-          </svg>
-        </div>
-
-        {/* PARAMETER SLIDERS */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, background: 'rgba(255,255,255,0.03)', padding: 16, borderRadius: 12 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: '#A78BFA', display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Sliders size={14} /> Dynamic Controls
-          </span>
-
-          {spec.type === 'triangle' && (
-            <>
-              <div>
-                <label style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Base:</span> <b>{params.base || 6}</b>
-                </label>
-                <input type="range" min="1" max="15" value={params.base || 6} onChange={(e) => updateParam('base', e.target.value)} style={{ width: '100%', accentColor: '#06B6D4' }} />
-              </div>
-              <div>
-                <label style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Height:</span> <b>{params.height || 8}</b>
-                </label>
-                <input type="range" min="1" max="15" value={params.height || 8} onChange={(e) => updateParam('height', e.target.value)} style={{ width: '100%', accentColor: '#F59E0B' }} />
-              </div>
-            </>
-          )}
-
-          {(spec.type === 'sector' || spec.type === 'circle_sector') && (
-            <>
-              <div>
-                <label style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Radius r:</span> <b>{params.radius || 10}</b>
-                </label>
-                <input type="range" min="5" max="50" value={params.radius || 10} onChange={(e) => updateParam('radius', e.target.value)} style={{ width: '100%', accentColor: '#06B6D4' }} />
-              </div>
-              <div>
-                <label style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Angle θ:</span> <b>{params.angle || 30}°</b>
-                </label>
-                <input type="range" min="5" max="355" step="5" value={params.angle || 30} onChange={(e) => updateParam('angle', e.target.value)} style={{ width: '100%', accentColor: '#F59E0B' }} />
-              </div>
-            </>
-          )}
-
-          {(spec.type === 'solid_surface' || spec.type === '3d_surface') && (
-            <>
-              <div>
-                <label style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Radius r:</span> <b>{params.radius || 7}</b>
-                </label>
-                <input type="range" min="1" max="20" value={params.radius || 7} onChange={(e) => updateParam('radius', e.target.value)} style={{ width: '100%', accentColor: '#06B6D4' }} />
-              </div>
-              <div>
-                <label style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Height h:</span> <b>{params.height || 14}</b>
-                </label>
-                <input type="range" min="2" max="40" value={params.height || 14} onChange={(e) => updateParam('height', e.target.value)} style={{ width: '100%', accentColor: '#F59E0B' }} />
-              </div>
-            </>
-          )}
-        </div>
-      </div>
+      <ScenePrimitiveRenderer scene={spec} theme={T} />
     </div>
   );
 }
@@ -392,51 +216,82 @@ function CustomMathMarkdown({ content }) {
   const formatted = cleanMathLaTeX(content);
 
   return (
-    <div style={{ fontSize: 15, lineHeight: 1.8, color: '#E5E7EB' }}>
+    <div style={{ fontSize: 15, lineHeight: 1.8, color: T.text }}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
-          h3: ({ children }) => (
-            <h3 style={{ fontSize: 17, fontWeight: 700, color: '#A78BFA', marginTop: 18, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6, borderBottom: '1px solid rgba(139, 92, 246, 0.2)', paddingBottom: 6 }}>
-              <Zap size={16} /> {children}
-            </h3>
-          ),
+          h3: ({ children }) => {
+            const txt = String(children);
+            if (txt.toLowerCase().includes('final answer')) {
+              return (
+                <div style={{
+                  background: `${T.green}15`,
+                  border: `1px solid ${T.green}40`,
+                  borderRadius: 12,
+                  padding: '14px 18px',
+                  marginTop: 24,
+                  marginBottom: 12,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  color: T.green,
+                  fontWeight: 800,
+                  fontSize: 18,
+                  boxShadow: `0 4px 14px ${T.green}20`
+                }}>
+                  <CheckCircle2 size={22} /> {children}
+                </div>
+              );
+            }
+
+            return (
+              <h3 style={{ fontSize: 17, fontWeight: 700, color: T.purple, marginTop: 22, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${T.border}`, paddingBottom: 8 }}>
+                <Zap size={18} color={T.purple} /> {children}
+              </h3>
+            );
+          },
           h4: ({ children }) => (
-            <h4 style={{ fontSize: 15, fontWeight: 700, color: '#F472B6', marginTop: 14, marginBottom: 6 }}>
-              {children}
+            <h4 style={{ fontSize: 15, fontWeight: 700, color: T.accent, marginTop: 16, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <ChevronRight size={16} color={T.accent} /> {children}
             </h4>
           ),
-          code: ({ inline, children }) => {
-            const str = String(children);
+          code: ({ inline, className, children }) => {
+            const str = String(children).replace(/\n$/, '');
+            const isMathBlock = className === 'language-math';
+
             if (inline) {
               return (
                 <span style={{
                   fontFamily: 'monospace',
-                  background: 'rgba(139, 92, 246, 0.18)',
-                  color: '#F472B6',
-                  border: '1px solid rgba(139, 92, 246, 0.3)',
+                  background: `${T.accent}15`,
+                  color: T.accent,
+                  border: `1px solid ${T.accent}30`,
                   padding: '2px 8px',
                   borderRadius: 6,
                   fontWeight: 700,
-                  fontSize: 14
+                  fontSize: 14,
+                  display: 'inline-block',
+                  margin: '2px 4px'
                 }}>
                   {str}
                 </span>
               );
             }
+
             return (
               <div style={{
-                background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(236, 72, 153, 0.15) 100%)',
-                border: '1px solid rgba(139, 92, 246, 0.4)',
+                background: T.s2,
+                border: `1px solid ${T.border}`,
                 borderRadius: 12,
                 padding: '14px 20px',
-                margin: '14px 0',
+                margin: '12px 0',
                 textAlign: 'center',
-                color: '#C4B5FD',
-                fontWeight: 800,
-                fontSize: 17,
-                fontFamily: 'monospace',
-                boxShadow: '0 4px 16px rgba(139, 92, 246, 0.2)'
+                color: T.accent,
+                fontWeight: 700,
+                fontSize: 16,
+                fontFamily: 'var(--font-outfit), monospace',
+                boxShadow: '0 2px 10px rgba(0, 0, 0, 0.03)',
+                overflowX: 'auto'
               }}>
                 {str}
               </div>
@@ -444,14 +299,21 @@ function CustomMathMarkdown({ content }) {
           },
           p: ({ children }) => {
             const str = String(children);
-            if (str.startsWith('Problem ') || str.startsWith('Step ')) {
+            if (str.toLowerCase().includes('the total area') || str.toLowerCase().includes('final answer:')) {
               return (
-                <div style={{ background: 'rgba(255, 255, 255, 0.03)', borderLeft: '3px solid #8B5CF6', padding: '10px 14px', borderRadius: '0 8px 8px 0', margin: '10px 0' }}>
+                <div style={{ background: `${T.green}12`, borderLeft: `4px solid ${T.green}`, padding: '12px 18px', borderRadius: '0 10px 10px 0', margin: '14px 0', fontWeight: 600, color: T.text }}>
                   {children}
                 </div>
               );
             }
-            return <p style={{ margin: '8px 0' }}>{children}</p>;
+            if (str.startsWith('Problem ') || str.startsWith('Step ')) {
+              return (
+                <div style={{ background: T.s2, borderLeft: `3px solid ${T.accent}`, padding: '10px 14px', borderRadius: '0 8px 8px 0', margin: '10px 0' }}>
+                  {children}
+                </div>
+              );
+            }
+            return <p style={{ margin: '10px 0', leading: 1.8 }}>{children}</p>;
           }
         }}
       >
@@ -714,6 +576,15 @@ export default function MathLab() {
     }
   };
 
+  // Speech Recognition Cleanup Hook
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        try { recognitionRef.current.stop(); } catch (e) {}
+      }
+    };
+  }, []);
+
   // ----------------------------------------------------
   // CONTINUOUS SPEECH-TO-TEXT VOICE INPUT
   // ----------------------------------------------------
@@ -743,7 +614,10 @@ export default function MathLab() {
             transcript += event.results[i][0].transcript;
           }
           if (transcript.trim()) {
-            setTutorQuery(transcript);
+            setTutorQuery(prev => {
+              const cleanPrev = prev.trim();
+              return cleanPrev ? `${cleanPrev} ${transcript.trim()}` : transcript.trim();
+            });
           }
         };
         recognition.onerror = (e) => {
@@ -877,73 +751,290 @@ export default function MathLab() {
 
   }, [zoomScale, paramA, paramB, paramC, paramD, plotMode, hoverCoord]);
 
+  const hoverRafRef = useRef(null);
   const handleGraphMouseMove = (e) => {
-    const canvas = graphCanvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const px = e.clientX - rect.left;
-    const py = e.clientY - rect.top;
-    const originX = canvas.width / 2;
-    const originY = canvas.height / 2;
-    const mathX = (px - originX) / zoomScale;
-    const mathY = plotMode === 'linear' ? paramA * mathX + paramC : paramA * mathX * mathX + paramC;
-    setHoverCoord({ x: mathX, y: mathY });
+    const clientX = e.clientX;
+    const clientY = e.clientY;
+    if (hoverRafRef.current) cancelAnimationFrame(hoverRafRef.current);
+    hoverRafRef.current = requestAnimationFrame(() => {
+      const canvas = graphCanvasRef.current;
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      const px = clientX - rect.left;
+      const py = clientY - rect.top;
+      const originX = canvas.width / 2;
+      const mathX = (px - originX) / zoomScale;
+      const mathY = plotMode === 'linear' ? paramA * mathX + paramC : paramA * mathX * mathX + paramC;
+      setHoverCoord({ x: mathX, y: mathY });
+    });
+  };
+
+  // ----------------------------------------------------
+  // STRICT CLOSED ENUM SCHEMAS & VALIDATOR (NO GUESSWORK / NO HALLUCINATED CIRCLES)
+  // ----------------------------------------------------
+  // ----------------------------------------------------
+  // STRICT CLOSED ENUM SCHEMAS & VALIDATOR (FULL SYLLABUS SYTEMATIC ENUM)
+  // ----------------------------------------------------
+  const ALLOWED_VISUAL_TYPES = [
+    // 3D Solids
+    'cube',
+    'cuboid',
+    'rectangular_prism',
+    'box',
+    'cylinder',
+    'cone',
+    'sphere',
+    'hemisphere',
+    'pyramid',
+    'composite_cylinder_hemisphere',
+    'composite_solid',
+    'solid_surface',
+    '3d_surface',
+    
+    // 2D Shapes & Polygons
+    'triangle',
+    'circle',
+    'sector',
+    'circle_sector',
+    'rectangle',
+    'square',
+    'quadrilateral',
+    'parallelogram',
+    'rhombus',
+    'trapezoid',
+    'regular_polygon',
+    
+    // Algebra, Sequences, Calculus & Data
+    'quadratic',
+    'parabola',
+    'function_graph',
+    'toothpick_sequence',
+    'sequence_grid',
+    'pattern_sequence',
+    'fraction_pie',
+    'pie_chart',
+    'fraction',
+    'bar_chart',
+    'ratio_bars',
+    'area_under_curve'
+  ];
+
+  const validateVisualSpec = (spec) => {
+    if (!spec || typeof spec !== 'object' || !spec.type) return null;
+    const type = String(spec.type).toLowerCase();
+    if (!ALLOWED_VISUAL_TYPES.includes(type)) return null;
+
+    const params = spec.params || {};
+
+    if (['cube', 'cuboid', 'rectangular_prism', 'box'].includes(type)) {
+      params.l = params.l || params.length || (type === 'cube' ? 6 : 8);
+      params.w = params.w || params.width || (type === 'cube' ? 6 : 5);
+      params.h = params.h || params.height || (type === 'cube' ? 6 : 10);
+    } else if (['rectangle', 'square', 'quadrilateral', 'parallelogram', 'rhombus', 'trapezoid'].includes(type)) {
+      params.a = params.a || params.baseA || params.width || 8;
+      params.b = params.b || params.baseB || params.base || params.a;
+      params.h = params.h || params.height || 6;
+    } else if (type === 'triangle') {
+      params.base = params.base || 6;
+      params.height = params.height || 8;
+    } else if (type === 'sector' || type === 'circle_sector') {
+      params.radius = params.radius || 10;
+      params.angle = params.angle || 30;
+    } else if (['solid_surface', 'composite_cylinder_hemisphere', 'cylinder', 'composite_solid'].includes(type)) {
+      params.radius = params.radius || 7;
+      params.height = params.height || 14;
+    } else if (type === 'cone') {
+      params.radius = params.radius || 6;
+      params.height = params.height || 10;
+    } else if (['sphere', 'hemisphere', 'circle'].includes(type)) {
+      params.radius = params.radius || 5;
+    } else if (['quadratic', 'parabola', 'function_graph'].includes(type)) {
+      params.a = params.a !== undefined ? Number(params.a) : 2;
+      params.b = params.b !== undefined ? Number(params.b) : -5;
+      params.c = params.c !== undefined ? Number(params.c) : 3;
+    } else if (['toothpick_sequence', 'sequence_grid', 'pattern_sequence'].includes(type)) {
+      params.n = params.n || 5;
+    } else if (['fraction_pie', 'pie_chart', 'fraction'].includes(type)) {
+      params.totalSlices = params.totalSlices || params.total || 8;
+      params.slicesEaten = params.slicesEaten !== undefined ? params.slicesEaten : 6;
+    } else if (['bar_chart', 'ratio_bars'].includes(type)) {
+      params.val1 = params.val1 !== undefined ? params.val1 : 6;
+      params.val2 = params.val2 !== undefined ? params.val2 : 2;
+    }
+
+    return { ...spec, type, params };
   };
 
   // ----------------------------------------------------
   // AI MATH TUTOR & DYNAMIC VISUALIZER PARSER
   // ----------------------------------------------------
-  const handleAskTutor = async (promptQuery) => {
+  const handleAskTutor = async (mode = 'solve', promptQuery) => {
     const q = promptQuery || tutorQuery;
     if (!q.trim()) return;
 
+    // Zero-API Local Evaluation for pure arithmetic expressions when in solve mode
+    if (mode === 'solve' && isMathExpression(q)) {
+      const evalVal = evaluateMath(q);
+      if (typeof evalVal === 'number' || (typeof evalVal === 'string' && !evalVal.startsWith('Error'))) {
+        setTutorResponse(`### Instant Calculation\n\n\`\`\`\n${q} = ${evalVal}\n\`\`\`\n\nCalculated locally without API consumption.`);
+        setParsedVisualSpec(null);
+        setIsTutorThinking(false);
+        return;
+      }
+    }
+
     setIsTutorThinking(true);
-    setTutorResponse('');
-    setParsedVisualSpec(null);
+
+    if (mode === 'solve') {
+      setTutorResponse('');
+      setParsedVisualSpec(null);
+    }
 
     try {
-      const response = await fetch('/api/gemini', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          system: "You are Vedika Math AI, an expert math tutor. Explain step-by-step using markdown and clear math formulas. IF the user asks a geometric problem (e.g. triangle, circle, sector, surface area, solid shape, minute hand, car wiper), calculus integral, or vector problem, add a ```json block at the VERY END containing visualSpec:\n```json\n{\n  \"type\": \"sector\" | \"triangle\" | \"circle\" | \"area_under_curve\" | \"vector\" | \"solid_surface\",\n  \"title\": \"Surface Area & Geometry Visualizer\",\n  \"params\": {\"radius\": 10, \"angle\": 30, \"base\": 6, \"height\": 8},\n  \"labels\": {\"dim1\": \"Radius = 10\", \"result\": \"Area = 26.18 sq cm\"}\n}\n```",
-          user: `Solve and explain this mathematical equation or question step-by-step:\n"${q}"`
-        })
-      });
+      if (mode === 'solve') {
+        const systemPrompt = `You are Vedika Math AI, an expert math tutor. Explain step-by-step using clear markdown. Write each step as "Step 1: ...", "Step 2: ...", etc. on its own line. Use $$ for block formulas and $ for inline variables. Always structure your response into three sections:
+### 1. Understanding the Problem
+### 2. Step-by-Step Solution
+### 3. Final Answer
 
-      const contentType = response.headers.get('content-type') || '';
-      let data = {};
+Focus purely on step-by-step LaTeX text explanation. Do NOT output any JSON blocks.`;
+        const userPrompt = `Solve and explain this mathematical equation or question step-by-step:\n"${q}"`;
 
-      if (contentType.includes('application/json')) {
-        data = await response.json();
+        const rawText = await geminiCall(systemPrompt, userPrompt);
+        setTutorResponse(rawText || "Unable to generate step-by-step solution.");
       } else {
-        const text = await response.text();
-        console.warn("Server HTML notice:", text.slice(0, 150));
-        setTutorResponse("AI Service is initializing. Please click Solve again.");
-        return;
-      }
+        // MODE === 'visualize'
+        const PRIMITIVE_SCHEMA = {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              enum: [
+                "polygon", "line", "dashed_line", "arrow", "vector",
+                "circle", "ellipse", "arc", "angle_marker", "point",
+                "label", "bar", "number_line", "curve"
+              ]
+            },
+            points: { type: "array", items: { type: "array", items: { type: "number" } } },
+            from: { type: "array", items: { type: "number" } },
+            to: { type: "array", items: { type: "number" } },
+            cx: { type: "number" },
+            cy: { type: "number" },
+            r: { type: "number" },
+            rx: { type: "number" },
+            ry: { type: "number" },
+            startAngle: { type: "number" },
+            endAngle: { type: "number" },
+            x: { type: "number" },
+            y: { type: "number" },
+            text: { type: "string" },
+            label: { type: "string" },
+            width: { type: "number" },
+            height: { type: "number" },
+            expression: { type: "string" },
+            xMin: { type: "number" },
+            xMax: { type: "number" },
+            color: { type: "string" }
+          },
+          required: ["type"]
+        };
 
-      if (data.error) {
-        setTutorResponse(`AI Engine Notice: ${data.error}`);
-        return;
-      }
+        const SCENE_SCHEMA = {
+          type: "object",
+          properties: {
+            concept: { type: "string" },
+            known_formula: { type: "string", nullable: true },
+            params: { type: "object" },
+            viewBox: {
+              type: "object",
+              properties: {
+                xMin: { type: "number" }, xMax: { type: "number" },
+                yMin: { type: "number" }, yMax: { type: "number" }
+              },
+              required: ["xMin", "xMax", "yMin", "yMax"]
+            },
+            showAxes: { type: "boolean" },
+            primitives: {
+              type: "array",
+              items: PRIMITIVE_SCHEMA
+            }
+          },
+          required: ["concept", "known_formula", "params", "viewBox", "primitives"]
+        };
 
-      const rawText = data.text || 'Unable to generate response.';
+        const TOP_LEVEL_SCHEMA = {
+          type: "object",
+          properties: {
+            visualizable: { type: "boolean" },
+            scene: { ...SCENE_SCHEMA, nullable: true }
+          },
+          required: ["visualizable"]
+        };
 
-      const jsonMatch = rawText.match(/```json\s*(\{[\s\S]*?\})\s*```/);
-      if (jsonMatch) {
+        const systemPrompt = `You are Vedika Math AI visual scene composer. Respond ONLY with JSON matching the provided schema.
+
+Rules:
+- Compose the SCENE using ONLY the primitive types listed in the schema: polygon, line, dashed_line, arrow, vector, circle, ellipse, arc, angle_marker, point, label, bar, number_line, curve.
+- MANDATORY: "params" MUST NEVER BE EMPTY {}. You MUST populate "params" with ALL core dimensions of the shape or function (e.g. for a cone: {"radius": 3, "height": 5}, for a cylinder: {"radius": 4, "height": 10}, for a cuboid: {"l": 8, "w": 5, "h": 10}, for a triangle: {"base": 6, "height": 8}, for quadratic: {"a": 2, "b": -5, "c": 3}), even if no specific numbers were mentioned in the prompt!
+- NEVER compute derived math answers (no area, volume, or roots in params). The client computes all math.
+- For "curve" primitives, use variable names matching "params" keys in expression (e.g. expression: "a*x^2 + b*x + c", xMin: -5, xMax: 5).
+- If known_formula matches one the client supports (cube_tsa, cuboid_tsa, cylinder_tsa, cone_tsa, sphere_tsa, hemisphere_tsa, sector_area, trapezoid_area, triangle_area, quadratic_roots), return its exact key. Otherwise return null.
+- Handle student terminology misnomers gracefully: If student asks for 'volume of a rectangle' or 'volume of a square', map to 3D Cuboid / Rectangular Prism (known_formula: 'cuboid_tsa', params: {l: 8, w: 5, h: 10}) or 2D rectangle area rather than returning visualizable: false.
+- Return { "visualizable": false } ONLY for purely abstract non-spatial topics (e.g. 3x3 matrix determinants, formal logic proofs).
+- CRITICAL: Round all numbers to 2 decimal places (e.g. -2.56). NEVER output scientific notation, exponents, or long trailing zeros like E000000.
+- Keep viewBox bounds (e.g. xMin: -10, xMax: 10, yMin: -10, yMax: 10) comfortably larger than the shape.`;
+
+        const userPrompt = `Extract parameters and compose visual scene for:\n"${q}"`;
+
+        const rawText = await geminiCall(systemPrompt, userPrompt, 8192, {
+          responseMimeType: 'application/json',
+          responseSchema: TOP_LEVEL_SCHEMA
+        });
+
+        // Clean any malformed scientific notation floats like 2.55E00000000...
+        const sanitizedText = rawText ? rawText.replace(/(-?\d+\.?\d*)E[+0-]+/gi, '$1') : '';
+
+        let rawObj = null;
         try {
-          const specObj = JSON.parse(jsonMatch[1]);
-          setParsedVisualSpec(specObj);
+          rawObj = JSON.parse(sanitizedText);
         } catch (e) {
-          console.warn("Visual spec parsing failed:", e);
+          const m = sanitizedText ? sanitizedText.match(/\{[\s\S]*\}/) : null;
+          if (m) {
+            try { rawObj = JSON.parse(m[0]); } catch {}
+          }
+        }
+
+        const validScene = validateScene(rawObj);
+
+        console.log('%c[MathLab Telemetry]', 'color: #10B981; font-weight: bold;', {
+          timestamp: new Date().toISOString(),
+          query: q,
+          mode: 'visualize',
+          rawAiOutput: rawText,
+          parsedObj: rawObj,
+          validatedScene: validScene,
+          status: validScene && !validScene.unsupported ? 'SUCCESS_RENDERED' : 'UNSUPPORTED_SKIPPED'
+        });
+
+        if (validScene && !validScene.unsupported) {
+          if (validScene.known_formula) {
+            validScene.formula = lookupFormula(validScene.known_formula, validScene.params);
+          }
+          setParsedVisualSpec(validScene);
+        } else {
+          const fallbackSpec = validateVisualSpec(rawObj?.scene || rawObj);
+          if (fallbackSpec) {
+            setParsedVisualSpec(fallbackSpec);
+          } else {
+            setParsedVisualSpec({ unsupported: true });
+          }
         }
       }
-
-      setTutorResponse(rawText.replace(/```json\s*\{[\s\S]*?\}\s*```/, ''));
     } catch (err) {
       console.error("Math AI Connection Error:", err);
-      setTutorResponse(`Notice: ${err.message || 'Failed to connect to Math AI engine.'}`);
+      if (mode === 'solve') {
+        setTutorResponse(`Notice: ${err.message || 'Failed to connect to Math AI engine.'}`);
+      }
     } finally {
       setIsTutorThinking(false);
     }
@@ -963,44 +1054,45 @@ export default function MathLab() {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: '#07080F', color: '#F3F4F6', fontFamily: 'var(--font-outfit), sans-serif' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: T.bg, color: T.text, fontFamily: 'var(--font-outfit), sans-serif' }}>
       
       {/* HEADER NAVBAR */}
       <header style={{
-        background: 'rgba(13, 17, 23, 0.85)',
+        background: T.s1,
         backdropFilter: 'blur(12px)',
-        borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+        borderBottom: `1px solid ${T.border}`,
         padding: '16px 24px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         position: 'sticky',
         top: 0,
-        zIndex: 50
+        zIndex: 50,
+        boxShadow: '0 2px 12px rgba(0,0,0,0.03)'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{
             width: 42,
             height: 42,
             borderRadius: 12,
-            background: 'linear-gradient(135deg, #8B5CF6 0%, #EC4899 100%)',
+            background: `linear-gradient(135deg, ${T.accent} 0%, ${T.purple} 100%)`,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            boxShadow: '0 4px 14px rgba(139, 92, 246, 0.4)'
+            boxShadow: `0 4px 14px ${T.accent}40`
           }}>
             <Calculator size={24} color="#FFF" />
           </div>
           <div>
-            <h1 style={{ fontSize: 20, fontWeight: 800, margin: 0, color: '#FFF' }}>Vedika Math Lab</h1>
-            <span style={{ fontSize: 12, color: 'rgba(255, 255, 255, 0.6)' }}>
+            <h1 style={{ fontSize: 20, fontWeight: 800, margin: 0, color: T.text }}>Vedika Math Lab</h1>
+            <span style={{ fontSize: 12, color: T.muted }}>
               Smart Crop Selection OCR & Interactive Visual Experiments
             </span>
           </div>
         </div>
 
         {/* TABS */}
-        <div style={{ display: 'flex', background: 'rgba(255, 255, 255, 0.06)', padding: 4, borderRadius: 10, gap: 4 }}>
+        <div style={{ display: 'flex', background: T.s2, padding: 4, borderRadius: 10, gap: 4, border: `1px solid ${T.border}` }}>
           {[
             { id: 'whiteboard', label: 'Whiteboard & Plotter', icon: Edit3 },
             { id: 'ai_tutor', label: 'AI Math Tutor', icon: Sparkles },
@@ -1016,11 +1108,12 @@ export default function MathLab() {
                 padding: '8px 16px',
                 borderRadius: 8,
                 border: 'none',
-                background: activeTab === id ? 'linear-gradient(135deg, #8B5CF6 0%, #EC4899 100%)' : 'transparent',
-                color: activeTab === id ? '#FFF' : 'rgba(255, 255, 255, 0.7)',
+                background: activeTab === id ? T.accent : 'transparent',
+                color: activeTab === id ? '#FFF' : T.muted,
                 fontWeight: 600,
                 fontSize: 13,
-                cursor: 'pointer'
+                cursor: 'pointer',
+                transition: 'all 0.2s'
               }}
             >
               <Icon size={16} />
@@ -1038,11 +1131,11 @@ export default function MathLab() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
 
             {/* LEFT: WHITEBOARD & SELECTION CROP TOOL */}
-            <div style={{ background: '#0D1117', borderRadius: 16, border: '1px solid rgba(255, 255, 255, 0.08)', padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ background: T.s1, borderRadius: 16, border: `1px solid ${T.border}`, padding: 20, display: 'flex', flexDirection: 'column', gap: 16, boxShadow: '0 4px 20px rgba(0,0,0,0.04)' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Edit3 size={18} color="#8B5CF6" />
-                  <span style={{ fontWeight: 700, fontSize: 16 }}>Smart Handwriting Whiteboard</span>
+                  <Edit3 size={18} color={T.purple} />
+                  <span style={{ fontWeight: 700, fontSize: 16, color: T.text }}>Smart Handwriting Whiteboard</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <button
@@ -1050,9 +1143,9 @@ export default function MathLab() {
                     style={{
                       padding: '6px 12px',
                       borderRadius: 6,
-                      border: drawTool === 'pen' ? '1px solid #8B5CF6' : '1px solid rgba(255, 255, 255, 0.1)',
-                      background: drawTool === 'pen' ? 'rgba(139, 92, 246, 0.2)' : 'transparent',
-                      color: drawTool === 'pen' ? '#A78BFA' : '#FFF',
+                      border: drawTool === 'pen' ? `1px solid ${T.purple}` : `1px solid ${T.border}`,
+                      background: drawTool === 'pen' ? `${T.purple}20` : 'transparent',
+                      color: drawTool === 'pen' ? T.purple : T.text,
                       fontSize: 12,
                       cursor: 'pointer'
                     }}
@@ -1064,9 +1157,9 @@ export default function MathLab() {
                     style={{
                       padding: '6px 12px',
                       borderRadius: 6,
-                      border: drawTool === 'select' ? '1px solid #EC4899' : '1px solid rgba(255, 255, 255, 0.1)',
-                      background: drawTool === 'select' ? 'rgba(236, 72, 153, 0.2)' : 'transparent',
-                      color: drawTool === 'select' ? '#F472B6' : '#FFF',
+                      border: drawTool === 'select' ? `1px solid ${T.accent}` : `1px solid ${T.border}`,
+                      background: drawTool === 'select' ? `${T.accent}20` : 'transparent',
+                      color: drawTool === 'select' ? T.accent : T.text,
                       fontSize: 12,
                       cursor: 'pointer',
                       display: 'flex',
@@ -1081,9 +1174,9 @@ export default function MathLab() {
                     style={{
                       padding: '6px 12px',
                       borderRadius: 6,
-                      border: drawTool === 'eraser' ? '1px solid #F59E0B' : '1px solid rgba(255, 255, 255, 0.1)',
-                      background: drawTool === 'eraser' ? 'rgba(245, 158, 11, 0.2)' : 'transparent',
-                      color: drawTool === 'eraser' ? '#FCD34D' : '#FFF',
+                      border: drawTool === 'eraser' ? `1px solid ${T.amber}` : `1px solid ${T.border}`,
+                      background: drawTool === 'eraser' ? `${T.amber}20` : 'transparent',
+                      color: drawTool === 'eraser' ? T.amber : T.text,
                       fontSize: 12,
                       cursor: 'pointer'
                     }}
@@ -1092,7 +1185,7 @@ export default function MathLab() {
                   </button>
                   <button
                     onClick={clearWhiteboard}
-                    style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid rgba(255, 255, 255, 0.1)', background: 'transparent', color: '#FFF', cursor: 'pointer' }}
+                    style={{ padding: '6px 10px', borderRadius: 6, border: `1px solid ${T.border}`, background: 'transparent', color: T.muted, cursor: 'pointer' }}
                   >
                     <Trash2 size={14} />
                   </button>
@@ -1100,7 +1193,7 @@ export default function MathLab() {
               </div>
 
               {/* CANVAS slate with Scaled SVG Bounding Box Overlay */}
-              <div style={{ position: 'relative', width: '100%', height: 380, borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
+              <div style={{ position: 'relative', width: '100%', height: 380, borderRadius: 12, overflow: 'hidden', border: `1px solid ${T.border}` }}>
                 <canvas
                   ref={canvasRef}
                   width={600}
@@ -1126,15 +1219,15 @@ export default function MathLab() {
                       y={cropBox.y}
                       width={cropBox.w}
                       height={cropBox.h}
-                      fill="rgba(236, 72, 153, 0.18)"
-                      stroke="#EC4899"
+                      fill={`${T.accent}20`}
+                      stroke={T.accent}
                       strokeWidth="2.5"
                       strokeDasharray="6 4"
                     />
-                    <circle cx={cropBox.x} cy={cropBox.y} r={5} fill="#FFF" />
-                    <circle cx={cropBox.x + cropBox.w} cy={cropBox.y} r={5} fill="#FFF" />
-                    <circle cx={cropBox.x} cy={cropBox.y + cropBox.h} r={5} fill="#FFF" />
-                    <circle cx={cropBox.x + cropBox.w} cy={cropBox.y + cropBox.h} r={5} fill="#FFF" />
+                    <circle cx={cropBox.x} cy={cropBox.y} r={5} fill={T.text} />
+                    <circle cx={cropBox.x + cropBox.w} cy={cropBox.y} r={5} fill={T.text} />
+                    <circle cx={cropBox.x} cy={cropBox.y + cropBox.h} r={5} fill={T.text} />
+                    <circle cx={cropBox.x + cropBox.w} cy={cropBox.y + cropBox.h} r={5} fill={T.text} />
                   </svg>
                 )}
 
@@ -1146,7 +1239,7 @@ export default function MathLab() {
                       top: Math.max(10, (cropBox.y * 380) / 380 - 42),
                       left: Math.max(10, cropBox.x),
                       zIndex: 20,
-                      background: 'linear-gradient(135deg, #EC4899 0%, #8B5CF6 100%)',
+                      background: `linear-gradient(135deg, ${T.accent} 0%, ${T.purple} 100%)`,
                       color: '#FFF',
                       border: 'none',
                       padding: '8px 14px',
@@ -1154,7 +1247,7 @@ export default function MathLab() {
                       fontSize: 12,
                       fontWeight: 700,
                       cursor: 'pointer',
-                      boxShadow: '0 4px 14px rgba(236, 72, 153, 0.4)',
+                      boxShadow: `0 4px 14px ${T.accent}40`,
                       display: 'flex',
                       alignItems: 'center',
                       gap: 6
@@ -1178,7 +1271,7 @@ export default function MathLab() {
                     padding: '12px 20px',
                     borderRadius: 10,
                     border: 'none',
-                    background: 'linear-gradient(135deg, #8B5CF6 0%, #EC4899 100%)',
+                    background: `linear-gradient(135deg, ${T.accent} 0%, ${T.purple} 100%)`,
                     color: '#FFF',
                     fontWeight: 700,
                     fontSize: 14,
@@ -1191,39 +1284,39 @@ export default function MathLab() {
               </div>
 
               {aiExplanation && (
-                <div style={{ background: 'rgba(139, 92, 246, 0.12)', border: '1px solid rgba(139, 92, 246, 0.3)', padding: 12, borderRadius: 8, fontSize: 13, color: '#C4B5FD' }}>
+                <div style={{ background: `${T.purple}15`, border: `1px solid ${T.purple}30`, padding: 12, borderRadius: 8, fontSize: 13, color: T.purple }}>
                   <strong>AI OCR Detection:</strong> {aiExplanation}
                 </div>
               )}
             </div>
 
             {/* RIGHT: REAL-TIME 2D GRAPH PLOTTER */}
-            <div style={{ background: '#0D1117', borderRadius: 16, border: '1px solid rgba(255, 255, 255, 0.08)', padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ background: T.s1, borderRadius: 16, border: `1px solid ${T.border}`, padding: 20, display: 'flex', flexDirection: 'column', gap: 16, boxShadow: '0 4px 20px rgba(0,0,0,0.04)' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <TrendingUp size={18} color="#EC4899" />
-                  <span style={{ fontWeight: 700, fontSize: 16 }}>Real-Time 2D Graph Plotter</span>
+                  <TrendingUp size={18} color={T.accent} />
+                  <span style={{ fontWeight: 700, fontSize: 16, color: T.text }}>Real-Time 2D Graph Plotter</span>
                 </div>
                 <div style={{ display: 'flex', gap: 6 }}>
-                  <button onClick={() => setZoomScale(p => Math.min(p + 5, 60))} style={{ padding: '4px 8px', background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', color: '#FFF', borderRadius: 6 }}>
+                  <button onClick={() => setZoomScale(p => Math.min(p + 5, 60))} style={{ padding: '4px 8px', background: 'transparent', border: `1px solid ${T.border}`, color: T.text, borderRadius: 6 }}>
                     <ZoomIn size={14} />
                   </button>
-                  <button onClick={() => setZoomScale(p => Math.max(p - 5, 15))} style={{ padding: '4px 8px', background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', color: '#FFF', borderRadius: 6 }}>
+                  <button onClick={() => setZoomScale(p => Math.max(p - 5, 15))} style={{ padding: '4px 8px', background: 'transparent', border: `1px solid ${T.border}`, color: T.text, borderRadius: 6 }}>
                     <ZoomOut size={14} />
                   </button>
                 </div>
               </div>
 
-              <div style={{ background: 'rgba(139, 92, 246, 0.15)', border: '1px solid rgba(139, 92, 246, 0.3)', padding: '12px 16px', borderRadius: 10, display: 'flex', justifyContent: 'space-between' }}>
+              <div style={{ background: `${T.accent}12`, border: `1px solid ${T.accent}30`, padding: '12px 16px', borderRadius: 10, display: 'flex', justifyContent: 'space-between' }}>
                 <div>
-                  <span style={{ fontSize: 11, color: 'rgba(255, 255, 255, 0.5)' }}>Active Curve</span>
-                  <span style={{ fontSize: 18, fontWeight: 800, color: '#F472B6', fontFamily: 'monospace', display: 'block' }}>
+                  <span style={{ fontSize: 11, color: T.muted }}>Active Curve</span>
+                  <span style={{ fontSize: 18, fontWeight: 800, color: T.purple, fontFamily: 'monospace', display: 'block' }}>
                     {getFormattedFormula()}
                   </span>
                 </div>
               </div>
 
-              <div style={{ position: 'relative', width: '100%', height: 280, borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
+              <div style={{ position: 'relative', width: '100%', height: 280, borderRadius: 12, overflow: 'hidden', border: `1px solid ${T.border}` }}>
                 <canvas
                   ref={graphCanvasRef}
                   width={600}
@@ -1234,22 +1327,22 @@ export default function MathLab() {
                 />
               </div>
 
-              <div style={{ background: 'rgba(255, 255, 255, 0.03)', padding: 14, borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#A78BFA', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div style={{ background: T.s2, padding: 14, borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 12, border: `1px solid ${T.border}` }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: T.purple, display: 'flex', alignItems: 'center', gap: 6 }}>
                   <Sliders size={14} /> Live Parameter Sliders
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <div>
-                    <label style={{ fontSize: 11, color: 'rgba(255, 255, 255, 0.7)', display: 'flex', justifyContent: 'space-between' }}>
-                      <span>Slope/Scale (a):</span> <b>{paramA}</b>
+                    <label style={{ fontSize: 11, color: T.muted, display: 'flex', justifyContent: 'space-between' }}>
+                      <span>Slope/Scale (a):</span> <b style={{ color: T.text }}>{paramA}</b>
                     </label>
-                    <input type="range" min="-5" max="5" step="0.5" value={paramA} onChange={e => setParamA(parseFloat(e.target.value))} style={{ width: '100%', accentColor: '#8B5CF6' }} />
+                    <input type="range" min="-5" max="5" step="0.5" value={paramA} onChange={e => setParamA(parseFloat(e.target.value))} style={{ width: '100%', accentColor: T.accent }} />
                   </div>
                   <div>
-                    <label style={{ fontSize: 11, color: 'rgba(255, 255, 255, 0.7)', display: 'flex', justifyContent: 'space-between' }}>
-                      <span>Intercept/Offset (c):</span> <b>{paramC}</b>
+                    <label style={{ fontSize: 11, color: T.muted, display: 'flex', justifyContent: 'space-between' }}>
+                      <span>Intercept/Offset (c):</span> <b style={{ color: T.text }}>{paramC}</b>
                     </label>
-                    <input type="range" min="-10" max="10" step="1" value={paramC} onChange={e => setParamC(parseFloat(e.target.value))} style={{ width: '100%', accentColor: '#10B981' }} />
+                    <input type="range" min="-10" max="10" step="1" value={paramC} onChange={e => setParamC(parseFloat(e.target.value))} style={{ width: '100%', accentColor: T.green }} />
                   </div>
                 </div>
               </div>
@@ -1260,12 +1353,12 @@ export default function MathLab() {
         {/* TAB 2: AI MATH TUTOR, VOICE INPUT & DYNAMIC VISUALIZER */}
         {activeTab === 'ai_tutor' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 960, margin: '0 auto' }}>
-            <div style={{ background: '#0D1117', borderRadius: 16, border: '1px solid rgba(255, 255, 255, 0.08)', padding: 28 }}>
+            <div style={{ background: T.s1, borderRadius: 16, border: `1px solid ${T.border}`, padding: 28, boxShadow: '0 4px 20px rgba(0,0,0,0.04)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-                <Sparkles size={24} color="#8B5CF6" />
+                <Sparkles size={24} color={T.accent} />
                 <div>
-                  <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0, color: '#FFF' }}>AI Step-by-Step Math Tutor</h2>
-                  <p style={{ fontSize: 13, color: 'rgba(255, 255, 255, 0.6)', margin: 0 }}>
+                  <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0, color: T.text }}>AI Step-by-Step Math Tutor</h2>
+                  <p style={{ fontSize: 13, color: T.muted, margin: 0 }}>
                     Type or speak any equation or textbook problem. Get formatted LaTeX math formulas and dynamic visual diagrams.
                   </p>
                 </div>
@@ -1284,9 +1377,9 @@ export default function MathLab() {
                       width: '100%',
                       padding: '14px 130px 14px 18px',
                       borderRadius: 12,
-                      background: 'rgba(255, 255, 255, 0.05)',
-                      border: isListening ? '1px solid #EC4899' : '1px solid rgba(255, 255, 255, 0.15)',
-                      color: '#FFF',
+                      background: T.s2,
+                      border: isListening ? `1px solid ${T.purple}` : `1px solid ${T.border}`,
+                      color: T.text,
                       fontSize: 15,
                       outline: 'none',
                       transition: 'border 0.2s'
@@ -1302,51 +1395,78 @@ export default function MathLab() {
                       right: 10,
                       top: '50%',
                       transform: 'translateY(-50%)',
-                      background: isListening ? 'linear-gradient(135deg, #EC4899 0%, #8B5CF6 100%)' : 'rgba(139, 92, 246, 0.15)',
-                      border: isListening ? '1px solid #EC4899' : '1px solid rgba(139, 92, 246, 0.3)',
-                      color: '#FFF',
+                      background: isListening ? `linear-gradient(135deg, ${T.purple} 0%, ${T.accent} 100%)` : `${T.purple}15`,
+                      border: isListening ? `1px solid ${T.purple}` : `1px solid ${T.border}`,
+                      color: isListening ? '#FFF' : T.purple,
                       padding: '6px 12px',
                       borderRadius: 20,
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
                       gap: 6,
-                      boxShadow: isListening ? '0 0 14px rgba(236, 72, 153, 0.6)' : 'none',
+                      boxShadow: isListening ? `0 0 14px ${T.purple}60` : 'none',
                       transition: 'all 0.2s'
                     }}
                   >
-                    <Mic size={16} color={isListening ? '#FFF' : '#A78BFA'} />
-                    <span style={{ fontSize: 11, fontWeight: 700, color: isListening ? '#FFF' : '#C4B5FD' }}>
+                    <Mic size={16} color={isListening ? '#FFF' : T.purple} />
+                    <span style={{ fontSize: 11, fontWeight: 700 }}>
                       {isListening ? 'Listening...' : 'Voice'}
                     </span>
                   </button>
                 </div>
 
+                {/* SOLVE BUTTON */}
                 <button
-                  onClick={() => handleAskTutor()}
+                  onClick={() => handleAskTutor('solve')}
                   disabled={isTutorThinking}
                   style={{
-                    padding: '14px 24px',
+                    padding: '14px 22px',
                     borderRadius: 12,
                     border: 'none',
-                    background: 'linear-gradient(135deg, #8B5CF6 0%, #EC4899 100%)',
+                    background: `linear-gradient(135deg, ${T.accent} 0%, ${T.purple} 100%)`,
                     color: '#FFF',
                     fontWeight: 700,
-                    fontSize: 15,
+                    fontSize: 14,
                     cursor: isTutorThinking ? 'not-allowed' : 'pointer',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 8
+                    gap: 8,
+                    boxShadow: `0 4px 14px ${T.accent}30`,
+                    whiteSpace: 'nowrap'
                   }}
                 >
-                  <Send size={18} />
-                  {isTutorThinking ? 'Solving...' : 'Solve'}
+                  <Send size={16} />
+                  {isTutorThinking ? 'Thinking...' : 'Solve'}
+                </button>
+
+                {/* VISUALIZE BUTTON */}
+                <button
+                  onClick={() => handleAskTutor('visualize')}
+                  disabled={isTutorThinking}
+                  style={{
+                    padding: '14px 22px',
+                    borderRadius: 12,
+                    border: 'none',
+                    background: `linear-gradient(135deg, ${T.green} 0%, #059669 100%)`,
+                    color: '#FFF',
+                    fontWeight: 700,
+                    fontSize: 14,
+                    cursor: isTutorThinking ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    boxShadow: `0 4px 14px ${T.green}30`,
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  <Triangle size={16} />
+                  Visualize
                 </button>
               </div>
 
               {/* QUICK EXAMPLE BUTTONS */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 12, color: 'rgba(255, 255, 255, 0.5)' }}>Try examples:</span>
+                <span style={{ fontSize: 12, color: T.muted }}>Try examples:</span>
                 {[
                   "Surface area of a solid formed by joining cylinder and hemisphere",
                   "Area swept by 10cm minute hand in 5 minutes",
@@ -1355,15 +1475,16 @@ export default function MathLab() {
                 ].map(ex => (
                   <button
                     key={ex}
-                    onClick={() => { setTutorQuery(ex); handleAskTutor(ex); }}
+                    onClick={() => { setTutorQuery(ex); handleAskTutor('solve', ex); }}
                     style={{
                       padding: '6px 12px',
                       borderRadius: 20,
-                      border: '1px solid rgba(139, 92, 246, 0.3)',
-                      background: 'rgba(139, 92, 246, 0.1)',
-                      color: '#C4B5FD',
+                      border: `1px solid ${T.accent}30`,
+                      background: `${T.accent}12`,
+                      color: T.accent,
                       fontSize: 12,
-                      cursor: 'pointer'
+                      cursor: 'pointer',
+                      fontWeight: 500
                     }}
                   >
                     {ex}
@@ -1372,29 +1493,32 @@ export default function MathLab() {
               </div>
 
               {/* TUTOR RESPONSE & DYNAMIC VISUALIZER */}
-              {(tutorResponse || isTutorThinking) && (
+              {(tutorResponse || parsedVisualSpec || isTutorThinking) && (
                 <div style={{ marginTop: 24 }}>
                   {isTutorThinking ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#A78BFA', padding: 20 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: T.purple, padding: 20 }}>
                       <RefreshCw size={18} style={{ animation: 'spin 1s linear infinite' }} />
-                      Solving problem and formatting step-by-step math...
+                      Processing request...
                     </div>
                   ) : (
                     <div>
-                      <div style={{
-                        padding: 24,
-                        borderRadius: 14,
-                        background: '#07080F',
-                        border: '1px solid rgba(255, 255, 255, 0.08)',
-                        boxShadow: '0 8px 24px rgba(0, 0, 0, 0.3)'
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#10B981', fontWeight: 700, marginBottom: 16 }}>
-                          <Lightbulb size={20} /> Step-by-Step AI Solution
-                        </div>
+                      {tutorResponse && (
+                        <div style={{
+                          padding: 24,
+                          borderRadius: 14,
+                          background: T.s2,
+                          border: `1px solid ${T.border}`,
+                          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.04)',
+                          marginBottom: parsedVisualSpec ? 24 : 0
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: T.green, fontWeight: 700, marginBottom: 16 }}>
+                            <Lightbulb size={20} /> Step-by-Step AI Solution
+                          </div>
 
-                        {/* CUSTOM MARKDOWN MATH RENDERER */}
-                        <CustomMathMarkdown content={tutorResponse} />
-                      </div>
+                          {/* CUSTOM MARKDOWN MATH RENDERER */}
+                          <CustomMathMarkdown content={tutorResponse} />
+                        </div>
+                      )}
 
                       {/* DYNAMIC TEXTBOOK VISUALIZER CANVAS */}
                       {parsedVisualSpec && (
@@ -1411,7 +1535,7 @@ export default function MathLab() {
         {/* TAB 3: VISUAL CONCEPTS */}
         {activeTab === 'visualizers' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-            <div style={{ display: 'flex', gap: 12, borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: 12 }}>
+            <div style={{ display: 'flex', gap: 12, borderBottom: `1px solid ${T.border}`, paddingBottom: 12 }}>
               {[
                 { id: 'pythagoras', label: 'Pythagoras Theorem', icon: Triangle },
                 { id: 'sector', label: 'Circle Sector & Clock/Wiper', icon: Compass },
@@ -1429,8 +1553,8 @@ export default function MathLab() {
                     padding: '10px 18px',
                     borderRadius: 8,
                     border: 'none',
-                    background: visualizerSubTab === id ? 'rgba(139, 92, 246, 0.2)' : 'transparent',
-                    color: visualizerSubTab === id ? '#A78BFA' : 'rgba(255, 255, 255, 0.6)',
+                    background: visualizerSubTab === id ? `${T.accent}20` : 'transparent',
+                    color: visualizerSubTab === id ? T.accent : T.muted,
                     fontWeight: 600,
                     fontSize: 14,
                     cursor: 'pointer'
