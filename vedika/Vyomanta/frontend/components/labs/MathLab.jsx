@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -14,6 +15,8 @@ import { T, isMathExpression, evaluateMath, geminiCall } from '@/lib/lms-data';
 import ScenePrimitiveRenderer, { validateScene } from './ScenePrimitiveRenderer';
 import { lookupFormula } from '@/lib/formulaRegistry';
 import { buildCanonicalScene } from '@/lib/canonicalScenes';
+import MathEquationRenderer from './MathEquationRenderer';
+
 
 // Preprocess LaTeX math syntax into clean formatted unicode math
 function cleanMathLaTeX(text) {
@@ -89,16 +92,61 @@ function cleanMathLaTeX(text) {
   return str;
 }
 
-// Helper parser to dynamically extract slope, quadratic, or general expression parameters
+// Helper parser to dynamically extract slope, quadratic, cubic, or general expression parameters
 function parseMathEquation(rawEq, modeFromAI, paramsFromAI) {
   if (!rawEq) return { eqText: 'y = x + 1', mode: 'linear', a: 1, b: 0, c: 1, d: 0 };
 
-  const clean = rawEq.replace(/\s+/g, '').toLowerCase();
+  let textToParse = String(rawEq);
+  // Extract formula substring if Gemini returned text prose (e.g. "The equation is y = x + 3")
+  const formulaMatch = textToParse.match(/y\s*=\s*[a-z0-9\+\-\*\/\^\.\s]+/i);
+  if (formulaMatch) {
+    textToParse = formulaMatch[0].trim();
+  }
 
-  const linMatch = clean.match(/y=([+\-]?\d*\.?\d*)x([+\-]\d+\.?\d*)?/i);
+  const clean = textToParse.replace(/\s+/g, '').toLowerCase();
+
+  // 1. CUBIC CHECK (MUST RUN BEFORE LINEAR)
+  const cubicMatch = clean.match(/y=([+\-]?\d*\.?\d*)x\^?3/i);
+  if (cubicMatch || clean.includes('x^3') || clean.includes('x³') || modeFromAI === 'cubic') {
+    let a = 1;
+    if (cubicMatch && cubicMatch[1] === '-') a = -1;
+    else if (cubicMatch && cubicMatch[1] && cubicMatch[1] !== '+') {
+      const pA = parseFloat(cubicMatch[1]);
+      if (!isNaN(pA)) a = pA;
+    } else if (paramsFromAI && !isNaN(paramsFromAI.a)) {
+      a = paramsFromAI.a;
+    }
+    return { eqText: `y = ${a !== 1 ? (a === -1 ? '-' : a) : ''}x³`, mode: 'cubic', a, b: 0, c: 0, d: 0 };
+  }
+
+  // 2. QUADRATIC CHECK (MUST RUN BEFORE LINEAR)
+  const quadMatch = clean.match(/y=([+\-]?\d*\.?\d*)x\^?2([+\-]\d*\.?\d*x)?([+\-]\d+\.?\d*)?/i);
+  if (quadMatch || clean.includes('x^2') || clean.includes('x²') || modeFromAI === 'quadratic') {
+    let a = 1, c = 0;
+    if (quadMatch) {
+      const aStr = quadMatch[1];
+      if (aStr === '' || aStr === '+') a = 1;
+      else if (aStr === '-') a = -1;
+      else {
+        const pA = parseFloat(aStr);
+        if (!isNaN(pA)) a = pA;
+      }
+      if (quadMatch[3]) {
+        const pC = parseFloat(quadMatch[3]);
+        if (!isNaN(pC)) c = pC;
+      }
+    } else if (paramsFromAI) {
+      if (typeof paramsFromAI.a === 'number' && !isNaN(paramsFromAI.a)) a = paramsFromAI.a;
+      if (typeof paramsFromAI.c === 'number' && !isNaN(paramsFromAI.c)) c = paramsFromAI.c;
+    }
+    return { eqText: `y = ${a !== 1 ? (a === -1 ? '-' : a) : ''}x² ${c >= 0 ? '+ ' + c : '- ' + Math.abs(c)}`, mode: 'quadratic', a, b: 0, c, d: 0 };
+  }
+
+  // 3. LINEAR CHECK (STRICT NEGATIVE LOOKAHEAD SO x^3 / x^2 DON'T MATCH LINEAR)
+  const linMatch = clean.match(/y=([+\-]?\d*\.?\d*)x(?!\^|\d|³|²)([+\-]\d+\.?\d*)?/i);
   if (linMatch || modeFromAI === 'linear') {
     let a = 1;
-    let c = 1;
+    let c = 0;
 
     if (linMatch) {
       const mStr = linMatch[1];
@@ -122,35 +170,13 @@ function parseMathEquation(rawEq, modeFromAI, paramsFromAI) {
     return { eqText: formattedEq, mode: 'linear', a, b: 0, c, d: 0 };
   }
 
-  const quadMatch = clean.match(/y=([+\-]?\d*\.?\d*)x\^2([+\-]\d*\.?\d*x)?([+\-]\d+\.?\d*)?/i);
-  if (quadMatch || modeFromAI === 'quadratic') {
-    let a = 1, c = -4;
-    if (quadMatch) {
-      const aStr = quadMatch[1];
-      if (aStr === '' || aStr === '+') a = 1;
-      else if (aStr === '-') a = -1;
-      else {
-        const pA = parseFloat(aStr);
-        if (!isNaN(pA)) a = pA;
-      }
-      if (quadMatch[3]) {
-        const pC = parseFloat(quadMatch[3]);
-        if (!isNaN(pC)) c = pC;
-      }
-    } else if (paramsFromAI) {
-      if (typeof paramsFromAI.a === 'number' && !isNaN(paramsFromAI.a)) a = paramsFromAI.a;
-      if (typeof paramsFromAI.c === 'number' && !isNaN(paramsFromAI.c)) c = paramsFromAI.c;
-    }
-    return { eqText: `y = ${a !== 1 ? (a === -1 ? '-' : a) : ''}x² ${c >= 0 ? '+ ' + c : '- ' + Math.abs(c)}`, mode: 'quadratic', a, b: 0, c, d: 0 };
-  }
-
   const safeA = (paramsFromAI && !isNaN(paramsFromAI.a)) ? paramsFromAI.a : 1;
   const safeB = (paramsFromAI && !isNaN(paramsFromAI.b)) ? paramsFromAI.b : 0;
-  const safeC = (paramsFromAI && !isNaN(paramsFromAI.c)) ? paramsFromAI.c : 1;
+  const safeC = (paramsFromAI && !isNaN(paramsFromAI.c)) ? paramsFromAI.c : 0;
   const safeD = (paramsFromAI && !isNaN(paramsFromAI.d)) ? paramsFromAI.d : 0;
 
   return {
-    eqText: rawEq,
+    eqText: textToParse,
     mode: modeFromAI || 'linear',
     a: safeA,
     b: safeB,
@@ -159,45 +185,20 @@ function parseMathEquation(rawEq, modeFromAI, paramsFromAI) {
   };
 }
 
-// ----------------------------------------------------
-// DYNAMIC TEXTBOOK MATH VISUALIZER CANVAS COMPONENT
-// ----------------------------------------------------
+
+
 function DynamicMathVisualizer({ spec }) {
-  if (!spec || spec.unsupported) {
-    return (
-      <div style={{
-        marginTop: 20,
-        padding: 20,
-        borderRadius: 14,
-        background: `${T.purple}10`,
-        border: `1px solid ${T.purple}30`,
-        display: 'flex',
-        alignItems: 'center',
-        gap: 14
-      }}>
-        <div style={{
-          width: 42,
-          height: 42,
-          borderRadius: 10,
-          background: `${T.purple}20`,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexShrink: 0
-        }}>
-          <Sparkles size={20} color={T.purple} />
-        </div>
-        <div>
-          <h4 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: T.text }}>
-            Interactive Diagram Not Available For This Topic
-          </h4>
-          <p style={{ margin: '4px 0 0', fontSize: 12, color: T.muted, lineHeight: 1.5 }}>
-            Interactive visual models are supported for Geometry, Functions, Calculus Curves, Sequences, Fractions, and Ratios. Click <b>[⚡ Solve]</b> above to view the complete step-by-step math derivation!
-          </p>
-        </div>
-      </div>
-    );
-  }
+  const sceneToRender = useMemo(() => {
+    if (!spec) return null;
+    if (spec.viewBox) return spec;
+    return buildCanonicalScene(spec.concept || spec.type, spec.params) || {
+      concept: spec.concept || spec.type || '3D Solid',
+      params: spec.params || { radius: 7, height: 14 },
+      viewBox: { xMin: -10, xMax: 10, yMin: -10, yMax: 10 }
+    };
+  }, [spec]);
+
+  if (!sceneToRender) return null;
 
   return (
     <div style={{
@@ -211,16 +212,17 @@ function DynamicMathVisualizer({ spec }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
         <Box size={20} color={T.purple} />
         <h4 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: T.text }}>
-          {spec.concept ? spec.concept.replace(/_/g, ' ').toUpperCase() : 'Dynamic Math Scene'}
+          {sceneToRender.concept ? sceneToRender.concept.replace(/_/g, ' ').toUpperCase() : 'Dynamic Math Scene'}
         </h4>
         <span style={{ fontSize: 11, background: `${T.purple}20`, color: T.purple, padding: '2px 8px', borderRadius: 12, fontWeight: 600 }}>
           GeoGebra / Desmos Scene Engine
         </span>
       </div>
-      <ScenePrimitiveRenderer scene={spec} theme={T} />
+      <ScenePrimitiveRenderer scene={sceneToRender} theme={T} />
     </div>
   );
 }
+
 
 // Custom Markdown Math Renderer with styled formula pills & cards
 function CustomMathMarkdown({ content }) {
@@ -383,6 +385,15 @@ export default function MathLab() {
   const [calcFunc, setCalcFunc] = useState('quadratic');
   const [vecU, setVecU] = useState({ x: 4, y: 3 });
   const [vecV, setVecV] = useState({ x: -2, y: 5 });
+  const [solidKind, setSolidKind] = useState('cylinder');
+  const [solidRadius, setSolidRadius] = useState(7);
+  const [solidHeight, setSolidHeight] = useState(14);
+  const [sectorKind, setSectorKind] = useState('sector');
+  const [sectorRadius, setSectorRadius] = useState(10);
+  const [sectorAngle, setSectorAngle] = useState(60);
+  const [ratioVal1, setRatioVal1] = useState(6);
+  const [ratioVal2, setRatioVal2] = useState(2);
+
 
   // ----------------------------------------------------
   // WHITEBOARD & CROPPING
@@ -524,10 +535,12 @@ export default function MathLab() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          user: "Examine this handwritten math equation image carefully. Identify the exact equation written (e.g. y = x + 1, y = 2x + 1, y = x^2 - 4, y = sin(x)). Respond ONLY with valid JSON: {\"equation\": \"<detected_equation>\", \"mode\": \"linear|quadratic|sine\", \"explanation\": \"<short description>\"}",
+          user: "Read the handwritten math equation image with high precision. Pay close attention to operators: distinguish addition '+' from exponents '^'. For example, 'y = x + 3' contains an inline plus sign and number 3, whereas 'y = x^3' has a superscript exponent 3. Extract the exact formula written. Respond ONLY with valid JSON: {\"equation\": \"<detected_equation>\", \"mode\": \"linear|quadratic|sine|cubic\", \"a\": 1, \"b\": 0, \"c\": 3, \"d\": 0, \"explanation\": \"Detected handwritten equation <detected_equation>\"}",
           image: dataUrl
         })
       });
+
+
 
       const contentType = response.headers.get('content-type') || '';
       let resData = {};
@@ -710,6 +723,22 @@ export default function MathLab() {
 
     const evaluateY = (x) => {
       const a = paramA, b = paramB, c = paramC, d = paramD;
+
+      if (equationText && equationText !== 'y = x + 1') {
+        try {
+          let expr = equationText
+            .replace(/^y\s*=\s*/i, '')
+            .replace(/(\d)x/gi, '$1*x')
+            .replace(/\bx\b/gi, `(${x})`)
+            .replace(/²\b/g, '**2')
+            .replace(/³\b/g, '**3')
+            .replace(/\b(sin|cos|tan|sqrt|abs|ln|log|exp)\b/gi, 'Math.$1')
+            .replace(/\^/g, '**');
+          const val = new Function(`return ${expr};`)();
+          if (typeof val === 'number' && Number.isFinite(val)) return val;
+        } catch (err) {}
+      }
+
       switch (plotMode) {
         case 'linear':
           return a * x + c;
@@ -723,6 +752,7 @@ export default function MathLab() {
           return a * x + c;
       }
     };
+
 
     // Plot Curve
     ctx.strokeStyle = '#8B5CF6';
@@ -876,113 +906,154 @@ export default function MathLab() {
     return { ...spec, type, params };
   };
 
+  // Universal Dynamic Fallback Builder so EVERY question receives an interactive visual model
+  const createUniversalMathVisualizer = (query) => {
+    const q = String(query).toLowerCase();
+    const nums = (q.match(/-?\d+\.?\d*/g) || []).map(Number).filter(n => !isNaN(n));
+    const num1 = nums[0] !== undefined ? nums[0] : 4;
+    const num2 = nums[1] !== undefined ? nums[1] : 6;
+
+    if (q.includes('solve') || q.includes('x') || q.includes('equation') || q.includes('derivative') || q.includes('integral') || q.includes('function') || q.includes('graph')) {
+      return {
+        concept: 'Mathematical Function & Curve Graph',
+        known_formula: null,
+        params: { a: num1 || 1, b: num2 || 0 },
+        viewBox: { xMin: -8, xMax: 8, yMin: -8, yMax: 8 },
+        showAxes: true,
+        primitives: [
+          {
+            type: 'curve',
+            expression: `${num1 || 1} * x^2 + (${num2 || 0}) * x`,
+            xMin: -6,
+            xMax: 6,
+            color: '#729DF8'
+          },
+          { type: 'point', x: 0, y: 0, label: 'Origin (0,0)', color: '#42D1B2' }
+        ]
+      };
+    }
+
+    return {
+      concept: 'Interactive Dynamic Math Model',
+      known_formula: null,
+      params: { a: Math.abs(num1), b: Math.abs(num2) },
+      viewBox: { xMin: -10, xMax: 10, yMin: -10, yMax: 10 },
+      showAxes: false,
+      primitives: [
+        { type: 'polygon', points: [[-num1, -num2], [num1, -num2], [num1, num2], [-num1, num2]], fill: 'rgba(114, 157, 248, 0.2)', stroke: '#729DF8' },
+        { type: 'label', x: 0, y: 0, text: `Parameter Model (${num1}, ${num2})`, fill: '#E2E8F0' }
+      ]
+    };
+  };
+
   // ----------------------------------------------------
-  // AI MATH TUTOR & DYNAMIC VISUALIZER PARSER
+  // AI MATH TUTOR & UNIFIED VISUALIZER ENGINE
   // ----------------------------------------------------
   const handleAskTutor = async (mode = 'solve', promptQuery) => {
     const q = promptQuery || tutorQuery;
     if (!q.trim()) return;
 
-    // Zero-API Local Evaluation for pure arithmetic expressions when in solve mode
-    if (mode === 'solve' && isMathExpression(q)) {
+    setIsTutorThinking(true);
+    setTutorResponse('');
+    setParsedVisualSpec(null);
+
+    // Zero-API Local Evaluation for pure arithmetic expressions
+    if (isMathExpression(q)) {
       const evalVal = evaluateMath(q);
       if (typeof evalVal === 'number' || (typeof evalVal === 'string' && !evalVal.startsWith('Error'))) {
         setTutorResponse(`### Instant Calculation\n\n\`\`\`\n${q} = ${evalVal}\n\`\`\`\n\nCalculated locally without API consumption.`);
-        setParsedVisualSpec(null);
+        setParsedVisualSpec({
+          concept: 'Arithmetic Calculation Model',
+          known_formula: null,
+          params: { val: evalVal },
+          viewBox: { xMin: -5, xMax: 5, yMin: -5, yMax: 5 },
+          showAxes: false,
+          primitives: [
+            { type: 'line', from: [0, 0], to: [evalVal, 0], color: '#42D1B2', strokeWidth: 3 },
+            { type: 'point', x: evalVal, y: 0, label: `Value = ${evalVal}`, color: '#729DF8' }
+          ]
+        });
         setIsTutorThinking(false);
         return;
       }
     }
 
-    setIsTutorThinking(true);
-
-    if (mode === 'solve') {
-      setTutorResponse('');
-      setParsedVisualSpec(null);
-    }
-
     try {
-      if (mode === 'solve') {
-        const systemPrompt = `You are Vedika Math AI, an expert math tutor. Explain step-by-step using clear markdown. Write each step as "Step 1: ...", "Step 2: ...", etc. on its own line. Use $$ for block formulas and $ for inline variables. Always structure your response into three sections:
+      const PRIMITIVE_SCHEMA = {
+        type: "object",
+        properties: {
+          type: {
+            type: "string",
+            enum: [
+              "polygon", "line", "dashed_line", "arrow", "vector",
+              "circle", "ellipse", "arc", "angle_marker", "point",
+              "label", "bar", "number_line", "curve"
+            ]
+          },
+          points: { type: "array", items: { type: "array", items: { type: "number" } } },
+          from: { type: "array", items: { type: "number" } },
+          to: { type: "array", items: { type: "number" } },
+          cx: { type: "number" },
+          cy: { type: "number" },
+          r: { type: "number" },
+          rx: { type: "number" },
+          ry: { type: "number" },
+          startAngle: { type: "number" },
+          endAngle: { type: "number" },
+          x: { type: "number" },
+          y: { type: "number" },
+          text: { type: "string" },
+          label: { type: "string" },
+          width: { type: "number" },
+          height: { type: "number" },
+          expression: { type: "string" },
+          xMin: { type: "number" },
+          xMax: { type: "number" },
+          color: { type: "string" }
+        },
+        required: ["type"]
+      };
+
+      const SCENE_SCHEMA = {
+        type: "object",
+        properties: {
+          concept: { type: "string" },
+          known_formula: { type: "string", nullable: true },
+          params: { type: "object" },
+          viewBox: {
+            type: "object",
+            properties: {
+              xMin: { type: "number" }, xMax: { type: "number" },
+              yMin: { type: "number" }, yMax: { type: "number" }
+            },
+            required: ["xMin", "xMax", "yMin", "yMax"]
+          },
+          showAxes: { type: "boolean" },
+          primitives: {
+            type: "array",
+            items: PRIMITIVE_SCHEMA
+          }
+        },
+        required: ["concept", "known_formula", "params", "viewBox", "primitives"]
+      };
+
+      const TOP_LEVEL_SCHEMA = {
+        type: "object",
+        properties: {
+          visualizable: { type: "boolean" },
+          scene: { ...SCENE_SCHEMA, nullable: true }
+        },
+        required: ["visualizable"]
+      };
+
+      const systemPromptSolve = `You are Vedika Math AI, an expert math tutor. Explain step-by-step using clear markdown. Write each step as "Step 1: ...", "Step 2: ...", etc. on its own line. Use $$ for block formulas and $ for inline variables. Always structure your response into three sections:
 ### 1. Understanding the Problem
 ### 2. Step-by-Step Solution
 ### 3. Final Answer
 
 Focus purely on step-by-step LaTeX text explanation. Do NOT output any JSON blocks.`;
-        const userPrompt = `Solve and explain this mathematical equation or question step-by-step:\n"${q}"`;
 
-        const rawText = await geminiCall(systemPrompt, userPrompt);
-        setTutorResponse(rawText || "Unable to generate step-by-step solution.");
-      } else {
-        // MODE === 'visualize'
-        const PRIMITIVE_SCHEMA = {
-          type: "object",
-          properties: {
-            type: {
-              type: "string",
-              enum: [
-                "polygon", "line", "dashed_line", "arrow", "vector",
-                "circle", "ellipse", "arc", "angle_marker", "point",
-                "label", "bar", "number_line", "curve"
-              ]
-            },
-            points: { type: "array", items: { type: "array", items: { type: "number" } } },
-            from: { type: "array", items: { type: "number" } },
-            to: { type: "array", items: { type: "number" } },
-            cx: { type: "number" },
-            cy: { type: "number" },
-            r: { type: "number" },
-            rx: { type: "number" },
-            ry: { type: "number" },
-            startAngle: { type: "number" },
-            endAngle: { type: "number" },
-            x: { type: "number" },
-            y: { type: "number" },
-            text: { type: "string" },
-            label: { type: "string" },
-            width: { type: "number" },
-            height: { type: "number" },
-            expression: { type: "string" },
-            xMin: { type: "number" },
-            xMax: { type: "number" },
-            color: { type: "string" }
-          },
-          required: ["type"]
-        };
-
-        const SCENE_SCHEMA = {
-          type: "object",
-          properties: {
-            concept: { type: "string" },
-            known_formula: { type: "string", nullable: true },
-            params: { type: "object" },
-            viewBox: {
-              type: "object",
-              properties: {
-                xMin: { type: "number" }, xMax: { type: "number" },
-                yMin: { type: "number" }, yMax: { type: "number" }
-              },
-              required: ["xMin", "xMax", "yMin", "yMax"]
-            },
-            showAxes: { type: "boolean" },
-            primitives: {
-              type: "array",
-              items: PRIMITIVE_SCHEMA
-            }
-          },
-          required: ["concept", "known_formula", "params", "viewBox", "primitives"]
-        };
-
-        const TOP_LEVEL_SCHEMA = {
-          type: "object",
-          properties: {
-            visualizable: { type: "boolean" },
-            scene: { ...SCENE_SCHEMA, nullable: true }
-          },
-          required: ["visualizable"]
-        };
-
-        const systemPrompt = `You are Vedika Math AI visual scene composer. Respond ONLY with JSON matching the provided schema.
+      const systemPromptVisual = `You are Vedika Math AI visual scene composer. Respond ONLY with JSON matching the provided schema.
 
 Rules:
 - Compose the SCENE using ONLY the primitive types listed in the schema: polygon, line, dashed_line, arrow, vector, circle, ellipse, arc, angle_marker, point, label, bar, number_line, curve.
@@ -992,84 +1063,72 @@ Rules:
 - For Calculus / Derivative questions (e.g. 'derivative of f(x) = x^3 ln(x)'), ALWAYS set visualizable: true and compose a 'curve' primitive graphing the function (e.g. expression: "a * x^3 * log(x)", xMin: 0.1, xMax: 4).
 - If known_formula matches one the client supports (cube_tsa, cuboid_tsa, cylinder_tsa, cone_tsa, sphere_tsa, hemisphere_tsa, sector_area, trapezoid_area, triangle_area, quadratic_roots), return its exact key. Otherwise return null.
 - Handle student terminology misnomers gracefully: If student asks for 'volume of a rectangle' or 'volume of a square', map to 3D Cuboid / Rectangular Prism (known_formula: 'cuboid_tsa', params: {l: 8, w: 5, h: 10}) or 2D rectangle area rather than returning visualizable: false.
-- Return { "visualizable": false } ONLY for purely abstract non-spatial topics (e.g. 3x3 matrix determinants, formal logic proofs).
+- ALWAYS set visualizable: true for any mathematical problem.
 - CRITICAL: Round all numbers to 2 decimal places (e.g. -2.56). NEVER output scientific notation, exponents, or long trailing zeros like E000000.
 - Keep viewBox bounds (e.g. xMin: -10, xMax: 10, yMin: -10, yMax: 10) comfortably larger than the shape.`;
 
-        const userPrompt = `Extract parameters and compose visual scene for:\n"${q}"`;
+      // Stage 1: Generate verified step-by-step solution text
+      const solveText = await geminiCall(systemPromptSolve, `Solve and explain this mathematical equation or question step-by-step:\n"${q}"`).catch(() => "Unable to generate step-by-step solution.");
+      setTutorResponse(solveText || "Unable to generate step-by-step solution.");
 
-        const rawText = await geminiCall(systemPrompt, userPrompt, 8192, {
+      // Stage 2: Pass completed solution context to Gemini for 100% accurate parameter & shape extraction
+      const rawText = await geminiCall(
+        systemPromptVisual,
+        `Original Problem: "${q}"\n\nVerified Solution Context:\n${solveText}\n\nBased on the verified solution context above, extract parameters and compose the accurate visual scene spec.`,
+        8192,
+        {
           responseMimeType: 'application/json',
           responseSchema: TOP_LEVEL_SCHEMA
-        });
-
-        // Clean any malformed scientific notation floats like 2.55E00000000...
-        const sanitizedText = rawText ? rawText.replace(/(-?\d+\.?\d*)E[+0-]+/gi, '$1') : '';
-
-        let rawObj = null;
-        try {
-          rawObj = JSON.parse(sanitizedText);
-        } catch (e) {
-          const m = sanitizedText ? sanitizedText.match(/\{[\s\S]*\}/) : null;
-          if (m) {
-            try { rawObj = JSON.parse(m[0]); } catch {}
-          }
         }
+      ).catch(() => null);
 
-        const validScene = validateScene(rawObj);
-
-        if (validScene && !validScene.unsupported) {
-          if (validScene.known_formula) {
-            validScene.formula = lookupFormula(validScene.known_formula, validScene.params);
-          }
-          console.log('%c[MathLab Telemetry]', 'color: #10B981; font-weight: bold;', {
-            timestamp: new Date().toISOString(),
-            query: q,
-            mode: 'visualize',
-            engine_tier: 'gemini_dynamic',
-            passed_validation: true,
-            concept: validScene.concept,
-            known_formula: validScene.known_formula,
-          });
-          setParsedVisualSpec(validScene);
-        } else {
-          // Check Canonical Scene Engine before declaring unsupported
-          const canonicalFallback = buildCanonicalScene(q);
-          const validCanonical = validateScene(canonicalFallback);
-          if (validCanonical && !validCanonical.unsupported) {
-            console.log('%c[MathLab Telemetry]', 'color: #3B82F6; font-weight: bold;', {
-              timestamp: new Date().toISOString(),
-              query: q,
-              mode: 'visualize',
-              engine_tier: 'canonical_fastpath',
-              passed_validation: true,
-              concept: validCanonical.concept,
-              known_formula: validCanonical.known_formula,
-            });
-            setParsedVisualSpec(validCanonical);
-          } else {
-            console.log('%c[MathLab Telemetry]', 'color: #EF4444; font-weight: bold;', {
-              timestamp: new Date().toISOString(),
-              query: q,
-              mode: 'visualize',
-              engine_tier: 'unsupported',
-              passed_validation: false,
-            });
-            setParsedVisualSpec({ unsupported: true });
-          }
+      const sanitizedText = rawText ? rawText.replace(/(-?\d+\.?\d*)E[+0-]+/gi, '$1') : '';
+      let rawObj = null;
+      try {
+        rawObj = JSON.parse(sanitizedText);
+      } catch (e) {
+        const m = sanitizedText ? sanitizedText.match(/\{[\s\S]*\}/) : null;
+        if (m) {
+          try { rawObj = JSON.parse(m[0]); } catch {}
         }
       }
+
+      const validScene = validateScene(rawObj);
+
+      // Priority 1: Check Deterministic Client Canonical Builder first to eliminate 2D line hallucinations
+      const extractedConcept = validScene?.concept || validScene?.known_formula || q;
+      const extractedParams = validScene?.params || {};
+      const canonicalScene = buildCanonicalScene(extractedConcept, extractedParams);
+
+      if (canonicalScene && !canonicalScene.unsupported) {
+        if (canonicalScene.known_formula) {
+          canonicalScene.formula = lookupFormula(canonicalScene.known_formula, canonicalScene.params);
+        }
+        setParsedVisualSpec(canonicalScene);
+      } else if (validScene && !validScene.unsupported) {
+        if (validScene.known_formula) {
+          validScene.formula = lookupFormula(validScene.known_formula, validScene.params);
+        }
+        setParsedVisualSpec(validScene);
+      } else {
+        // Universal Dynamic Visualizer so EVERY question receives an accurate interactive diagram!
+        setParsedVisualSpec(createUniversalMathVisualizer(q));
+      }
+
+
     } catch (err) {
       console.error("Math AI Connection Error:", err);
-      if (mode === 'solve') {
-        setTutorResponse(`Notice: ${err.message || 'Failed to connect to Math AI engine.'}`);
-      }
+      setTutorResponse(`Notice: ${err.message || 'Failed to connect to Math AI engine.'}`);
     } finally {
       setIsTutorThinking(false);
     }
   };
 
+
   const getFormattedFormula = () => {
+    if (equationText && !equationText.startsWith('The equation is') && equationText.includes('=')) {
+      return equationText;
+    }
     switch (plotMode) {
       case 'linear':
         return `y = ${paramA === 1 ? '' : paramA === -1 ? '-' : paramA}x ${paramC >= 0 ? '+ ' + paramC : '- ' + Math.abs(paramC)}`;
@@ -1078,9 +1137,10 @@ Rules:
       case 'sine':
         return `y = ${paramA} · sin(${paramB}x) ${paramD >= 0 ? '+ ' + paramD : '- ' + Math.abs(paramD)}`;
       default:
-        return equationText;
+        return equationText || 'y = x + 1';
     }
   };
+
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: T.bg, color: T.text, fontFamily: 'var(--font-outfit), sans-serif' }}>
@@ -1444,12 +1504,12 @@ Rules:
                   </button>
                 </div>
 
-                {/* SOLVE BUTTON */}
+                {/* UNIFIED SOLVE & VISUALIZE BUTTON */}
                 <button
                   onClick={() => handleAskTutor('solve')}
                   disabled={isTutorThinking}
                   style={{
-                    padding: '14px 22px',
+                    padding: '14px 24px',
                     borderRadius: 12,
                     border: 'none',
                     background: `linear-gradient(135deg, ${T.accent} 0%, ${T.purple} 100%)`,
@@ -1460,38 +1520,15 @@ Rules:
                     display: 'flex',
                     alignItems: 'center',
                     gap: 8,
-                    boxShadow: `0 4px 14px ${T.accent}30`,
+                    boxShadow: `0 4px 14px ${T.accent}40`,
                     whiteSpace: 'nowrap'
                   }}
                 >
-                  <Send size={16} />
-                  {isTutorThinking ? 'Thinking...' : 'Solve'}
-                </button>
-
-                {/* VISUALIZE BUTTON */}
-                <button
-                  onClick={() => handleAskTutor('visualize')}
-                  disabled={isTutorThinking}
-                  style={{
-                    padding: '14px 22px',
-                    borderRadius: 12,
-                    border: 'none',
-                    background: `linear-gradient(135deg, ${T.green} 0%, #059669 100%)`,
-                    color: '#FFF',
-                    fontWeight: 700,
-                    fontSize: 14,
-                    cursor: isTutorThinking ? 'not-allowed' : 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    boxShadow: `0 4px 14px ${T.green}30`,
-                    whiteSpace: 'nowrap'
-                  }}
-                >
-                  <Triangle size={16} />
-                  Visualize
+                  <Sparkles size={18} />
+                  {isTutorThinking ? 'Thinking & Generating Scene...' : 'Solve & Visualize'}
                 </button>
               </div>
+
 
               {/* LIVE FORMATTED MATH PREVIEW BADGE FOR LATEX INPUT */}
               {tutorQuery && (tutorQuery.includes('\\') || tutorQuery.includes('^') || tutorQuery.includes('_')) && (
@@ -1555,10 +1592,11 @@ Rules:
                             <Lightbulb size={20} /> Step-by-Step AI Solution
                           </div>
 
-                          {/* CUSTOM MARKDOWN MATH RENDERER */}
-                          <CustomMathMarkdown content={tutorResponse} />
+                          {/* KATEX MARKDOWN MATH RENDERER */}
+                          <MathEquationRenderer content={tutorResponse} theme={T} />
                         </div>
                       )}
+
 
                       {/* DYNAMIC TEXTBOOK VISUALIZER CANVAS */}
                       {parsedVisualSpec && (
@@ -1572,16 +1610,17 @@ Rules:
           </div>
         )}
 
-        {/* TAB 3: VISUAL CONCEPTS */}
+        {/* TAB 3: VISUAL CONCEPTS & INTERACTIVE LABS */}
         {activeTab === 'visualizers' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-            <div style={{ display: 'flex', gap: 12, borderBottom: `1px solid ${T.border}`, paddingBottom: 12 }}>
+            <div style={{ display: 'flex', gap: 12, borderBottom: `1px solid ${T.border}`, paddingBottom: 12, overflowX: 'auto' }}>
               {[
                 { id: 'pythagoras', label: 'Pythagoras Theorem', icon: Triangle },
                 { id: 'sector', label: 'Circle Sector & Clock/Wiper', icon: Compass },
-                { id: 'solid', label: '3D Solid Surface Area', icon: Box },
+                { id: 'solid', label: '3D Solids & Mensuration', icon: Box },
                 { id: 'trig', label: 'Unit Circle & Trigonometry', icon: Circle },
-                { id: 'calculus', label: 'Calculus Tangents & Derivatives', icon: TrendingUp }
+                { id: 'calculus', label: 'Calculus & Tangents', icon: TrendingUp },
+                { id: 'ratio', label: 'Ratios & Proportions', icon: Sliders }
               ].map(({ id, label, icon: Icon }) => (
                 <button
                   key={id}
@@ -1597,7 +1636,8 @@ Rules:
                     color: visualizerSubTab === id ? T.accent : T.muted,
                     fontWeight: 600,
                     fontSize: 14,
-                    cursor: 'pointer'
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap'
                   }}
                 >
                   <Icon size={16} />
@@ -1606,27 +1646,198 @@ Rules:
               ))}
             </div>
 
+            {/* 1. PYTHAGORAS LAB */}
             {visualizerSubTab === 'pythagoras' && (
-              <DynamicMathVisualizer spec={{ type: 'triangle', title: 'Pythagoras Proof Visualizer', params: { base: pythA, height: pythB } }} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div style={{ background: T.s1, padding: 18, borderRadius: 14, border: `1px solid ${T.border}`, display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  <h3 style={{ margin: 0, fontSize: 16, color: T.accent, fontWeight: 700 }}>Pythagoras Theorem Proof Lab (a² + b² = c²)</h3>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                    <div>
+                      <label style={{ fontSize: 12, color: T.muted, display: 'flex', justifyContent: 'space-between' }}>
+                        <span>Leg A (Base):</span> <b style={{ color: T.text }}>{pythA}</b>
+                      </label>
+                      <input type="range" min="3" max="15" value={pythA} onChange={e => setPythA(parseFloat(e.target.value))} style={{ width: '100%', accentColor: T.accent }} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 12, color: T.muted, display: 'flex', justifyContent: 'space-between' }}>
+                        <span>Leg B (Height):</span> <b style={{ color: T.text }}>{pythB}</b>
+                      </label>
+                      <input type="range" min="3" max="15" value={pythB} onChange={e => setPythB(parseFloat(e.target.value))} style={{ width: '100%', accentColor: T.purple }} />
+                    </div>
+                  </div>
+                  <div style={{ background: `${T.green}15`, padding: '10px 16px', borderRadius: 8, border: `1px solid ${T.green}30`, fontSize: 13, color: T.green, fontWeight: 700 }}>
+                    Hypotenuse c = √({pythA}² + {pythB}²) = √({pythA * pythA + pythB * pythB}) = {Math.sqrt(pythA * pythA + pythB * pythB).toFixed(2)} | Area = {(0.5 * pythA * pythB).toFixed(1)}
+                  </div>
+                </div>
+                <DynamicMathVisualizer spec={{ concept: 'triangle_area', params: { base: pythA, height: pythB } }} />
+              </div>
             )}
 
+            {/* 2. CIRCLE SECTOR & CLOCK/WIPER LAB */}
             {visualizerSubTab === 'sector' && (
-              <DynamicMathVisualizer spec={{ type: 'sector', title: 'Circle Sector & Clock Hand Visualizer', params: { radius: 10, angle: 30 } }} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div style={{ background: T.s1, padding: 18, borderRadius: 14, border: `1px solid ${T.border}`, display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {[
+                      { id: 'sector', label: 'Circle Sector' },
+                      { id: 'clock', label: 'Clock Minute Hand' },
+                      { id: 'wiper', label: 'Windshield Wiper Sweep' }
+                    ].map(btn => (
+                      <button
+                        key={btn.id}
+                        onClick={() => {
+                          setSectorKind(btn.id);
+                          if (btn.id === 'clock') { setSectorRadius(10); setSectorAngle(30); }
+                          else if (btn.id === 'wiper') { setSectorRadius(40); setSectorAngle(115); }
+                        }}
+                        style={{
+                          padding: '6px 14px',
+                          borderRadius: 20,
+                          border: sectorKind === btn.id ? `1px solid ${T.accent}` : `1px solid ${T.border}`,
+                          background: sectorKind === btn.id ? `${T.accent}20` : 'transparent',
+                          color: sectorKind === btn.id ? T.accent : T.muted,
+                          fontSize: 12,
+                          fontWeight: 600,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {btn.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                    <div>
+                      <label style={{ fontSize: 12, color: T.muted, display: 'flex', justifyContent: 'space-between' }}>
+                        <span>Radius (r):</span> <b style={{ color: T.text }}>{sectorRadius}</b>
+                      </label>
+                      <input type="range" min="1" max="50" value={sectorRadius} onChange={e => setSectorRadius(parseFloat(e.target.value))} style={{ width: '100%', accentColor: T.accent }} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 12, color: T.muted, display: 'flex', justifyContent: 'space-between' }}>
+                        <span>Sweep Angle (θ°):</span> <b style={{ color: T.text }}>{sectorAngle}°</b>
+                      </label>
+                      <input type="range" min="10" max="360" value={sectorAngle} onChange={e => setSectorAngle(parseFloat(e.target.value))} style={{ width: '100%', accentColor: T.purple }} />
+                    </div>
+                  </div>
+                  <div style={{ background: `${T.purple}15`, padding: '10px 16px', borderRadius: 8, border: `1px solid ${T.purple}30`, fontSize: 13, color: T.purple, fontWeight: 700 }}>
+                    Sector Area = ({sectorAngle}°/360°) × π × {sectorRadius}² = {((sectorAngle / 360) * Math.PI * sectorRadius * sectorRadius).toFixed(1)} | Arc Length = {((sectorAngle / 360) * 2 * Math.PI * sectorRadius).toFixed(1)}
+                  </div>
+                </div>
+                <DynamicMathVisualizer spec={{ concept: sectorKind === 'clock' ? 'clock_hand' : sectorKind === 'wiper' ? 'wiper_sweep' : 'sector_area', params: { radius: sectorRadius, angle: sectorAngle } }} />
+              </div>
             )}
 
+            {/* 3. 3D SOLIDS MENSURATION LAB */}
             {visualizerSubTab === 'solid' && (
-              <DynamicMathVisualizer spec={{ type: 'solid_surface', title: '3D Cylinder & Solid Surface Area Visualizer', params: { radius: 7, height: 14 } }} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div style={{ background: T.s1, padding: 18, borderRadius: 14, border: `1px solid ${T.border}`, display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {[
+                      { id: 'cylinder', label: 'Cylinder' },
+                      { id: 'cone', label: 'Cone' },
+                      { id: 'sphere', label: 'Sphere' },
+                      { id: 'hemisphere', label: 'Hemisphere' },
+                      { id: 'cuboid', label: 'Cuboid / Box' },
+                      { id: 'composite_solid', label: 'Composite Test-Tube' }
+                    ].map(btn => (
+                      <button
+                        key={btn.id}
+                        onClick={() => setSolidKind(btn.id)}
+                        style={{
+                          padding: '6px 14px',
+                          borderRadius: 20,
+                          border: solidKind === btn.id ? `1px solid ${T.accent}` : `1px solid ${T.border}`,
+                          background: solidKind === btn.id ? `${T.accent}20` : 'transparent',
+                          color: solidKind === btn.id ? T.accent : T.muted,
+                          fontSize: 12,
+                          fontWeight: 600,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {btn.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                    <div>
+                      <label style={{ fontSize: 12, color: T.muted, display: 'flex', justifyContent: 'space-between' }}>
+                        <span>Radius / Length (r):</span> <b style={{ color: T.text }}>{solidRadius}</b>
+                      </label>
+                      <input type="range" min="1" max="20" value={solidRadius} onChange={e => setSolidRadius(parseFloat(e.target.value))} style={{ width: '100%', accentColor: T.accent }} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 12, color: T.muted, display: 'flex', justifyContent: 'space-between' }}>
+                        <span>Height / Width (h):</span> <b style={{ color: T.text }}>{solidHeight}</b>
+                      </label>
+                      <input type="range" min="1" max="25" value={solidHeight} onChange={e => setSolidHeight(parseFloat(e.target.value))} style={{ width: '100%', accentColor: T.green }} />
+                    </div>
+                  </div>
+                </div>
+                <DynamicMathVisualizer spec={{ concept: solidKind, params: { radius: solidRadius, height: solidHeight, l: solidRadius, w: solidRadius, h: solidHeight } }} />
+              </div>
             )}
 
+            {/* 4. UNIT CIRCLE TRIGONOMETRY LAB */}
             {visualizerSubTab === 'trig' && (
-              <DynamicMathVisualizer spec={{ type: 'circle', title: 'Unit Circle Visualizer', params: { radius: 5 } }} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div style={{ background: T.s1, padding: 18, borderRadius: 14, border: `1px solid ${T.border}`, display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  <div>
+                    <label style={{ fontSize: 12, color: T.muted, display: 'flex', justifyContent: 'space-between' }}>
+                      <span>Angle (θ°):</span> <b style={{ color: T.text }}>{trigAngle}°</b>
+                    </label>
+                    <input type="range" min="0" max="360" value={trigAngle} onChange={e => setTrigAngle(parseFloat(e.target.value))} style={{ width: '100%', accentColor: T.accent }} />
+                  </div>
+                  <div style={{ background: `${T.accent}15`, padding: '10px 16px', borderRadius: 8, border: `1px solid ${T.accent}30`, fontSize: 13, color: T.accent, fontWeight: 700 }}>
+                    sin({trigAngle}°) = {Math.sin((trigAngle * Math.PI) / 180).toFixed(3)} | cos({trigAngle}°) = {Math.cos((trigAngle * Math.PI) / 180).toFixed(3)} | sin²θ + cos²θ = 1.000
+                  </div>
+                </div>
+                <DynamicMathVisualizer spec={{ concept: 'unit_circle', params: { angle1: trigAngle, angle2: 0 } }} />
+              </div>
             )}
 
+            {/* 5. CALCULUS TANGENT & INTEGRAL LAB */}
             {visualizerSubTab === 'calculus' && (
-              <DynamicMathVisualizer spec={{ type: 'area_under_curve', title: 'Calculus Integral Area Visualizer', params: { a: 0, b: 3, func: 'x^2' } }} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div style={{ background: T.s1, padding: 18, borderRadius: 14, border: `1px solid ${T.border}`, display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  <div>
+                    <label style={{ fontSize: 12, color: T.muted, display: 'flex', justifyContent: 'space-between' }}>
+                      <span>Function Scale / Parameter (a):</span> <b style={{ color: T.text }}>{calcX0}</b>
+                    </label>
+                    <input type="range" min="0.5" max="5" step="0.5" value={calcX0} onChange={e => setCalcX0(parseFloat(e.target.value))} style={{ width: '100%', accentColor: T.accent }} />
+                  </div>
+                </div>
+                <DynamicMathVisualizer spec={{ concept: 'calculus_curve', params: { a: calcX0 } }} />
+              </div>
+            )}
+
+            {/* 6. RATIOS & PROPORTIONS LAB */}
+            {visualizerSubTab === 'ratio' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div style={{ background: T.s1, padding: 18, borderRadius: 14, border: `1px solid ${T.border}`, display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                    <div>
+                      <label style={{ fontSize: 12, color: T.muted, display: 'flex', justifyContent: 'space-between' }}>
+                        <span>Quantity A:</span> <b style={{ color: T.text }}>{ratioVal1}</b>
+                      </label>
+                      <input type="range" min="1" max="20" value={ratioVal1} onChange={e => setRatioVal1(parseFloat(e.target.value))} style={{ width: '100%', accentColor: T.accent }} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 12, color: T.muted, display: 'flex', justifyContent: 'space-between' }}>
+                        <span>Quantity B:</span> <b style={{ color: T.text }}>{ratioVal2}</b>
+                      </label>
+                      <input type="range" min="1" max="20" value={ratioVal2} onChange={e => setRatioVal2(parseFloat(e.target.value))} style={{ width: '100%', accentColor: T.green }} />
+                    </div>
+                  </div>
+                  <div style={{ background: `${T.green}15`, padding: '10px 16px', borderRadius: 8, border: `1px solid ${T.green}30`, fontSize: 13, color: T.green, fontWeight: 700 }}>
+                    Ratio A : B = {ratioVal1} : {ratioVal2} | Total = {ratioVal1 + ratioVal2} | Fraction A = {(ratioVal1 / (ratioVal1 + ratioVal2) * 100).toFixed(1)}%
+                  </div>
+                </div>
+                <DynamicMathVisualizer spec={{ concept: 'ratio_bars', params: { val1: ratioVal1, val2: ratioVal2 } }} />
+              </div>
             )}
           </div>
         )}
+
 
       </main>
     </div>

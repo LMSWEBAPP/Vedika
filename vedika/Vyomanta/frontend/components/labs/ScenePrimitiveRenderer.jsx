@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { lookupFormula } from '@/lib/formulaRegistry';
 import { buildCanonicalScene } from '@/lib/canonicalScenes';
 import { Sliders, Sparkles, RotateCcw } from 'lucide-react';
+import MathSolid3DViewer from './MathSolid3DViewer';
 
 // ---- Coordinate Mapping ---------------------------------------------------
 // World space -> screen space. Y is flipped (world +y is up, SVG +y is down).
@@ -525,22 +526,31 @@ export default function ScenePrimitiveRenderer({ scene, width = 680, height = 42
     return typeof v === 'number' || (!isNaN(parseFloat(v)) && isFinite(v));
   });
 
+  const conceptStr = String(scene.type || scene.concept || '').toLowerCase().replace(/_/g, ' ');
+  const is3DSolid = ['cube', 'cuboid', 'prism', 'box', 'cylinder', 'cone', 'sphere', 'hemisphere', 'pyramid', 'solid', 'surface', 'composite', '3d'].some(k => conceptStr.includes(k));
+
+
   return (
     <div style={{ width: '100%' }}>
-      <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ background: theme.bg || '#07080F', borderRadius: 8 }}>
-        <defs>
-          <marker id="arrowhead" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
-            <polygon points="0 0, 8 4, 0 8" fill={theme.accent || '#5B8CF8'} />
-          </marker>
-        </defs>
-        {scene.showAxes && renderAxes(scene.viewBox, project, width, height)}
-        {dynamicPrimitives
-          .filter((p) => p.type !== 'curve')
-          .map((p, i) => renderPrimitive(p, project, i, theme))}
-        {curvePaths}
-      </svg>
+      {is3DSolid ? (
+        <MathSolid3DViewer type={scene.concept || scene.type} params={params} theme={theme} />
+      ) : (
+        <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ background: theme.bg || '#07080F', borderRadius: 8 }}>
+          <defs>
+            <marker id="arrowhead" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+              <polygon points="0 0, 8 4, 0 8" fill={theme.accent || '#5B8CF8'} />
+            </marker>
+          </defs>
+          {scene.showAxes && renderAxes(scene.viewBox, project, width, height)}
+          {dynamicPrimitives
+            .filter((p) => p.type !== 'curve')
+            .map((p, i) => renderPrimitive(p, project, i, theme))}
+          {curvePaths}
+        </svg>
+      )}
 
       {/* DYNAMIC FORMULA DERIVATION BADGE */}
+
       {liveFormula && (
         <div style={{ marginTop: '0.75rem', padding: '10px 16px', background: `${theme.green || '#22C5A0'}15`, borderRadius: 8, border: `1px solid ${theme.green || '#22C5A0'}40`, textAlign: 'center', fontSize: 13 }}>
           <span style={{ color: theme.muted || '#647298' }}>{liveFormula.label}: </span>
