@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { lookupFormula } from '@/lib/formulaRegistry';
-import { buildCanonicalScene } from '@/lib/canonicalScenes';
+import { lookupFormula } from '../../lib/formulaRegistry';
+import { buildCanonicalScene } from '../../lib/canonicalScenes';
+
 import { Sliders, Sparkles, RotateCcw } from 'lucide-react';
 import MathSolid3DViewer from './MathSolid3DViewer';
 

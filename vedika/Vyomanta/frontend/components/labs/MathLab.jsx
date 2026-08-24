@@ -11,11 +11,12 @@ import {
   TrendingUp, Circle, Triangle, Layers, ZoomIn, ZoomOut, RefreshCw, Send, Image as ImageIcon,
   Crop, Mic, MicOff, Square, CheckCircle2, Award, Box, Volume2
 } from 'lucide-react';
-import { T, isMathExpression, evaluateMath, geminiCall } from '@/lib/lms-data';
+import { T, isMathExpression, evaluateMath, geminiCall } from '../../lib/lms-data';
 import ScenePrimitiveRenderer, { validateScene } from './ScenePrimitiveRenderer';
-import { lookupFormula } from '@/lib/formulaRegistry';
-import { buildCanonicalScene } from '@/lib/canonicalScenes';
+import { lookupFormula } from '../../lib/formulaRegistry';
+import { buildCanonicalScene } from '../../lib/canonicalScenes';
 import MathEquationRenderer from './MathEquationRenderer';
+
 
 
 // Preprocess LaTeX math syntax into clean formatted unicode math
