@@ -13,11 +13,15 @@ import {
 import { T, isMathExpression, evaluateMath, geminiCall } from '@/lib/lms-data';
 import ScenePrimitiveRenderer, { validateScene } from './ScenePrimitiveRenderer';
 import { lookupFormula } from '@/lib/formulaRegistry';
+import { buildCanonicalScene } from '@/lib/canonicalScenes';
 
 // Preprocess LaTeX math syntax into clean formatted unicode math
 function cleanMathLaTeX(text) {
   if (!text) return '';
   let str = text;
+
+  // Clean LaTeX inline and block delimiters \( \) \[ \]
+  str = str.replace(/\\\(|\\\)/g, '').replace(/\\\[|\\\]/g, '');
 
   // Convert block math $$ ... $$ into formatted code blocks for clean formula card rendering
   str = str.replace(/\$\$\s*([\s\S]*?)\s*\$\$/g, (match, formula) => {
@@ -48,6 +52,13 @@ function cleanMathLaTeX(text) {
     .replace(/\\pm/g, '±')
     .replace(/\\quad/g, ' ')
     .replace(/\\qquad/g, '  ')
+    .replace(/\\sin/g, 'sin')
+    .replace(/\\cos/g, 'cos')
+    .replace(/\\tan/g, 'tan')
+    .replace(/\\ln/g, 'ln')
+    .replace(/\\log/g, 'log')
+    .replace(/\^\\circ/g, '°')
+    .replace(/\\circ/g, '°')
     .replace(/\\text\{([^}]+)\}/g, '$1')
     .replace(/\\left|\\right/g, '')
     .replace(/\^\circ/g, '°')
@@ -978,6 +989,7 @@ Rules:
 - MANDATORY: "params" MUST NEVER BE EMPTY {}. You MUST populate "params" with ALL core dimensions of the shape or function (e.g. for a cone: {"radius": 3, "height": 5}, for a cylinder: {"radius": 4, "height": 10}, for a cuboid: {"l": 8, "w": 5, "h": 10}, for a triangle: {"base": 6, "height": 8}, for quadratic: {"a": 2, "b": -5, "c": 3}), even if no specific numbers were mentioned in the prompt!
 - NEVER compute derived math answers (no area, volume, or roots in params). The client computes all math.
 - For "curve" primitives, use variable names matching "params" keys in expression (e.g. expression: "a*x^2 + b*x + c", xMin: -5, xMax: 5).
+- For Calculus / Derivative questions (e.g. 'derivative of f(x) = x^3 ln(x)'), ALWAYS set visualizable: true and compose a 'curve' primitive graphing the function (e.g. expression: "a * x^3 * log(x)", xMin: 0.1, xMax: 4).
 - If known_formula matches one the client supports (cube_tsa, cuboid_tsa, cylinder_tsa, cone_tsa, sphere_tsa, hemisphere_tsa, sector_area, trapezoid_area, triangle_area, quadratic_roots), return its exact key. Otherwise return null.
 - Handle student terminology misnomers gracefully: If student asks for 'volume of a rectangle' or 'volume of a square', map to 3D Cuboid / Rectangular Prism (known_formula: 'cuboid_tsa', params: {l: 8, w: 5, h: 10}) or 2D rectangle area rather than returning visualizable: false.
 - Return { "visualizable": false } ONLY for purely abstract non-spatial topics (e.g. 3x3 matrix determinants, formal logic proofs).
@@ -1006,26 +1018,43 @@ Rules:
 
         const validScene = validateScene(rawObj);
 
-        console.log('%c[MathLab Telemetry]', 'color: #10B981; font-weight: bold;', {
-          timestamp: new Date().toISOString(),
-          query: q,
-          mode: 'visualize',
-          rawAiOutput: rawText,
-          parsedObj: rawObj,
-          validatedScene: validScene,
-          status: validScene && !validScene.unsupported ? 'SUCCESS_RENDERED' : 'UNSUPPORTED_SKIPPED'
-        });
-
         if (validScene && !validScene.unsupported) {
           if (validScene.known_formula) {
             validScene.formula = lookupFormula(validScene.known_formula, validScene.params);
           }
+          console.log('%c[MathLab Telemetry]', 'color: #10B981; font-weight: bold;', {
+            timestamp: new Date().toISOString(),
+            query: q,
+            mode: 'visualize',
+            engine_tier: 'gemini_dynamic',
+            passed_validation: true,
+            concept: validScene.concept,
+            known_formula: validScene.known_formula,
+          });
           setParsedVisualSpec(validScene);
         } else {
-          const fallbackSpec = validateVisualSpec(rawObj?.scene || rawObj);
-          if (fallbackSpec) {
-            setParsedVisualSpec(fallbackSpec);
+          // Check Canonical Scene Engine before declaring unsupported
+          const canonicalFallback = buildCanonicalScene(q);
+          const validCanonical = validateScene(canonicalFallback);
+          if (validCanonical && !validCanonical.unsupported) {
+            console.log('%c[MathLab Telemetry]', 'color: #3B82F6; font-weight: bold;', {
+              timestamp: new Date().toISOString(),
+              query: q,
+              mode: 'visualize',
+              engine_tier: 'canonical_fastpath',
+              passed_validation: true,
+              concept: validCanonical.concept,
+              known_formula: validCanonical.known_formula,
+            });
+            setParsedVisualSpec(validCanonical);
           } else {
+            console.log('%c[MathLab Telemetry]', 'color: #EF4444; font-weight: bold;', {
+              timestamp: new Date().toISOString(),
+              query: q,
+              mode: 'visualize',
+              engine_tier: 'unsupported',
+              passed_validation: false,
+            });
             setParsedVisualSpec({ unsupported: true });
           }
         }
@@ -1463,6 +1492,17 @@ Rules:
                   Visualize
                 </button>
               </div>
+
+              {/* LIVE FORMATTED MATH PREVIEW BADGE FOR LATEX INPUT */}
+              {tutorQuery && (tutorQuery.includes('\\') || tutorQuery.includes('^') || tutorQuery.includes('_')) && (
+                <div style={{ marginTop: '-8px', marginBottom: '20px', padding: '10px 16px', background: `${T.purple}15`, borderRadius: 10, border: `1px solid ${T.purple}40`, display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <Sparkles size={14} color={T.purple} />
+                  <span style={{ fontSize: 11, fontWeight: 700, color: T.purple, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Formatted Preview:</span>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: T.text, fontFamily: 'serif' }}>
+                    {cleanMathLaTeX(tutorQuery)}
+                  </span>
+                </div>
+              )}
 
               {/* QUICK EXAMPLE BUTTONS */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>

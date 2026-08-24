@@ -35,6 +35,7 @@ function sampleCurve(expression, xMin, xMax, steps = 120, params = {}) {
   });
 
   cleanExpr = cleanExpr
+    .replace(/\bln\b/gi, 'Math.log')
     .replace(/\b(sin|cos|tan|sqrt|abs|log|exp|floor|ceil|round)\b/gi, 'Math.$1')
     .replace(/\bpi\b/gi, 'Math.PI')
     .replace(/\be\b/gi, 'Math.E')
@@ -308,7 +309,13 @@ export default function ScenePrimitiveRenderer({ scene, width = 680, height = 42
     const concept = (scene.concept || '').toLowerCase();
 
     if (Object.keys(raw).length === 0) {
-      if (concept.includes('pyramid')) {
+      if (concept.includes('force') || concept.includes('newton') || concept.includes('f = ma') || concept.includes('f=ma')) {
+        raw.mass = 5;
+        raw.acceleration = 2;
+      } else if (concept.includes('unit circle') || concept.includes('trigonometry') || concept.includes('sin') || concept.includes('cos')) {
+        raw.angle1 = 30;
+        raw.angle2 = 60;
+      } else if (concept.includes('pyramid')) {
         raw.base_side = 6;
         raw.height = 8;
       } else if (concept.includes('cone') || concept.includes('cylinder') || concept.includes('solid')) {
@@ -394,10 +401,11 @@ export default function ScenePrimitiveRenderer({ scene, width = 680, height = 42
 
   // Parametrically update primitive coordinates when sliders move
   const dynamicPrimitives = useMemo(() => {
-    // 1. Check Deterministic Canonical Scene Generator (Guarantees 100% mathematical perfection)
-    const canonical = buildCanonicalScene(scene.concept, params, scene.viewBox);
-    if (canonical && Array.isArray(canonical.primitives)) {
-      return canonical.primitives;
+    // 1. Check Deterministic Canonical Scene Generator (Guarantees 100% mathematical perfection & validation)
+    const canonical = buildCanonicalScene(scene.concept || scene.known_formula, params, scene.viewBox);
+    const validCanonical = validateScene(canonical);
+    if (validCanonical && Array.isArray(validCanonical.primitives)) {
+      return validCanonical.primitives;
     }
 
     // 2. Fallback scaling for custom AI scenes
@@ -645,8 +653,26 @@ export function validateScene(raw) {
     return null;
   }
 
-  const primitives = sceneObj.primitives.filter((p) => {
-    const required = REQUIRED_FIELDS[p?.type];
+  const primitives = sceneObj.primitives.map((p) => {
+    if (!p || typeof p !== 'object') return null;
+    const item = { ...p };
+    // Normalize aliases for point (cx -> x, cy -> y)
+    if (item.type === 'point') {
+      if (item.x === undefined && item.cx !== undefined) item.x = item.cx;
+      if (item.y === undefined && item.cy !== undefined) item.y = item.cy;
+    }
+    // Normalize label text
+    if (item.type === 'label' && (!item.text || item.text === '') && item.label) {
+      item.text = String(item.label);
+    }
+    // Normalize number_line
+    if (item.type === 'number_line' && item.value === undefined) {
+      item.value = item.xMin !== undefined ? item.xMin : 0;
+    }
+    return item;
+  }).filter((p) => {
+    if (!p) return false;
+    const required = REQUIRED_FIELDS[p.type];
     if (!required) return false;
     return required.every((field) => {
       const v = p[field];
