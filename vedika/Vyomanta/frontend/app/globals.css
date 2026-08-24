@@ -1,3 +1,13 @@
+@import 'katex/dist/katex.min.css';
+
+/* KaTeX Theme Adaptability */
+.katex {
+  color: inherit !important;
+}
+.katex-display {
+  margin: 14px 0 !important;
+}
+
 :root {
   /* Default: Light Theme (Soft Pastel style) */
   --bg: #F4F7FB;

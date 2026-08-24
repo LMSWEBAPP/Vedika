@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { FileText, Clock, CheckCircle, X, ChevronRight, HelpCircle, ArrowLeft, Send, AlertCircle } from 'lucide-react';
 import { T } from '@/lib/lms-data';
 import { useMediaQuery, isMobileMQ } from '@/lib/useMediaQuery';
-import { getAssignments, getAssignmentSubmissions, submitAssignmentResponse, getCourses } from '@/lib/frappe';
+import { getAssignments, getAssignmentSubmissions, submitAssignmentResponse, getCourses, parseQuestionsList } from '@/lib/frappe';
 
 export default function StudentAssignmentsPage() {
   const isMobile = useMediaQuery(isMobileMQ);
@@ -19,7 +19,8 @@ export default function StudentAssignmentsPage() {
   // Active Assignment Submission Modal
   const [selectedAssignment, setSelectedAssignment] = useState(null);
   const [isViewingPrompt, setIsViewingPrompt] = useState(false);
-  const [solutionText, setSolutionText] = useState('');
+  const [activeQuestionIndex, setActiveQuestionIndex] = useState(0);
+  const [questionAnswers, setQuestionAnswers] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
 
@@ -55,18 +56,54 @@ export default function StudentAssignmentsPage() {
   }, [currentUser]);
 
   const handleOpenPrompt = (ass) => {
-    setSelectedAssignment(ass);
+    const resolvedQuestions = parseQuestionsList(ass.question || '', ass.questions, ass.answer);
+    const targetAss = { ...ass, questions: resolvedQuestions };
+    setSelectedAssignment(targetAss);
     setSuccessMessage('');
+    setActiveQuestionIndex(0);
     
     // Check if there is an existing submission to prepopulate
     const existingSub = submissions.find(s => s.assignment === ass.id && (s.member === currentUser?.username || s.member === currentUser?.email));
-    setSolutionText(existingSub ? existingSub.answer : '');
+    
+    const initialAns = {};
+    if (existingSub && existingSub.answer) {
+      initialAns[0] = existingSub.answer;
+    }
+    setQuestionAnswers(initialAns);
     setIsViewingPrompt(true);
   };
 
   const handleAssignmentSubmit = async (e) => {
     e.preventDefault();
-    if (!selectedAssignment || !currentUser || !solutionText.trim()) return;
+    if (!selectedAssignment || !currentUser) return;
+
+    const qList = parseQuestionsList(selectedAssignment.question || '', selectedAssignment.questions, selectedAssignment.answer);
+
+    const minChars = selectedAssignment.min_char_count !== undefined ? selectedAssignment.min_char_count : 20;
+
+    // Validate that EVERY question meets the minimum requirement
+    for (let i = 0; i < qList.length; i++) {
+      const text = (questionAnswers[i] || '').trim();
+      if (selectedAssignment.type === 'Text') {
+        if (text.length < minChars) {
+          alert(`Question ${i + 1} requires at least ${minChars} characters before submitting. Currently: ${text.length} characters.`);
+          setActiveQuestionIndex(i);
+          return;
+        }
+      } else {
+        if (!text) {
+          alert(`Please provide a response for Question ${i + 1}.`);
+          setActiveQuestionIndex(i);
+          return;
+        }
+      }
+    }
+
+    const fullAnswerText = qList.map((q, idx) => {
+      const ans = (questionAnswers[idx] || '').trim();
+      return qList.length > 1 ? `[Question ${idx + 1}]\n${ans}` : ans;
+    }).join('\n\n');
+
     setSubmitting(true);
     setSuccessMessage('');
 
@@ -77,7 +114,7 @@ export default function StudentAssignmentsPage() {
         type: selectedAssignment.type || 'Text',
         member: currentUser.username || currentUser.email,
         member_name: currentUser.name || 'Student',
-        answer: solutionText,
+        answer: fullAnswerText,
         course: selectedAssignment.course,
         question: selectedAssignment.question || ''
       };
@@ -97,22 +134,25 @@ export default function StudentAssignmentsPage() {
   };
 
   // Helper to map course ID to name
-  const getCourseName = (courseId) => {
-    return courses.find(c => c.id === courseId)?.title || "Course Topic";
+  const getCourseName = (ass) => {
+    if (ass.custom_course_title) return ass.custom_course_title;
+    return courses.find(c => c.id === ass.course)?.title || ass.course || "Course Topic";
   };
 
   // Helper to get assignment submission status
   const getAssignmentStatus = (assId) => {
-    if (!currentUser) return { status: 'Not Submitted', comments: null, evaluator: null };
+    if (!currentUser) return { status: 'Not Submitted', comments: null, evaluator: null, score: null, ai_evaluation: null };
     
     const sub = submissions.find(s => s.assignment === assId && (s.member === currentUser.username || s.member === currentUser.email));
-    if (!sub) return { status: 'Not Submitted', comments: null, evaluator: null };
+    if (!sub) return { status: 'Not Submitted', comments: null, evaluator: null, score: null, ai_evaluation: null };
 
     return {
       status: sub.status || 'Not Graded',
       comments: sub.comments,
       evaluator: sub.evaluator,
-      answer: sub.answer
+      answer: sub.answer,
+      score: sub.score,
+      ai_evaluation: sub.ai_evaluation
     };
   };
 
@@ -186,29 +226,70 @@ export default function StudentAssignmentsPage() {
                     </h3>
                   </div>
 
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
-                    <span style={{ fontSize: 9.5, background: `${T.purple}15`, border: `1px solid ${T.purple}25`, color: T.purple, padding: '2px 8px', borderRadius: 4 }}>
-                      {getCourseName(ass.course)}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
+                    <span
+                      title={getCourseName(ass)}
+                      style={{
+                        fontSize: 9.5,
+                        background: `${T.purple}15`,
+                        border: `1px solid ${T.purple}25`,
+                        color: T.purple,
+                        padding: '3px 8px',
+                        borderRadius: 4,
+                        maxWidth: 200,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        display: 'inline-block'
+                      }}
+                    >
+                      {getCourseName(ass)}
                     </span>
-                    <span style={{ fontSize: 9.5, background: `${T.accent}15`, border: `1px solid ${T.accent}25`, color: T.accent, padding: '2px 8px', borderRadius: 4 }}>
+                    <span style={{ fontSize: 9.5, background: `${T.accent}15`, border: `1px solid ${T.accent}25`, color: T.accent, padding: '3px 8px', borderRadius: 4, whiteSpace: 'nowrap' }}>
                       Mode: {ass.type}
                     </span>
+                    {ass.questions?.length > 1 && (
+                      <span style={{ fontSize: 9.5, background: `${T.green}15`, border: `1px solid ${T.green}25`, color: T.green, padding: '3px 8px', borderRadius: 4, whiteSpace: 'nowrap' }}>
+                        {ass.questions.length} Questions
+                      </span>
+                    )}
                   </div>
 
-                  {ass.question && (
-                    <p
-                      style={{
-                        color: T.muted,
-                        fontSize: 12.5,
-                        lineHeight: 1.5,
-                        margin: '0 0 16px 0',
-                        display: '-webkit-box',
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: 'vertical',
-                        overflow: 'hidden'
-                      }}
-                      dangerouslySetInnerHTML={{ __html: ass.question }}
-                    />
+                  {ass.questions && ass.questions.length > 1 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, margin: '0 0 16px 0' }}>
+                      {ass.questions.map((q, qIdx) => (
+                        <div
+                          key={qIdx}
+                          style={{
+                            fontSize: 12.5,
+                            color: T.muted,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            lineHeight: 1.4
+                          }}
+                        >
+                          <span style={{ fontWeight: 700, color: T.purple, marginRight: 6 }}>Q{qIdx + 1}:</span>
+                          {q.prompt?.replace(/<[^>]*>/g, '') || ''}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    ass.question && (
+                      <p
+                        style={{
+                          color: T.muted,
+                          fontSize: 12.5,
+                          lineHeight: 1.5,
+                          margin: '0 0 16px 0',
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden'
+                        }}
+                        dangerouslySetInnerHTML={{ __html: ass.question }}
+                      />
+                    )
                   )}
                 </div>
 
@@ -217,12 +298,12 @@ export default function StudentAssignmentsPage() {
                   <div>
                     {subStatus.status === 'Pass' && (
                       <span style={{ fontSize: 11.5, color: T.green, display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600 }}>
-                        <CheckCircle size={13} /> Passed
+                        <CheckCircle size={13} /> Passed {subStatus.score !== null && subStatus.score !== undefined ? `(${subStatus.score}/100)` : ''}
                       </span>
                     )}
                     {subStatus.status === 'Fail' && (
                       <span style={{ fontSize: 11.5, color: T.red, fontWeight: 600 }}>
-                        Rejected / Fail
+                        Rejected / Fail {subStatus.score !== null && subStatus.score !== undefined ? `(${subStatus.score}/100)` : ''}
                       </span>
                     )}
                     {subStatus.status === 'Not Graded' && (
@@ -275,198 +356,325 @@ export default function StudentAssignmentsPage() {
           zIndex: 1000,
           padding: 16
         }}>
-          <div style={{
-            background: T.s1,
-            border: `1px solid ${T.border}`,
-            borderRadius: 16,
-            width: '100%',
-            maxWidth: 600,
-            boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
-            maxHeight: '85vh',
-            display: 'flex',
-            flexDirection: 'column'
-          }}>
-            {/* Modal Header */}
-            <div style={{
-              padding: '18px 24px',
-              borderBottom: `1px solid ${T.border}`,
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center'
-            }}>
-              <div>
-                <h2 style={{ margin: 0, color: T.text, fontSize: 16, fontWeight: 700 }}>
-                  {selectedAssignment.title}
-                </h2>
-                <span style={{ fontSize: 11.5, color: T.muted }}>
-                  Response Type: {selectedAssignment.type}
-                </span>
-              </div>
-              <button
-                onClick={() => setIsViewingPrompt(false)}
-                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: T.muted, padding: 0 }}
-              >
-                <X size={20} />
-              </button>
-            </div>
+          {(() => {
+            const qList = parseQuestionsList(selectedAssignment.question || '', selectedAssignment.questions, selectedAssignment.answer);
+            const currentQ = qList[activeQuestionIndex] || qList[0];
+            const isLastQuestion = activeQuestionIndex === qList.length - 1;
 
-            {/* Scrollable Modal Content */}
-            <div style={{ padding: 24, overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 20 }}>
-              
-              {/* Question Box */}
-              <div>
-                <h4 style={{ color: T.text, fontSize: 13.5, fontWeight: 700, margin: '0 0 8px 0' }}>Assignment Prompt</h4>
-                <div
-                  style={{
-                    color: T.muted,
-                    fontSize: 13.5,
-                    lineHeight: 1.6,
-                    background: T.s2,
-                    padding: 16,
-                    borderRadius: 8,
-                    border: `1px solid ${T.border}`
-                  }}
-                  dangerouslySetInnerHTML={{ __html: selectedAssignment.question || 'No prompt instructions provided.' }}
-                />
-              </div>
-
-              {/* Status & Feedback box if submitted */}
-              {(() => {
-                const subStatus = getAssignmentStatus(selectedAssignment.id);
-                if (subStatus.status === 'Not Submitted') return null;
-
-                return (
-                  <div style={{
-                    background: subStatus.status === 'Pass' ? 'rgba(46, 213, 115, 0.05)' : subStatus.status === 'Fail' ? 'rgba(245, 91, 107, 0.05)' : 'rgba(255, 165, 2, 0.05)',
-                    border: `1px solid ${subStatus.status === 'Pass' ? `${T.green}30` : subStatus.status === 'Fail' ? `${T.red}30` : `${T.amber}30`}`,
-                    padding: 14,
-                    borderRadius: 8
-                  }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: subStatus.status === 'Pass' ? T.green : subStatus.status === 'Fail' ? T.red : T.amber }}>
-                      Status: {subStatus.status === 'Pass' ? 'PASSED' : subStatus.status === 'Fail' ? 'REJECTED' : 'PENDING EVALUATION'}
+            return (
+              <div style={{
+                background: T.s1,
+                border: `1px solid ${T.border}`,
+                borderRadius: 16,
+                width: '100%',
+                maxWidth: 640,
+                boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
+                maxHeight: '85vh',
+                display: 'flex',
+                flexDirection: 'column'
+              }}>
+                {/* Modal Header */}
+                <div style={{
+                  padding: '18px 24px',
+                  borderBottom: `1px solid ${T.border}`,
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center'
+                }}>
+                  <div>
+                    <h2 style={{ margin: 0, color: T.text, fontSize: 16, fontWeight: 700 }}>
+                      {selectedAssignment.title}
+                    </h2>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
+                      <span style={{ fontSize: 11.5, color: T.muted }}>
+                        Mode: {selectedAssignment.type}
+                      </span>
+                      {qList.length > 1 && (
+                        <span style={{ fontSize: 11, background: `${T.purple}20`, color: T.purple, padding: '1px 8px', borderRadius: 10, fontWeight: 700 }}>
+                          Question {activeQuestionIndex + 1} of {qList.length}
+                        </span>
+                      )}
                     </div>
-                    {subStatus.comments && (
-                      <div style={{ fontSize: 12.5, color: T.text, marginTop: 8, fontStyle: 'italic' }}>
-                        &ldquo;{subStatus.comments}&rdquo; <span style={{ color: T.muted, fontSize: 11, fontStyle: 'normal' }}>— Graded by {subStatus.evaluator || 'Instructor'}</span>
-                      </div>
-                    )}
                   </div>
-                );
-              })()}
-
-              {/* Submission Form */}
-              <form onSubmit={handleAssignmentSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <label style={{ fontSize: 13, fontWeight: 700, color: T.text }}>Your Response Solution</label>
-                  
-                  {selectedAssignment.type === 'Text' ? (
-                    <textarea
-                      required
-                      placeholder="Type your markdown source code or text explanation here..."
-                      value={solutionText}
-                      onChange={(e) => setSolutionText(e.target.value)}
-                      disabled={getAssignmentStatus(selectedAssignment.id).status === 'Pass'}
-                      style={{
-                        background: T.s2,
-                        border: `1px solid ${T.border}`,
-                        borderRadius: 8,
-                        padding: '10px 12px',
-                        color: T.text,
-                        fontSize: 13,
-                        outline: 'none',
-                        fontFamily: 'monospace',
-                        minHeight: 140,
-                        resize: 'vertical'
-                      }}
-                    />
-                  ) : (
-                    <input
-                      type="text"
-                      required
-                      placeholder={selectedAssignment.type === 'URL' ? "https://github.com/your-repo" : "Submit file link or description"}
-                      value={solutionText}
-                      onChange={(e) => setSolutionText(e.target.value)}
-                      disabled={getAssignmentStatus(selectedAssignment.id).status === 'Pass'}
-                      style={{
-                        background: T.s2,
-                        border: `1px solid ${T.border}`,
-                        borderRadius: 8,
-                        padding: '10px 12px',
-                        color: T.text,
-                        fontSize: 13,
-                        outline: 'none',
-                        fontFamily: 'inherit'
-                      }}
-                    />
-                  )}
+                  <button
+                    onClick={() => setIsViewingPrompt(false)}
+                    style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: T.muted, padding: 0 }}
+                  >
+                    <X size={20} />
+                  </button>
                 </div>
 
-                {successMessage && (
-                  <div style={{
-                    background: 'rgba(46, 213, 115, 0.1)',
-                    border: `1px solid rgba(46, 213, 115, 0.25)`,
-                    color: T.green,
-                    padding: '10px 12px',
-                    borderRadius: 8,
-                    fontSize: 12.5
-                  }}>
-                    {successMessage}
+                {/* Question Step Pills */}
+                {qList.length > 1 && (
+                  <div style={{ display: 'flex', gap: 8, padding: '12px 24px', borderBottom: `1px solid ${T.border}`, background: T.s2 }}>
+                    {qList.map((_, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => setActiveQuestionIndex(idx)}
+                        style={{
+                          flex: 1,
+                          padding: '6px 0',
+                          fontSize: 12,
+                          fontWeight: 700,
+                          borderRadius: 6,
+                          border: activeQuestionIndex === idx ? `1px solid ${T.purple}` : `1px solid ${T.border}`,
+                          background: activeQuestionIndex === idx ? `${T.purple}25` : 'transparent',
+                          color: activeQuestionIndex === idx ? T.purple : T.muted,
+                          cursor: 'pointer',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        Q{idx + 1}
+                      </button>
+                    ))}
                   </div>
                 )}
 
-                {/* Footer Buttons */}
-                <div style={{
-                  display: 'flex',
-                  justifyContent: 'flex-end',
-                  gap: 10,
-                  borderTop: `1px solid ${T.border}`,
-                  paddingTop: 16,
-                  marginTop: 10
-                }}>
-                  <button
-                    type="button"
-                    onClick={() => setIsViewingPrompt(false)}
-                    style={{
-                      background: 'transparent',
-                      border: `1px solid ${T.border}`,
-                      color: T.text,
-                      padding: '8px 16px',
-                      borderRadius: 8,
-                      fontSize: 12.5,
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Close
-                  </button>
-
-                  {getAssignmentStatus(selectedAssignment.id).status !== 'Pass' && (
-                    <button
-                      type="submit"
-                      disabled={submitting || !solutionText.trim()}
+                {/* Scrollable Modal Content */}
+                <div style={{ padding: 24, overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 20 }}>
+                  
+                  {/* Current Question Box */}
+                  <div>
+                    <h4 style={{ color: T.text, fontSize: 13.5, fontWeight: 700, margin: '0 0 8px 0' }}>
+                      {qList.length > 1 ? `Question ${activeQuestionIndex + 1} Prompt` : 'Assignment Prompt'}
+                    </h4>
+                    <div
                       style={{
-                        background: T.purple,
-                        color: '#fff',
-                        border: 'none',
-                        padding: '8px 18px',
+                        color: T.text,
+                        fontSize: 13.5,
+                        lineHeight: 1.6,
+                        background: T.s2,
+                        padding: 16,
                         borderRadius: 8,
-                        fontSize: 12.5,
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 6
+                        border: `1px solid ${T.border}`
                       }}
-                    >
-                      <Send size={13} /> {submitting ? "Submitting..." : "Submit Response"}
-                    </button>
-                  )}
-                </div>
-              </form>
+                      dangerouslySetInnerHTML={{ __html: currentQ.prompt || 'No prompt details specified.' }}
+                    />
+                  </div>
 
-            </div>
-          </div>
+                  {/* Status & Feedback box if submitted */}
+                  {(() => {
+                    const subStatus = getAssignmentStatus(selectedAssignment.id);
+                    if (subStatus.status === 'Not Submitted') return null;
+
+                    return (
+                      <div style={{
+                        background: subStatus.status === 'Pass' ? 'rgba(46, 213, 115, 0.05)' : subStatus.status === 'Fail' ? 'rgba(245, 91, 107, 0.05)' : 'rgba(255, 165, 2, 0.05)',
+                        border: `1px solid ${subStatus.status === 'Pass' ? `${T.green}30` : subStatus.status === 'Fail' ? `${T.red}30` : `${T.amber}30`}`,
+                        padding: 14,
+                        borderRadius: 8,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 6
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: subStatus.status === 'Pass' ? T.green : subStatus.status === 'Fail' ? T.red : T.amber }}>
+                            Status: {subStatus.status === 'Pass' ? 'PASSED' : subStatus.status === 'Fail' ? 'REJECTED' : 'PENDING EVALUATION'}
+                          </div>
+                          {subStatus.score !== null && subStatus.score !== undefined && (
+                            <span style={{ fontSize: 12, fontWeight: 700, color: T.purple }}>
+                              Score: {subStatus.score}/100
+                            </span>
+                          )}
+                        </div>
+                        {subStatus.comments && (
+                          <div style={{ fontSize: 12.5, color: T.text, fontStyle: 'italic' }}>
+                            &ldquo;{subStatus.comments}&rdquo; <span style={{ color: T.muted, fontSize: 11, fontStyle: 'normal' }}>— Evaluated by {subStatus.evaluator || 'Instructor'}</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
+                  {/* Submission Form */}
+                  <form onSubmit={handleAssignmentSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <label style={{ fontSize: 13, fontWeight: 700, color: T.text }}>
+                        {qList.length > 1 ? `Your Answer for Question ${activeQuestionIndex + 1}` : 'Your Response Solution'}
+                      </label>
+                      
+                      {selectedAssignment.type === 'Text' ? (
+                        <textarea
+                          required
+                          placeholder={`Type code or answer for Question ${activeQuestionIndex + 1}...`}
+                          value={questionAnswers[activeQuestionIndex] || ''}
+                          onChange={(e) => setQuestionAnswers({ ...questionAnswers, [activeQuestionIndex]: e.target.value })}
+                          disabled={getAssignmentStatus(selectedAssignment.id).status === 'Pass'}
+                          style={{
+                            background: T.s2,
+                            border: `1px solid ${T.border}`,
+                            borderRadius: 8,
+                            padding: '10px 12px',
+                            color: T.text,
+                            fontSize: 13,
+                            outline: 'none',
+                            fontFamily: 'monospace',
+                            minHeight: 130,
+                            resize: 'vertical'
+                          }}
+                        />
+                      ) : (
+                        <input
+                          type="text"
+                          required
+                          placeholder={selectedAssignment.type === 'URL' ? "https://github.com/your-repo" : "Submit file link or description"}
+                          value={questionAnswers[activeQuestionIndex] || ''}
+                          onChange={(e) => setQuestionAnswers({ ...questionAnswers, [activeQuestionIndex]: e.target.value })}
+                          disabled={getAssignmentStatus(selectedAssignment.id).status === 'Pass'}
+                          style={{
+                            background: T.s2,
+                            border: `1px solid ${T.border}`,
+                            borderRadius: 8,
+                            padding: '10px 12px',
+                            color: T.text,
+                            fontSize: 13,
+                            outline: 'none',
+                            fontFamily: 'inherit'
+                          }}
+                        />
+                      )}
+                      {selectedAssignment.type === 'Text' && (() => {
+                        const minChars = selectedAssignment.min_char_count !== undefined ? selectedAssignment.min_char_count : 20;
+                        const currentLen = (questionAnswers[activeQuestionIndex] || '').trim().length;
+                        return (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2, fontSize: 11.5 }}>
+                            {currentLen < minChars ? (
+                              <span style={{ color: T.amber, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <AlertCircle size={12} /> {currentLen} / {minChars} min characters required
+                              </span>
+                            ) : (
+                              <span style={{ color: T.green, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <CheckCircle size={12} /> {currentLen} characters (meets min length)
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    {successMessage && (
+                      <div style={{
+                        background: 'rgba(46, 213, 115, 0.1)',
+                        border: `1px solid rgba(46, 213, 115, 0.25)`,
+                        color: T.green,
+                        padding: '10px 12px',
+                        borderRadius: 8,
+                        fontSize: 12.5
+                      }}>
+                        {successMessage}
+                      </div>
+                    )}
+
+                    {/* Stepper & Footer Buttons */}
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      borderTop: `1px solid ${T.border}`,
+                      paddingTop: 16,
+                      marginTop: 10
+                    }}>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        {activeQuestionIndex > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setActiveQuestionIndex(prev => prev - 1)}
+                            style={{
+                              background: 'transparent',
+                              border: `1px solid ${T.border}`,
+                              color: T.text,
+                              padding: '8px 14px',
+                              borderRadius: 8,
+                              fontSize: 12.5,
+                              cursor: 'pointer'
+                            }}
+                          >
+                            Previous Question
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setIsViewingPrompt(false)}
+                          style={{
+                            background: 'transparent',
+                            border: `1px solid ${T.border}`,
+                            color: T.muted,
+                            padding: '8px 14px',
+                            borderRadius: 8,
+                            fontSize: 12.5,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          Close
+                        </button>
+                      </div>
+
+                      {getAssignmentStatus(selectedAssignment.id).status !== 'Pass' && (
+                        !isLastQuestion ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const minChars = selectedAssignment.min_char_count !== undefined ? selectedAssignment.min_char_count : 20;
+                              const currentText = (questionAnswers[activeQuestionIndex] || '').trim();
+                              if (selectedAssignment.type === 'Text' && currentText.length < minChars) {
+                                alert(`Please enter at least ${minChars} characters for Question ${activeQuestionIndex + 1} before moving to the next question. Currently: ${currentText.length} characters.`);
+                                return;
+                              }
+                              if (!currentText) {
+                                alert(`Please provide a response for Question ${activeQuestionIndex + 1} before moving to the next question.`);
+                                return;
+                              }
+                              setActiveQuestionIndex(prev => prev + 1);
+                            }}
+                            style={{
+                              background: T.purple,
+                              color: '#fff',
+                              border: 'none',
+                              padding: '8px 18px',
+                              borderRadius: 8,
+                              fontSize: 12.5,
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 6
+                            }}
+                          >
+                            Next Question <ChevronRight size={13} />
+                          </button>
+                        ) : (
+                          <button
+                            type="submit"
+                            disabled={submitting}
+                            style={{
+                              background: T.green,
+                              color: '#fff',
+                              border: 'none',
+                              padding: '8px 18px',
+                              borderRadius: 8,
+                              fontSize: 12.5,
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 6
+                            }}
+                          >
+                            <Send size={13} /> {submitting ? "Submitting..." : "Submit All Answers"}
+                          </button>
+                        )
+                      )}
+                    </div>
+                  </form>
+
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
     </div>
   );
 }
+
+

@@ -1738,6 +1738,41 @@ export async function submitQuizResponse(subData) {
 
 // --- LMS Assignment API ---
 
+// Local metadata helpers for custom assignment fields not in standard Frappe schema
+function getAssignmentMetadata(assId) {
+  if (typeof window === 'undefined') return {};
+  try {
+    const store = JSON.parse(localStorage.getItem('assignment_criteria_store') || '{}');
+    return store[assId] || {};
+  } catch (e) { return {}; }
+}
+
+function setAssignmentMetadata(assId, meta) {
+  if (typeof window === 'undefined') return;
+  try {
+    const store = JSON.parse(localStorage.getItem('assignment_criteria_store') || '{}');
+    store[assId] = { ...(store[assId] || {}), ...meta };
+    localStorage.setItem('assignment_criteria_store', JSON.stringify(store));
+  } catch (e) {}
+}
+
+function getStoredAiEval(subId) {
+  if (typeof window === 'undefined') return null;
+  try {
+    const store = JSON.parse(localStorage.getItem('submission_ai_store') || '{}');
+    return store[subId] || null;
+  } catch (e) { return null; }
+}
+
+function setStoredAiEval(subId, score, aiEval) {
+  if (typeof window === 'undefined') return;
+  try {
+    const store = JSON.parse(localStorage.getItem('submission_ai_store') || '{}');
+    store[subId] = { score, ai_evaluation: aiEval };
+    localStorage.setItem('submission_ai_store', JSON.stringify(store));
+  } catch (e) {}
+}
+
 const DEFAULT_ASSIGNMENTS = [
   {
     id: 'assign-python-loops',
@@ -1746,7 +1781,21 @@ const DEFAULT_ASSIGNMENTS = [
     type: 'Text',
     question: '<p>Write a Python function <code>fibonacci(n)</code> that returns the first <code>n</code> Fibonacci numbers as a list. Hand in the source code file or code text.</p>',
     show_answer: true,
-    answer: '<code>def fibonacci(n):\n    if n <= 0: return []\n    if n == 1: return [0]\n    seq = [0, 1]\n    while len(seq) < n:\n        seq.append(seq[-1] + seq[-2])\n    return seq</code>'
+    answer: '<code>def fibonacci(n):\n    if n <= 0: return []\n    if n == 1: return [0]\n    seq = [0, 1]\n    while len(seq) < n:\n        seq.append(seq[-1] + seq[-2])\n    return seq</code>',
+    evaluation_criteria: [
+      'Function named fibonacci(n) returning a list',
+      'Handles edge cases n <= 0 and n == 1 correctly',
+      'Uses loop or recursion to build correct sequence',
+      'Time complexity O(N) or efficient execution'
+    ],
+    pass_threshold: 70,
+    questions: [
+      {
+        id: 1,
+        prompt: '<p>Write a Python function <code>fibonacci(n)</code> that returns the first <code>n</code> Fibonacci numbers as a list.</p>',
+        sample_answer: 'def fibonacci(n):\n    if n <= 0: return []\n    if n == 1: return [0]\n    seq = [0, 1]\n    while len(seq) < n:\n        seq.append(seq[-1] + seq[-2])\n    return seq'
+      }
+    ]
   },
   {
     id: 'assign-dsa-sorting',
@@ -1755,9 +1804,52 @@ const DEFAULT_ASSIGNMENTS = [
     type: 'PDF',
     question: '<p>Compare the computational complexity and space requirements of Merge Sort and In-place Quicksort. Submit a PDF report explaining edge cases.</p>',
     show_answer: false,
-    answer: ''
+    answer: '',
+    evaluation_criteria: [
+      'Accurate comparison of Time Complexity (Best, Average, Worst)',
+      'Detailed explanation of Space Complexity differences',
+      'Discussion of stability and real-world trade-offs',
+      'Edge cases (duplicate elements, sorted array, empty array)'
+    ],
+    pass_threshold: 75,
+    questions: [
+      {
+        id: 1,
+        prompt: '<p>Compare the computational complexity and space requirements of Merge Sort and In-place Quicksort. Submit a PDF report explaining edge cases.</p>',
+        sample_answer: ''
+      }
+    ]
   }
 ];
+
+export function parseQuestionsList(questionStr, extraQuestions, defaultAnswer) {
+  if (Array.isArray(extraQuestions) && extraQuestions.length > 0) {
+    return extraQuestions;
+  }
+  if (!questionStr) return [{ id: 1, prompt: '', sample_answer: defaultAnswer || '' }];
+
+  const regex = /(?:Question\s+(\d+)[:\.-]?\s*)/gi;
+  const matches = [...questionStr.matchAll(regex)];
+
+  if (matches.length > 1) {
+    const parsed = [];
+    for (let i = 0; i < matches.length; i++) {
+      const startIndex = matches[i].index + matches[i][0].length;
+      const endIndex = (i + 1 < matches.length) ? matches[i + 1].index : questionStr.length;
+      const promptText = questionStr.substring(startIndex, endIndex).trim();
+      if (promptText) {
+        parsed.push({
+          id: i + 1,
+          prompt: promptText,
+          sample_answer: ''
+        });
+      }
+    }
+    if (parsed.length > 0) return parsed;
+  }
+
+  return [{ id: 1, prompt: questionStr, sample_answer: defaultAnswer || '' }];
+}
 
 export async function getAssignments() {
   if (FRAPPE_URL) {
@@ -1766,15 +1858,28 @@ export async function getAssignments() {
         fields: JSON.stringify(["name", "title", "type", "course", "question", "show_answer", "answer"]),
         limit_page_length: 100
       });
-      return assignments.map(a => ({
-        id: a.name,
-        title: a.title,
-        type: a.type || 'Text',
-        course: a.course,
-        question: a.question || '',
-        show_answer: !!a.show_answer,
-        answer: a.answer || ''
-      }));
+      return assignments.map(a => {
+        const extra = getAssignmentMetadata(a.name);
+        const resolvedQuestions = parseQuestionsList(a.question || '', extra.questions, a.answer);
+        return {
+          id: a.name,
+          title: a.title,
+          type: a.type || 'Text',
+          course: a.course,
+          question: a.question || '',
+          show_answer: !!a.show_answer,
+          answer: a.answer || '',
+          evaluation_criteria: extra.evaluation_criteria || [
+            'Function/solution correctly implements requested logic',
+            'Handles edge cases and valid input boundaries',
+            'Clean structure, readability, and formatting'
+          ],
+          pass_threshold: extra.pass_threshold || 70,
+          min_char_count: extra.min_char_count !== undefined ? extra.min_char_count : 20,
+          questions: resolvedQuestions,
+          custom_course_title: extra.custom_course_title || ''
+        };
+      });
     } catch (e) {
       console.error("Failed to fetch assignments. Falling back.", e);
     }
@@ -1783,7 +1888,21 @@ export async function getAssignments() {
   if (typeof window !== 'undefined') {
     const saved = localStorage.getItem('admin_assignments_list');
     if (saved) {
-      try { return JSON.parse(saved); } catch (e) {}
+      try {
+        const list = JSON.parse(saved);
+        return list.map(a => {
+          const extra = getAssignmentMetadata(a.id);
+          const resolvedQuestions = parseQuestionsList(a.question || '', extra.questions || a.questions, a.answer);
+          return {
+            ...a,
+            evaluation_criteria: extra.evaluation_criteria || a.evaluation_criteria || [],
+            pass_threshold: extra.pass_threshold || a.pass_threshold || 70,
+            min_char_count: extra.min_char_count !== undefined ? extra.min_char_count : (a.min_char_count !== undefined ? a.min_char_count : 20),
+            questions: resolvedQuestions,
+            custom_course_title: extra.custom_course_title || a.custom_course_title || ''
+          };
+        });
+      } catch (e) {}
     }
     localStorage.setItem('admin_assignments_list', JSON.stringify(DEFAULT_ASSIGNMENTS));
     return DEFAULT_ASSIGNMENTS;
@@ -1792,17 +1911,29 @@ export async function getAssignments() {
 }
 
 export async function createAssignment(assignmentData) {
+  const combinedQuestion = (assignmentData.questions && assignmentData.questions.length > 0)
+    ? assignmentData.questions.map((q, idx) => `Question ${idx + 1}: ${q.prompt}`).join('\n\n')
+    : (assignmentData.question || 'Assignment prompt details.');
+
   if (FRAPPE_URL) {
     try {
       const result = await frappeRestPost("LMS Assignment", {
         title: assignmentData.title,
         type: assignmentData.type || 'Text',
         course: assignmentData.course,
-        question: assignmentData.question || 'Assignment prompt details.',
+        question: combinedQuestion,
         show_answer: assignmentData.show_answer ? 1 : 0,
         answer: assignmentData.answer || ''
       });
-      return { ...assignmentData, id: result.name };
+      const assId = result.name;
+      setAssignmentMetadata(assId, {
+        evaluation_criteria: assignmentData.evaluation_criteria || [],
+        pass_threshold: assignmentData.pass_threshold || 70,
+        min_char_count: assignmentData.min_char_count !== undefined ? assignmentData.min_char_count : 20,
+        questions: assignmentData.questions || [],
+        custom_course_title: assignmentData.custom_course_title || ''
+      });
+      return { ...assignmentData, id: assId, question: combinedQuestion };
     } catch (e) {
       console.error("Failed to create assignment. Falling back.", e);
       throw e;
@@ -1812,26 +1943,45 @@ export async function createAssignment(assignmentData) {
   if (typeof window !== 'undefined') {
     const saved = localStorage.getItem('admin_assignments_list') || JSON.stringify(DEFAULT_ASSIGNMENTS);
     const list = JSON.parse(saved);
-    const newAss = { ...assignmentData, id: 'assign-' + Date.now() };
+    const newAss = { ...assignmentData, id: 'assign-' + Date.now(), question: combinedQuestion };
     list.unshift(newAss);
     localStorage.setItem('admin_assignments_list', JSON.stringify(list));
+    setAssignmentMetadata(newAss.id, {
+      evaluation_criteria: assignmentData.evaluation_criteria || [],
+      pass_threshold: assignmentData.pass_threshold || 70,
+      min_char_count: assignmentData.min_char_count !== undefined ? assignmentData.min_char_count : 20,
+      questions: assignmentData.questions || [],
+      custom_course_title: assignmentData.custom_course_title || ''
+    });
     return newAss;
   }
   return assignmentData;
 }
 
 export async function updateAssignment(id, assignmentData) {
+  const combinedQuestion = (assignmentData.questions && assignmentData.questions.length > 0)
+    ? assignmentData.questions.map((q, idx) => `Question ${idx + 1}: ${q.prompt}`).join('\n\n')
+    : (assignmentData.question || 'Assignment prompt details.');
+
+  setAssignmentMetadata(id, {
+    evaluation_criteria: assignmentData.evaluation_criteria || [],
+    pass_threshold: assignmentData.pass_threshold || 70,
+    min_char_count: assignmentData.min_char_count !== undefined ? assignmentData.min_char_count : 20,
+    questions: assignmentData.questions || [],
+    custom_course_title: assignmentData.custom_course_title || ''
+  });
+
   if (FRAPPE_URL) {
     try {
       await frappeRestPut("LMS Assignment", id, {
         title: assignmentData.title,
         type: assignmentData.type,
         course: assignmentData.course,
-        question: assignmentData.question || 'Assignment prompt details.',
+        question: combinedQuestion,
         show_answer: assignmentData.show_answer ? 1 : 0,
         answer: assignmentData.answer
       });
-      return assignmentData;
+      return { ...assignmentData, question: combinedQuestion };
     } catch (e) {
       console.error("Failed to update assignment. Falling back.", e);
       throw e;
@@ -1841,7 +1991,7 @@ export async function updateAssignment(id, assignmentData) {
   if (typeof window !== 'undefined') {
     const saved = localStorage.getItem('admin_assignments_list') || JSON.stringify(DEFAULT_ASSIGNMENTS);
     const list = JSON.parse(saved);
-    const updated = list.map(a => a.id === id ? { ...a, ...assignmentData } : a);
+    const updated = list.map(a => a.id === id ? { ...a, ...assignmentData, question: combinedQuestion } : a);
     localStorage.setItem('admin_assignments_list', JSON.stringify(updated));
     return assignmentData;
   }
@@ -1877,10 +2027,15 @@ export async function getAssignmentSubmissions() {
         fields: JSON.stringify(["name", "assignment", "assignment_title", "type", "member", "member_name", "evaluator", "assignment_attachment", "answer", "status", "question", "comments", "course", "lesson"]),
         limit_page_length: 100
       });
-      return (res || []).map(s => ({
-        id: s.name,
-        ...s
-      }));
+      return (res || []).map(s => {
+        const extra = getStoredAiEval(s.name) || {};
+        return {
+          id: s.name,
+          ...s,
+          score: extra.score !== undefined ? extra.score : s.score,
+          ai_evaluation: extra.ai_evaluation || s.ai_evaluation || null
+        };
+      });
     } catch (e) {
       console.error("Failed to fetch assignment submissions.", e);
     }
@@ -1929,6 +2084,9 @@ export async function submitAssignmentResponse(subData) {
 }
 
 export async function gradeAssignmentSubmission(id, gradeData) {
+  if (gradeData.score !== undefined || gradeData.ai_evaluation) {
+    setStoredAiEval(id, gradeData.score, gradeData.ai_evaluation);
+  }
   if (FRAPPE_URL) {
     try {
       return await frappeRestPut("LMS Assignment Submission", id, {

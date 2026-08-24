@@ -8,11 +8,13 @@ import {
   BookOpen, Code, Brain, Settings, Sparkles, Loader2, FlaskConical, 
   Upload, Mic, MicOff, Check, RefreshCw, Printer, AlertTriangle, FileCheck,
   Edit3, ListFilter, Gauge, Zap, Search, Activity, BarChart2, Trash2,
-  Radio, PhoneOff, Wifi
+  Radio, PhoneOff, Wifi, Lightbulb, Flag, Clock, Target, CheckCircle2, XCircle
 } from 'lucide-react';
 import { useMediaQuery, isMobileMQ } from '@/lib/useMediaQuery';
 import { getJwtToken } from '@/lib/jwtCache';
 import dynamic from 'next/dynamic';
+import MathEquationRenderer from '@/components/labs/MathEquationRenderer';
+import aptitudeData from '@/lib/aptitudeQuestions.json';
 
 const PetAvatar = dynamic(() => import('@/components/PetAvatar'), { ssr: false });
 
@@ -22,12 +24,22 @@ export default function VivaInterviewPage() {
   const isMobile = useMediaQuery(isMobileMQ);
 
   // Configuration States
-  const [sessionMode, setSessionMode] = useState('viva'); // 'viva' | 'interview'
+  const [sessionMode, setSessionMode] = useState('viva'); // 'viva' | 'interview' | 'aptitude'
   const [subject, setSubject] = useState('');
   const [level, setLevel] = useState('College'); // Viva: 'School' | 'College' | 'PG', Interview: 'Junior' | 'Mid-Level' | 'Senior'
   const [difficulty, setDifficulty] = useState('Medium'); // 'Easy' | 'Medium' | 'Hard'
   const [topic, setTopic] = useState('');
   const [activeSessionTopic, setActiveSessionTopic] = useState('');
+
+  // Aptitude Mode States
+  const [aptDifficulty, setAptDifficulty] = useState('Medium'); // 'Easy' | 'Medium' | 'Difficult'
+  const [currentAptQuestion, setCurrentAptQuestion] = useState(null);
+  const [selectedAptOption, setSelectedAptOption] = useState(null);
+  const [showAptHint, setShowAptHint] = useState(false);
+  const [showAptSolution, setShowAptSolution] = useState(false);
+  const [aptTimer, setAptTimer] = useState(180);
+  const [aptScore, setAptScore] = useState({ correct: 0, total: 0, streak: 0 });
+  const [generatingAiAptitude, setGeneratingAiAptitude] = useState(false);
   
   // Custom Viva Setup States
   const [vivaSource, setVivaSource] = useState('custom');
@@ -125,6 +137,113 @@ export default function VivaInterviewPage() {
   useEffect(() => {
     userAnswerRef.current = userAnswer;
   }, [userAnswer]);
+
+  // Aptitude Question Loader (Combines static seed JSON + locally cached AI questions)
+  const getCombinedAptitudeQuestions = () => {
+    const staticList = aptitudeData?.questions || [];
+    let cachedList = [];
+    try {
+      if (typeof window !== 'undefined') {
+        const stored = localStorage.getItem('vedika_custom_aptitude_pool');
+        if (stored) cachedList = JSON.parse(stored);
+      }
+    } catch (e) {}
+    return [...staticList, ...cachedList];
+  };
+
+  const loadRandomAptitudeQuestion = (overrideDiff = null) => {
+    const targetDiff = overrideDiff || aptDifficulty;
+    const allQuestions = getCombinedAptitudeQuestions();
+    const pool = allQuestions.filter(q => q.difficulty === targetDiff);
+    if (!pool || pool.length === 0) return;
+
+    let nextQ = pool[Math.floor(Math.random() * pool.length)];
+    if (pool.length > 1 && currentAptQuestion && nextQ.id === currentAptQuestion.id) {
+      const remaining = pool.filter(q => q.id !== currentAptQuestion.id);
+      nextQ = remaining[Math.floor(Math.random() * remaining.length)];
+    }
+
+    setCurrentAptQuestion(nextQ);
+    setSelectedAptOption(null);
+    setShowAptHint(false);
+    setShowAptSolution(false);
+    const initialTime = targetDiff === 'Easy' ? 120 : targetDiff === 'Medium' ? 180 : 240;
+    setAptTimer(initialTime);
+  };
+
+  // Generate Fresh AI Aptitude Question via Gemini
+  const handleGenerateAiAptitudeQuestion = async () => {
+    setGeneratingAiAptitude(true);
+    try {
+      const res = await fetch('/api/generate-aptitude', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ difficulty: aptDifficulty })
+      });
+      const data = await res.json();
+      if (data?.success && data?.question) {
+        const newQ = data.question;
+        // Save to local cache so tokens are never wasted on regenerating the same problem!
+        try {
+          if (typeof window !== 'undefined') {
+            const cached = JSON.parse(localStorage.getItem('vedika_custom_aptitude_pool') || '[]');
+            cached.push(newQ);
+            localStorage.setItem('vedika_custom_aptitude_pool', JSON.stringify(cached));
+          }
+        } catch (e) {}
+
+        setCurrentAptQuestion(newQ);
+        setSelectedAptOption(null);
+        setShowAptHint(false);
+        setShowAptSolution(false);
+        const initialTime = aptDifficulty === 'Easy' ? 120 : aptDifficulty === 'Medium' ? 180 : 240;
+        setAptTimer(initialTime);
+      } else {
+        loadRandomAptitudeQuestion();
+      }
+    } catch (err) {
+      console.error('Failed to generate AI question:', err);
+      loadRandomAptitudeQuestion();
+    } finally {
+      setGeneratingAiAptitude(false);
+    }
+  };
+
+  // Handle option selection
+  const handleSelectAptOption = (optIndex) => {
+    if (selectedAptOption !== null || showAptSolution) return;
+    setSelectedAptOption(optIndex);
+    const isCorrect = optIndex === currentAptQuestion.correct_option;
+    setAptScore(prev => ({
+      correct: isCorrect ? prev.correct + 1 : prev.correct,
+      total: prev.total + 1,
+      streak: isCorrect ? prev.streak + 1 : 0
+    }));
+  };
+
+  // Handle Give Up
+  const handleAptGiveUp = () => {
+    setShowAptSolution(true);
+  };
+
+  // Aptitude Active Timer Effect
+  useEffect(() => {
+    let timerId = null;
+    if (sessionMode === 'aptitude' && currentAptQuestion && !showAptSolution && aptTimer > 0) {
+      timerId = setInterval(() => {
+        setAptTimer(prev => {
+          if (prev <= 1) {
+            setShowAptSolution(true);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => {
+      if (timerId) clearInterval(timerId);
+    };
+  }, [sessionMode, currentAptQuestion, showAptSolution, aptTimer]);
 
   // Teardown all live audio playback
   const stopAllLiveAudioPlaybacks = () => {
@@ -1558,6 +1677,23 @@ export default function VivaInterviewPage() {
               >
                 Technical Interview
               </button>
+              <button
+                onClick={() => setSessionMode('aptitude')}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: 8,
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
+                  border: 'none',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  background: sessionMode === 'aptitude' ? 'var(--amber)' : 'transparent',
+                  color: sessionMode === 'aptitude' ? '#FFFFFF' : 'var(--muted)',
+                  boxShadow: sessionMode === 'aptitude' ? '0 2px 8px rgba(245, 158, 11, 0.3)' : 'none'
+                }}
+              >
+                Aptitude Practice
+              </button>
             </div>
           )}
         </div>
@@ -1642,15 +1778,92 @@ export default function VivaInterviewPage() {
                 alignItems: 'center',
                 gap: 8
               }}>
-                {sessionMode === 'viva' ? <FlaskConical size={20} style={{ color: 'var(--purple)' }} /> : <Code size={20} style={{ color: 'var(--accent)' }} />}
-                {sessionMode === 'viva' ? 'Academic Lab Viva Setup' : 'Technical Job Interview Setup'}
+                {sessionMode === 'viva' ? (
+                  <><FlaskConical size={20} style={{ color: 'var(--purple)' }} /> Academic Lab Viva Setup</>
+                ) : sessionMode === 'interview' ? (
+                  <><Code size={20} style={{ color: 'var(--accent)' }} /> Technical Job Interview Setup</>
+                ) : (
+                  <><Target size={20} style={{ color: 'var(--amber)' }} /> Quantitative & Math Aptitude Challenge</>
+                )}
               </h2>
               <p style={{ margin: '4px 0 0 0', fontSize: '0.75rem', color: 'var(--muted)', lineHeight: 1.4 }}>
                 {sessionMode === 'viva' 
                   ? 'Enter any custom topic for your viva examination. Select your desired difficulty level before starting.' 
-                  : 'Enter your target tech stack or upload your resume/JD. Select difficulty to calibrate examiner depth.'}
+                  : sessionMode === 'interview'
+                  ? 'Enter your target tech stack or upload your resume/JD. Select difficulty to calibrate examiner depth.'
+                  : 'Practice quantitative aptitude, algebra, probability, and geometry questions with live timers, hints, and step-by-step KaTeX math solutions.'}
               </p>
             </div>
+
+            {sessionMode === 'aptitude' ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                {/* APTITUDE DIFFICULTY SELECTOR */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 800, color: 'var(--text)', textTransform: 'uppercase', marginBottom: 8, letterSpacing: '0.05em' }}>
+                    Select Aptitude Difficulty Level
+                  </label>
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: 10 }}>
+                    {[
+                      { id: 'Easy', label: 'Easy', desc: '120s timer • Basic arithmetic & formula applications', color: '#10B981' },
+                      { id: 'Medium', label: 'Medium', desc: '180s timer • Ratios, probability & multi-step math', color: 'var(--purple)' },
+                      { id: 'Difficult', label: 'Difficult', desc: '240s timer • Calculus, geometry & advanced algebra', color: 'var(--amber)' }
+                    ].map(item => (
+                      <div
+                        key={item.id}
+                        onClick={() => setAptDifficulty(item.id)}
+                        style={{
+                          padding: '12px 14px',
+                          borderRadius: 12,
+                          border: `2px solid ${aptDifficulty === item.id ? item.color : 'var(--border)'}`,
+                          background: aptDifficulty === item.id ? `${item.color}15` : 'var(--s2)',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 4,
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: '0.85rem', fontWeight: 800, color: aptDifficulty === item.id ? item.color : 'var(--text)' }}>
+                            {item.label}
+                          </span>
+                          {aptDifficulty === item.id && <Check size={14} style={{ color: item.color }} />}
+                        </div>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--muted)' }}>{item.desc}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* START APTITUDE BUTTON */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGameState('active');
+                    loadRandomAptitudeQuestion(aptDifficulty);
+                  }}
+                  style={{
+                    padding: '12px 20px',
+                    borderRadius: 12,
+                    background: 'linear-gradient(135deg, var(--amber) 0%, var(--purple) 100%)',
+                    color: '#FFFFFF',
+                    border: 'none',
+                    fontWeight: 800,
+                    fontSize: '0.9rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                    boxShadow: '0 4px 16px rgba(245, 158, 11, 0.3)',
+                    marginTop: 8
+                  }}
+                >
+                  <Zap size={18} /> Start Aptitude Challenge
+                </button>
+              </div>
+            ) : (
+              <>
 
             {/* TOPIC REJECTION ALERT BANNER & RECOMMENDED BADGES */}
             {topicValidationAlert && (
@@ -2083,13 +2296,336 @@ export default function VivaInterviewPage() {
                 </>
               )}
             </button>
+            </>
+            )}
+          </div>
+        )}
+
+        {/* ============================================================== */}
+        {/* APTITUDE ACTIVE CHALLENGE VIEW */}
+        {/* ============================================================== */}
+        {gameState === 'active' && sessionMode === 'aptitude' && currentAptQuestion && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* TOP ACTION & TIMER BAR */}
+            <div style={{
+              background: 'var(--s1)',
+              border: `1px solid var(--border)`,
+              borderRadius: 16,
+              padding: '12px 18px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: 10
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{
+                  padding: '4px 10px',
+                  borderRadius: 8,
+                  background: currentAptQuestion.difficulty === 'Easy' ? 'rgba(16, 185, 129, 0.15)' : currentAptQuestion.difficulty === 'Medium' ? 'rgba(139, 92, 246, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+                  color: currentAptQuestion.difficulty === 'Easy' ? '#10B981' : currentAptQuestion.difficulty === 'Medium' ? 'var(--purple)' : 'var(--amber)',
+                  fontSize: '0.75rem',
+                  fontWeight: 800,
+                  border: `1px solid ${currentAptQuestion.difficulty === 'Easy' ? '#10B98140' : currentAptQuestion.difficulty === 'Medium' ? 'var(--purple)40' : 'var(--amber)40'}`
+                }}>
+                  {currentAptQuestion.difficulty}
+                </span>
+                <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text)' }}>
+                  Topic: {currentAptQuestion.topic}
+                </span>
+              </div>
+
+              {/* TIMER & STATS */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                {/* Countdown Timer */}
+                <div style={{
+                  padding: '6px 14px',
+                  borderRadius: 10,
+                  background: aptTimer < 30 ? 'rgba(239, 68, 68, 0.15)' : aptTimer < 60 ? 'rgba(245, 158, 11, 0.15)' : 'var(--s2)',
+                  border: `1px solid ${aptTimer < 30 ? '#EF4444' : aptTimer < 60 ? 'var(--amber)' : 'var(--border)'}`,
+                  color: aptTimer < 30 ? '#EF4444' : aptTimer < 60 ? 'var(--amber)' : 'var(--text)',
+                  fontSize: '0.85rem',
+                  fontWeight: 800,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6
+                }}>
+                  <Clock size={16} style={{ color: aptTimer < 30 ? '#EF4444' : 'var(--purple)' }} />
+                  <span>{Math.floor(aptTimer / 60)}:{(aptTimer % 60).toString().padStart(2, '0')}</span>
+                </div>
+
+                {/* Score & Streak */}
+                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--muted)', display: 'flex', gap: 10 }}>
+                  <span>Score: <strong style={{ color: 'var(--purple)' }}>{aptScore.correct}/{aptScore.total}</strong></span>
+                  {aptScore.streak > 1 && <span style={{ color: '#F59E0B' }}>🔥 {aptScore.streak} Streak</span>}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGameState('setup');
+                    setCurrentAptQuestion(null);
+                  }}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: 8,
+                    background: 'var(--s2)',
+                    border: `1px solid var(--border)`,
+                    color: 'var(--muted)',
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Exit
+                </button>
+              </div>
+            </div>
+
+            {/* QUESTION CARD */}
+            <div style={{
+              background: 'var(--s1)',
+              border: `1px solid var(--border)`,
+              borderRadius: 20,
+              padding: isMobile ? '16px 14px' : '22px 24px',
+              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.04)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 16
+            }}>
+              <div style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--text)', lineHeight: 1.6 }}>
+                <MathEquationRenderer content={currentAptQuestion.question} />
+              </div>
+
+              {/* OPTIONS GRID */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+                gap: 12,
+                marginTop: 8
+              }}>
+                {currentAptQuestion.options.map((optText, optIdx) => {
+                  const isSelected = selectedAptOption === optIdx;
+                  const isCorrectOption = optIdx === currentAptQuestion.correct_option;
+                  const isAnswerRevealed = selectedAptOption !== null || showAptSolution;
+
+                  let btnBg = 'var(--s2)';
+                  let btnBorder = 'var(--border)';
+                  let btnColor = 'var(--text)';
+
+                  if (isAnswerRevealed) {
+                    if (isCorrectOption) {
+                      btnBg = 'rgba(16, 185, 129, 0.15)';
+                      btnBorder = '#10B981';
+                      btnColor = '#10B981';
+                    } else if (isSelected && !isCorrectOption) {
+                      btnBg = 'rgba(239, 68, 68, 0.15)';
+                      btnBorder = '#EF4444';
+                      btnColor = '#EF4444';
+                    }
+                  }
+
+                  return (
+                    <button
+                      key={optIdx}
+                      type="button"
+                      disabled={isAnswerRevealed}
+                      onClick={() => handleSelectAptOption(optIdx)}
+                      style={{
+                        padding: '14px 16px',
+                        borderRadius: 12,
+                        background: btnBg,
+                        border: `2px solid ${btnBorder}`,
+                        color: btnColor,
+                        fontSize: '0.9rem',
+                        fontWeight: 700,
+                        textAlign: 'left',
+                        cursor: isAnswerRevealed ? 'default' : 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <span style={{
+                          width: 24,
+                          height: 24,
+                          borderRadius: '50%',
+                          background: 'var(--s1)',
+                          border: `1px solid ${btnBorder}`,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '0.75rem',
+                          fontWeight: 800
+                        }}>
+                          {String.fromCharCode(65 + optIdx)}
+                        </span>
+                        <MathEquationRenderer content={optText} />
+                      </div>
+                      {isAnswerRevealed && isCorrectOption && <CheckCircle2 size={18} style={{ color: '#10B981' }} />}
+                      {isAnswerRevealed && isSelected && !isCorrectOption && <XCircle size={18} style={{ color: '#EF4444' }} />}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* ACTION BAR: HINT, GIVE UP, NEXT QUESTION */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: 10,
+                borderTop: `1px solid var(--border)`,
+                paddingTop: 16,
+                marginTop: 6
+              }}>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  {/* Hint Button */}
+                  <button
+                    type="button"
+                    onClick={() => setShowAptHint(prev => !prev)}
+                    style={{
+                      padding: '8px 14px',
+                      borderRadius: 10,
+                      background: showAptHint ? 'rgba(245, 158, 11, 0.15)' : 'var(--s2)',
+                      border: `1px solid ${showAptHint ? 'var(--amber)' : 'var(--border)'}`,
+                      color: showAptHint ? 'var(--amber)' : 'var(--text)',
+                      fontSize: '0.8rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6
+                    }}
+                  >
+                    <Lightbulb size={16} style={{ color: 'var(--amber)' }} />
+                    {showAptHint ? 'Hide Hint' : '💡 Get Hint'}
+                  </button>
+
+                  {/* Give Up Button */}
+                  <button
+                    type="button"
+                    onClick={handleAptGiveUp}
+                    disabled={showAptSolution}
+                    style={{
+                      padding: '8px 14px',
+                      borderRadius: 10,
+                      background: showAptSolution ? 'rgba(239, 68, 68, 0.15)' : 'var(--s2)',
+                      border: `1px solid ${showAptSolution ? '#EF4444' : 'var(--border)'}`,
+                      color: showAptSolution ? '#EF4444' : 'var(--muted)',
+                      fontSize: '0.8rem',
+                      fontWeight: 700,
+                      cursor: showAptSolution ? 'default' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6
+                    }}
+                  >
+                    <Flag size={16} style={{ color: '#EF4444' }} />
+                    {showAptSolution ? 'Solution Revealed' : '🏳️ Give Up'}
+                  </button>
+                </div>
+
+                {/* NEXT QUESTION & AI GENERATE BUTTONS */}
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  {/* Next Question (Seed Bank) */}
+                  <button
+                    type="button"
+                    onClick={() => loadRandomAptitudeQuestion()}
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: 10,
+                      background: 'var(--s2)',
+                      color: 'var(--text)',
+                      border: '1px solid var(--border)',
+                      fontSize: '0.85rem',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6
+                    }}
+                  >
+                    Next Question <ChevronRight size={16} />
+                  </button>
+
+                  {/* Fresh AI Challenge (Gemini) */}
+                  <button
+                    type="button"
+                    disabled={generatingAiAptitude}
+                    onClick={handleGenerateAiAptitudeQuestion}
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: 10,
+                      background: 'linear-gradient(135deg, var(--purple) 0%, var(--accent) 100%)',
+                      color: '#FFFFFF',
+                      border: 'none',
+                      fontSize: '0.85rem',
+                      fontWeight: 800,
+                      cursor: generatingAiAptitude ? 'wait' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      boxShadow: '0 4px 14px rgba(139, 92, 246, 0.3)'
+                    }}
+                  >
+                    {generatingAiAptitude ? (
+                      <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                    ) : (
+                      <Sparkles size={16} />
+                    )}
+                    {generatingAiAptitude ? 'Generating AI Math...' : '✨ Fresh AI Challenge'}
+                  </button>
+                </div>
+              </div>
+
+              {/* HINT DRAWER */}
+              {showAptHint && (
+                <div style={{
+                  padding: '12px 16px',
+                  borderRadius: 12,
+                  background: 'rgba(245, 158, 11, 0.08)',
+                  border: '1px solid rgba(245, 158, 11, 0.3)',
+                  color: 'var(--text)',
+                  fontSize: '0.85rem'
+                }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--amber)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Lightbulb size={14} /> HINT
+                  </div>
+                  <MathEquationRenderer content={currentAptQuestion.hint} />
+                </div>
+              )}
+
+              {/* STEP-BY-STEP EXPLANATION (REVEALED ON SELECTION OR GIVE UP) */}
+              {(showAptSolution || selectedAptOption !== null) && (
+                <div style={{
+                  padding: '16px 18px',
+                  borderRadius: 14,
+                  background: 'rgba(139, 92, 246, 0.06)',
+                  border: '1px solid var(--purple)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 10
+                }}>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--purple)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Sparkles size={16} /> Step-by-Step Explanation & Solution
+                  </div>
+                  <div style={{ fontSize: '0.9rem', color: 'var(--text)', lineHeight: 1.6 }}>
+                    <MathEquationRenderer content={currentAptQuestion.explanation} />
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
         {/* ============================================================== */}
         {/* ACTIVE SESSION VIEW (GEMINI LIVE REAL-TIME OR GUIDED TURN) */}
         {/* ============================================================== */}
-        {gameState === 'active' && executionMode === 'live' && (
+        {gameState === 'active' && sessionMode !== 'aptitude' && executionMode === 'live' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
             
             {/* LIVE EXAMINER HUD CARD */}
@@ -2503,7 +3039,7 @@ export default function VivaInterviewPage() {
           </div>
         )}
 
-        {gameState === 'active' && executionMode === 'turn' && (
+        {gameState === 'active' && sessionMode !== 'aptitude' && executionMode === 'turn' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
             
             {/* EXAMINER QUESTION CARD */}
