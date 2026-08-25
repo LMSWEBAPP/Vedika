@@ -9,10 +9,26 @@ export function useDesktopPetBridge() {
   const wsRef = useRef(null);
   const reconnectTimerRef = useRef(null);
   const currentContextRef = useRef({});
+  const retryCountRef = useRef(0);
+  const MAX_RETRIES = 2; // Prevent infinite error logging when Desktop Pet is not running
 
   const connectBridge = useCallback(() => {
+    if (typeof window === 'undefined') return;
+
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const isExplicitlyEnabled = localStorage.getItem('enable_desktop_pet_bridge') === 'true';
+
+    // On remote deployments (e.g. Vercel), do not attempt local WS connection unless explicitly enabled
+    if (!isLocalhost && !isExplicitlyEnabled) {
+      return;
+    }
+
     if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
       return;
+    }
+
+    if (retryCountRef.current >= MAX_RETRIES) {
+      return; // Cap connection retries when PySide6 desktop pet is inactive
     }
 
     try {
@@ -22,7 +38,7 @@ export function useDesktopPetBridge() {
 
       ws.onopen = () => {
         console.log('[DesktopPetBridge] Connected to local Desktop Pet event bridge');
-        // Resend active context on open
+        retryCountRef.current = 0; // Reset counter on successful connection
         if (currentContextRef.current && currentContextRef.current.activeRoute) {
           ws.send(JSON.stringify({
             type: 'WEBAPP_STATE_UPDATE',
@@ -59,17 +75,21 @@ export function useDesktopPetBridge() {
 
       ws.onclose = () => {
         wsRef.current = null;
-        // Auto reconnect every 5s if desktop pet bridge drops
-        reconnectTimerRef.current = setTimeout(connectBridge, 5000);
+        retryCountRef.current += 1;
+        if (retryCountRef.current < MAX_RETRIES) {
+          reconnectTimerRef.current = setTimeout(connectBridge, 10000);
+        }
       };
 
       ws.onerror = () => {
-        ws.close();
+        if (ws) {
+          try { ws.close(); } catch (_) {}
+        }
       };
 
       wsRef.current = ws;
     } catch (e) {
-      console.warn('[DesktopPetBridge] Connection attempt notice:', e);
+      // Suppress unhandled connection throw
     }
   }, [router]);
 
@@ -90,24 +110,28 @@ export function useDesktopPetBridge() {
     currentContextRef.current = updated;
 
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({
-        type: 'WEBAPP_STATE_UPDATE',
-        payload: updated
-      }));
+      try {
+        wsRef.current.send(JSON.stringify({
+          type: 'WEBAPP_STATE_UPDATE',
+          payload: updated
+        }));
+      } catch (_) {}
     }
   }, [pathname]);
 
   const notifyStuck = useCallback((puzzleTitle, durationSeconds = 180) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({
-        type: 'PUZZLE_STUCK',
-        payload: {
-          puzzleTitle,
-          durationSeconds,
-          activeRoute: pathname,
-          timestamp: Date.now()
-        }
-      }));
+      try {
+        wsRef.current.send(JSON.stringify({
+          type: 'PUZZLE_STUCK',
+          payload: {
+            puzzleTitle,
+            durationSeconds,
+            activeRoute: pathname,
+            timestamp: Date.now()
+          }
+        }));
+      } catch (_) {}
     }
   }, [pathname]);
 
