@@ -14,6 +14,14 @@ export async function GET(request) {
     return NextResponse.json({ error: 'Missing sim or url parameter' }, { status: 400 });
   }
 
+  // Enforce strict domain allowlist to prevent SSRF vulnerabilities
+  if (!targetUrl.startsWith('https://phet.colorado.edu/')) {
+    return NextResponse.json(
+      { error: 'Unauthorized simulation target URL. Only official PhET CDN URLs are permitted.' },
+      { status: 403 }
+    );
+  }
+
   // Append query flags to disable default PhET navbar & header
   if (!targetUrl.includes('navbar=false')) {
     const separator = targetUrl.includes('?') ? '&' : '?';
