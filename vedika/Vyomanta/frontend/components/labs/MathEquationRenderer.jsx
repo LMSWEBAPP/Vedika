@@ -39,6 +39,9 @@ export function parseLaTeXInText(content) {
   if (!content) return '';
   let str = String(content);
 
+  // Convert literal '\\n' strings into actual line breaks
+  str = str.replace(/\\n/g, '\n');
+
   // Normalize LaTeX block delimiters \[ ... \] and inline \( ... \)
   str = str
     .replace(/\\\[([\s\S]*?)\\\]/g, (_, formula) => `\n\n$$\n${formula.trim()}\n$$\n\n`)
@@ -100,7 +103,56 @@ export function KaTeXSpan({ math, displayMode = false, style = {}, theme = {} })
   );
 }
 
+<<<<<<< HEAD
 // Universal recursive child renderer for LaTeX inline ($...$) and block ($$...$$) math + Step/Case badge highlights
+=======
+// Helper to visually render flipped/reversed characters for Mirror and Water Images notation e.g. G(rev) -> horizontally mirrored G, R(flip) -> vertically inverted R
+export function renderFlippedCharacters(text) {
+  if (typeof text !== 'string') return text;
+  if (!/\((?:rev|flip|mirror|inverted|flipped|reverse)\)|(?:\(reversed [A-Za-z0-9]\))/i.test(text)) {
+    return text;
+  }
+
+  const regex = /([A-Za-z0-9#@$%&*!?])\((rev|flip|mirror|inverted|flipped|reverse)\)|(?:\(reversed ([A-Za-z0-9])\))/gi;
+  const parts = [];
+  let lastIndex = 0;
+  let match;
+
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index));
+    }
+
+    const char = match[1] || match[3];
+    const tag = (match[2] || 'rev').toLowerCase();
+    const isWaterFlip = tag === 'flip' || tag === 'inverted' || tag === 'upside-down';
+
+    parts.push(
+      <span
+        key={match.index}
+        style={{
+          display: 'inline-block',
+          transform: isWaterFlip ? 'scaleY(-1)' : 'scaleX(-1)',
+          fontWeight: 700,
+          margin: '0 1px'
+        }}
+      >
+        {char}
+      </span>
+    );
+
+    lastIndex = regex.lastIndex;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+
+  return parts;
+}
+
+// Universal recursive child renderer for LaTeX inline ($...$) and block ($$...$$) math
+>>>>>>> 1c2230f (feat(aptitude): add on-demand AI question engine & responsive custom UI)
 export function renderTextWithMath(children, theme = {}) {
   return React.Children.map(children, (child) => {
     if (typeof child === 'string') {
@@ -114,6 +166,7 @@ export function renderTextWithMath(children, theme = {}) {
           const math = part.slice(1, -1).trim();
           return <KaTeXSpan key={idx} math={math} displayMode={false} theme={theme} />;
         }
+<<<<<<< HEAD
 
         // Format Step / Case / Equation / Condition headers as bold badges
         const stepMatch = part.match(/^(Step\s*\d+:?|Case\s*\d+:?|Equation\s*\(?\d+\)?:?|Condition\s*\d+:?|Option\s*[A-Z]:?)/i);
@@ -144,6 +197,9 @@ export function renderTextWithMath(children, theme = {}) {
         }
 
         return part;
+=======
+        return renderFlippedCharacters(part);
+>>>>>>> 1c2230f (feat(aptitude): add on-demand AI question engine & responsive custom UI)
       });
     }
     if (React.isValidElement(child) && child.props && child.props.children) {
@@ -262,51 +318,64 @@ export default function MathEquationRenderer({ content, theme = {} }) {
               return <KaTeXSpan math={rawStr} displayMode={true} theme={T} />;
             }
 
-            if (inline) {
+            const isMultiLine = rawStr.includes('\n');
+            const isInlineCode = inline === true || (!isMultiLine && !className);
+
+            if (isInlineCode) {
               const isInlineMath = rawStr.startsWith('$') && rawStr.endsWith('$') && rawStr.length > 2;
               if (isInlineMath) {
                 return <KaTeXSpan math={rawStr.slice(1, -1)} displayMode={false} theme={T} />;
               }
 
               return (
-                <span
+                <code
                   style={{
-                    fontFamily: 'monospace',
-                    background: `${T.accent}18`,
-                    color: T.accent,
-                    border: `1px solid ${T.accent}30`,
-                    padding: '2px 8px',
+                    fontFamily: 'Consolas, Monaco, "Andale Mono", monospace',
+                    background: 'rgba(139, 92, 246, 0.12)',
+                    color: 'var(--purple)',
+                    border: '1px solid rgba(139, 92, 246, 0.25)',
+                    padding: '2px 7px',
                     borderRadius: 6,
                     fontWeight: 700,
-                    fontSize: 14,
-                    display: 'inline-block',
-                    margin: '2px 4px'
+                    fontSize: '0.87em',
+                    display: 'inline',
+                    whiteSpace: 'normal',
+                    wordBreak: 'break-word'
                   }}
                 >
                   {rawStr}
-                </span>
+                </code>
               );
             }
 
             return (
-              <div
+              <pre
                 style={{
                   background: T.s2,
                   border: `1px solid ${T.border}`,
                   borderRadius: 12,
-                  padding: '14px 20px',
+                  padding: '14px 18px',
                   margin: '12px 0',
+<<<<<<< HEAD
                   textAlign: 'center',
                   color: T.text,
                   fontWeight: 700,
                   fontSize: 16,
                   fontFamily: 'monospace',
+=======
+                  textAlign: 'left',
+                  color: 'var(--text)',
+                  fontWeight: 600,
+                  fontSize: '0.875rem',
+                  fontFamily: 'Consolas, Monaco, "Andale Mono", monospace',
+>>>>>>> 1c2230f (feat(aptitude): add on-demand AI question engine & responsive custom UI)
                   boxShadow: '0 2px 10px rgba(0, 0, 0, 0.03)',
-                  overflowX: 'auto'
+                  overflowX: 'auto',
+                  whiteSpace: 'pre-wrap'
                 }}
               >
-                {rawStr}
-              </div>
+                <code>{rawStr}</code>
+              </pre>
             );
           },
           p: ({ children }) => (
