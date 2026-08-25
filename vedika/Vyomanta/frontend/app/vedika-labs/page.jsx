@@ -10,18 +10,10 @@ export default function VedikaLabsHub() {
 
   const cards = [
     {
-      id: 'math',
-      title: 'Math Lab',
-      description: 'Draw & solve equations on smart whiteboard, plot real-time 2D/3D graphs with dynamic sliders, ask AI math tutor, and explore visual Pythagoras & Calculus visualizers.',
-      gradient: 'linear-gradient(135deg, #8B5CF6 0%, #EC4899 100%)',
-      btnText: 'Enter Math Lab',
-      Icon: Calculator,
-      url: '/vedika-labs/math'
-    },
-    {
       id: 'physics',
       title: 'Physics Lab',
-      description: 'Simulate forces, gravity pendulum vectors, spring oscillations, projectiles, and electronic Ohm\'s Law circuits.',
+      badge: 'Interactive HTML5 + 3D WebGL',
+      description: 'Explore 8+ interactive HTML5 STEM simulators (DC Circuits, Newton\'s Motion, Pendulums, Projectiles, Energy Skate Park, Wave Interference, Gravity & Orbits) with Vedika AI Tutor.',
       gradient: 'linear-gradient(135deg, #10B981 0%, #14B8A6 100%)',
       btnText: 'Enter Physics Lab',
       Icon: Atom,
@@ -30,7 +22,8 @@ export default function VedikaLabsHub() {
     {
       id: 'chemistry',
       title: 'Chemistry Lab',
-      description: 'Build Bohr atomic structures, simulate kinetic gas chambers, run acid-base titrations, and observe diffusion.',
+      badge: 'Interactive HTML5 + 3D WebGL',
+      description: 'Run 8+ interactive HTML5 chemistry labs (Build an Atom, pH Scale Titrations, Ideal Gas Laws, Molecule Shapes VSEPR, Limiting Reagents) with AI guidance.',
       gradient: 'linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%)',
       btnText: 'Enter Chemistry Lab',
       Icon: FlaskConical,
@@ -39,11 +32,22 @@ export default function VedikaLabsHub() {
     {
       id: 'biology',
       title: 'Biology Lab',
-      description: 'Interact with 3D animal cell organelles and track predator-prey food web dynamics in real-time charts.',
+      badge: 'Interactive HTML5 + 3D WebGL',
+      description: 'Simulate 5+ interactive biology labs (Natural Selection & Bunny Evolution, Gene Expression Transcription, Neuron Action Potentials, Membrane Transport) with interactive AI viva.',
       gradient: 'linear-gradient(135deg, #F59E0B 0%, #EF4444 100%)',
       btnText: 'Enter Biology Lab',
       Icon: Dna,
       url: '/vedika-labs/biology'
+    },
+    {
+      id: 'math',
+      title: 'Math Lab',
+      badge: 'Interactive Workspace',
+      description: 'Draw & solve equations on smart whiteboard, plot real-time 2D/3D graphs with dynamic sliders, ask AI math tutor, and explore visual Pythagoras & Calculus visualizers.',
+      gradient: 'linear-gradient(135deg, #8B5CF6 0%, #EC4899 100%)',
+      btnText: 'Enter Math Lab',
+      Icon: Calculator,
+      url: '/vedika-labs/math'
     }
   ];
 
@@ -81,7 +85,7 @@ export default function VedikaLabsHub() {
         gap: 24,
         width: '100%'
       }}>
-        {cards.map(({ id, title, description, gradient, btnText, Icon, url }) => (
+        {cards.map(({ id, title, badge, description, gradient, btnText, Icon, url }) => (
           <motion.div
             key={id}
             whileHover={{ y: -6, scale: 1.02 }}
@@ -90,7 +94,7 @@ export default function VedikaLabsHub() {
             style={{
               background: gradient,
               borderRadius: 16,
-              padding: '36px 24px',
+              padding: '32px 24px',
               textAlign: 'center',
               cursor: 'pointer',
               boxShadow: '0 12px 24px rgba(0, 0, 0, 0.25)',
@@ -98,11 +102,26 @@ export default function VedikaLabsHub() {
               flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'space-between',
-              minHeight: 280,
-              transition: 'box-shadow 0.2s'
+              minHeight: 300,
+              transition: 'box-shadow 0.2s',
+              position: 'relative'
             }}
           >
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+              {badge && (
+                <span style={{
+                  background: 'rgba(0, 0, 0, 0.25)',
+                  color: '#fff',
+                  fontSize: 10,
+                  fontWeight: 800,
+                  padding: '4px 10px',
+                  borderRadius: 20,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.06em'
+                }}>
+                  {badge}
+                </span>
+              )}
               <div style={{
                 width: 56,
                 height: 56,
@@ -111,14 +130,14 @@ export default function VedikaLabsHub() {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                marginBottom: 8
+                marginBottom: 4
               }}>
                 <Icon size={28} color="#fff" />
               </div>
               <h2 style={{ color: '#fff', fontSize: 24, fontWeight: 700, margin: 0, letterSpacing: '-0.02em' }}>
                 {title}
               </h2>
-              <p style={{ color: 'rgba(255, 255, 255, 0.85)', fontSize: 14, margin: '4px 0 0 0', lineHeight: 1.4 }}>
+              <p style={{ color: 'rgba(255, 255, 255, 0.88)', fontSize: 13.5, margin: '4px 0 0 0', lineHeight: 1.45 }}>
                 {description}
               </p>
             </div>

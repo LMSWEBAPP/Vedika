@@ -99,7 +99,7 @@ export function buildCanonicalScene(conceptKey, params = {}, viewBox = null) {
   }
 
   // 4. CUBOID / RECTANGULAR PRISM / CUBE (known_formula: cuboid_tsa / cube_tsa)
-  else if (c === 'cuboid_tsa' || c === 'cube_tsa' || c.includes('cuboid') || c.includes('cube') || c.includes('prism')) {
+  else if (c === 'cuboid_tsa' || c === 'cube_tsa' || c.includes('cuboid') || (c.includes('cube') && !c.includes('square')) || c.includes('prism')) {
     const l = Math.max(2, Number(params.l ?? params.length ?? 8));
     const w = Math.max(1, Number(params.w ?? params.width ?? 5));
     const h = Math.max(2, Number(params.h ?? params.height ?? 6));
@@ -126,6 +126,48 @@ export function buildCanonicalScene(conceptKey, params = {}, viewBox = null) {
         { type: 'label', x: halfL + 0.5, y: 0, text: `h = ${h}`, fill: '#9B6EF8' },
         { type: 'label', x: halfL + dx / 2 + 0.5, y: -halfH + dy / 2 - 0.5, text: `w = ${w}`, fill: '#F5A95B' },
       ],
+    };
+  }
+
+  // 4b. TWO SQUARES / SQUARES COMPARISON (known_formula: two_squares)
+  else if (c === 'two_squares' || c.includes('two squares') || c.includes('squares') || (c.includes('square') && !c.includes('cube') && !c.includes('root'))) {
+    const s1 = Math.max(1, Number(params.s1 ?? params.side1 ?? params.a ?? 15.33));
+    const s2 = Math.max(1, Number(params.s2 ?? params.side2 ?? params.b ?? 15.27));
+
+    const area1 = (s1 * s1).toFixed(1);
+    const area2 = (s2 * s2).toFixed(1);
+    const perim1 = (4 * s1).toFixed(1);
+    const perim2 = (4 * s2).toFixed(1);
+
+    const gap = 3;
+    const x1_start = 0;
+    const x1_end = s1;
+    const x2_start = s1 + gap;
+    const x2_end = s1 + gap + s2;
+    const maxY = Math.max(s1, s2);
+    const maxX = x2_end;
+
+    candidateScene = {
+      concept: 'Two Squares Geometry Visualizer',
+      known_formula: 'two_squares',
+      params: { s1: s1, s2: s2 },
+      viewBox: { xMin: -2, xMax: maxX + 3, yMin: -3, yMax: maxY + 4 },
+      showAxes: false,
+      primitives: [
+        // Square 1 Polygon
+        { type: 'polygon', points: [[x1_start, 0], [x1_end, 0], [x1_end, s1], [x1_start, s1]], stroke: '#5B8CF8', fill: 'rgba(91, 140, 248, 0.2)' },
+        // Square 1 Labels
+        { type: 'label', x: s1 / 2, y: -0.8, text: `Side s₁ = ${s1} m`, fill: '#5B8CF8' },
+        { type: 'label', x: s1 / 2, y: s1 / 2, text: `Area A₁ = ${area1} m²`, fill: '#5B8CF8' },
+        // Square 2 Polygon
+        { type: 'polygon', points: [[x2_start, 0], [x2_end, 0], [x2_end, s2], [x2_start, s2]], stroke: '#22C5A0', fill: 'rgba(34, 197, 160, 0.2)' },
+        // Square 2 Labels
+        { type: 'label', x: x2_start + s2 / 2, y: -0.8, text: `Side s₂ = ${s2} m`, fill: '#22C5A0' },
+        { type: 'label', x: x2_start + s2 / 2, y: s2 / 2, text: `Area A₂ = ${area2} m²`, fill: '#22C5A0' },
+        // Comparison Summary Banner
+        { type: 'label', x: maxX / 2, y: maxY + 2.5, text: `Square 1: Side = ${s1}m, Area = ${area1}m², Perimeter = ${perim1}m`, fill: '#5B8CF8' },
+        { type: 'label', x: maxX / 2, y: maxY + 1.2, text: `Square 2: Side = ${s2}m, Area = ${area2}m², Perimeter = ${perim2}m`, fill: '#22C5A0' },
+      ]
     };
   }
 
@@ -158,7 +200,45 @@ export function buildCanonicalScene(conceptKey, params = {}, viewBox = null) {
     };
   }
 
-  // 6. TRIANGLE (known_formula: triangle_area)
+  // 6. PYTHAGORAS THEOREM (known_formula: pythagoras_theorem)
+  else if (c === 'pythagoras_theorem' || c.includes('pythagoras') || c.includes('hypotenuse') || (c.includes('right') && c.includes('triangle'))) {
+    const a = Math.max(1, Number(params.a ?? params.base ?? params.leg1 ?? 3));
+    const b = Math.max(1, Number(params.b ?? params.height ?? params.leg2 ?? 4));
+    const cVal = Number(params.c ?? params.hypotenuse ?? Math.sqrt(a * a + b * b)).toFixed(2);
+
+    const rightSquareSize = Math.min(a, b) * 0.15;
+
+    candidateScene = {
+      concept: 'Pythagoras Theorem Right Triangle',
+      known_formula: 'pythagoras_theorem',
+      params: { a: a, b: b, c: Number(cVal) },
+      viewBox: { xMin: -2, xMax: a + 4, yMin: -2, yMax: b + 4 },
+      showAxes: false,
+      primitives: [
+        // Right triangle polygon (Vertices at (0,0), (a,0), (0,b))
+        { type: 'polygon', points: [[0, 0], [a, 0], [0, b]], stroke: '#5B8CF8', fill: 'rgba(91, 140, 248, 0.2)' },
+        // Right Angle Square Marker at (0,0)
+        { type: 'polygon', points: [[0, 0], [rightSquareSize, 0], [rightSquareSize, rightSquareSize], [0, rightSquareSize]], stroke: '#F5A95B', fill: 'rgba(245, 169, 91, 0.25)' },
+        // Leg A (Base) line label
+        { type: 'line', from: [0, 0], to: [a, 0], color: '#22C5A0', strokeWidth: 3 },
+        { type: 'label', x: a / 2, y: -0.8, text: `Leg a = ${a}`, fill: '#22C5A0' },
+        // Leg B (Height) line label
+        { type: 'line', from: [0, 0], to: [0, b], color: '#9B6EF8', strokeWidth: 3 },
+        { type: 'label', x: -1.2, y: b / 2, text: `Leg b = ${b}`, fill: '#9B6EF8' },
+        // Hypotenuse C line label
+        { type: 'line', from: [a, 0], to: [0, b], color: '#F5A95B', strokeWidth: 3.5 },
+        { type: 'label', x: a / 2 + 0.5, y: b / 2 + 0.5, text: `Hypotenuse c = ${cVal}`, fill: '#F5A95B' },
+        // Points at Vertices
+        { type: 'point', x: 0, y: 0, label: 'Right Angle (90°)', color: '#F5A95B' },
+        { type: 'point', x: a, y: 0, label: `A (${a},0)`, color: '#22C5A0' },
+        { type: 'point', x: 0, y: b, label: `B (0,${b})`, color: '#9B6EF8' },
+        // Pythagoras Equation Banner
+        { type: 'label', x: a / 2, y: b + 2, text: `a² + b² = c²  =>  ${a}² + ${b}² = ${cVal}²  (${a*a} + ${b*b} = ${(cVal*cVal).toFixed(1)})`, fill: '#5B8CF8' }
+      ]
+    };
+  }
+
+  // 7. TRIANGLE (known_formula: triangle_area)
   else if (c === 'triangle_area' || c.includes('triangle')) {
     const b = Math.max(2, Number(params.base ?? params.b ?? 6));
     const h = Math.max(2, Number(params.height ?? params.h ?? 8));

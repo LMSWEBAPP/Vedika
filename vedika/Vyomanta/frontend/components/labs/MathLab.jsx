@@ -1058,13 +1058,13 @@ Focus purely on step-by-step LaTeX text explanation. Do NOT output any JSON bloc
 
 Rules:
 - Compose the SCENE using ONLY the primitive types listed in the schema: polygon, line, dashed_line, arrow, vector, circle, ellipse, arc, angle_marker, point, label, bar, number_line, curve.
-- MANDATORY: "params" MUST NEVER BE EMPTY {}. You MUST populate "params" with ALL core dimensions of the shape or function (e.g. for a cone: {"radius": 3, "height": 5}, for a cylinder: {"radius": 4, "height": 10}, for a cuboid: {"l": 8, "w": 5, "h": 10}, for a triangle: {"base": 6, "height": 8}, for quadratic: {"a": 2, "b": -5, "c": 3}), even if no specific numbers were mentioned in the prompt!
+- MANDATORY: "params" MUST NEVER BE EMPTY {}. You MUST populate "params" with ALL core dimensions of the shape or function (e.g. for two squares: {"s1": 15.33, "s2": 15.27}, for Pythagoras theorem: {"a": 3, "b": 4, "c": 5}, for a cone: {"radius": 3, "height": 5}, for a cylinder: {"radius": 4, "height": 10}, for a cuboid: {"l": 8, "w": 5, "h": 10}, for a triangle: {"base": 6, "height": 8}, for quadratic: {"a": 2, "b": -5, "c": 3}), even if no specific numbers were mentioned in the prompt!
 - NEVER compute derived math answers (no area, volume, or roots in params). The client computes all math.
 - For "curve" primitives, use variable names matching "params" keys in expression (e.g. expression: "a*x^2 + b*x + c", xMin: -5, xMax: 5).
 - For Calculus / Derivative questions (e.g. 'derivative of f(x) = x^3 ln(x)'), ALWAYS set visualizable: true and compose a 'curve' primitive graphing the function (e.g. expression: "a * x^3 * log(x)", xMin: 0.1, xMax: 4).
-- If known_formula matches one the client supports (cube_tsa, cuboid_tsa, cylinder_tsa, cone_tsa, sphere_tsa, hemisphere_tsa, sector_area, trapezoid_area, triangle_area, quadratic_roots), return its exact key. Otherwise return null.
+- If known_formula matches one the client supports (cube_tsa, cuboid_tsa, cylinder_tsa, cone_tsa, sphere_tsa, hemisphere_tsa, sector_area, trapezoid_area, triangle_area, pythagoras_theorem, two_squares, quadratic_roots), return its exact key. Otherwise return null.
 - Handle student terminology misnomers gracefully: If student asks for 'volume of a rectangle' or 'volume of a square', map to 3D Cuboid / Rectangular Prism (known_formula: 'cuboid_tsa', params: {l: 8, w: 5, h: 10}) or 2D rectangle area rather than returning visualizable: false.
-- ALWAYS set visualizable: true for any mathematical problem.
+- Set "visualizable": true ONLY if the question involves geometric shapes, 3D solids, trigonometry, graphs/curves, calculus functions, vectors, or spatial measurements (area, volume, perimeter, angles, hypotenuse). If the question is pure numerical algebra, factoring, or word problem finding unknown numbers without a spatial shape, set "visualizable": false.
 - CRITICAL: Round all numbers to 2 decimal places (e.g. -2.56). NEVER output scientific notation, exponents, or long trailing zeros like E000000.
 - Keep viewBox bounds (e.g. xMin: -10, xMax: 10, yMin: -10, yMax: 10) comfortably larger than the shape.`;
 
@@ -1094,10 +1094,26 @@ Rules:
         }
       }
 
+      if (rawObj && rawObj.visualizable === false) {
+        setParsedVisualSpec(null);
+        return;
+      }
+
       const validScene = validateScene(rawObj);
 
+      // Check if problem contains spatial, geometric, or graphical concepts
+      const isSpatialOrGeometric = /geometry|triangle|pythagoras|circle|sector|solid|cylinder|cone|sphere|hemisphere|cube|cuboid|box|square|area|volume|perimeter|hypotenuse|angle|trigonometry|tangent|derivative|calculus|curve|parabola|function|f\(x\)|vector|force|mass|acceleration|ratio/i.test(q + ' ' + (solveText || ''));
+
+      if (!isSpatialOrGeometric && !validScene?.known_formula && !rawObj?.visualizable) {
+        setParsedVisualSpec(null);
+        return;
+      }
+
       // Priority 1: Check Deterministic Client Canonical Builder first to eliminate 2D line hallucinations
-      const extractedConcept = validScene?.concept || validScene?.known_formula || q;
+      let extractedConcept = validScene?.concept || validScene?.known_formula || q;
+      if ((q.toLowerCase().includes('square') || solveText.toLowerCase().includes('square')) && !extractedConcept.toLowerCase().includes('cube') && !extractedConcept.toLowerCase().includes('pyramid')) {
+        extractedConcept = 'two_squares';
+      }
       const extractedParams = validScene?.params || {};
       const canonicalScene = buildCanonicalScene(extractedConcept, extractedParams);
 
@@ -1111,9 +1127,11 @@ Rules:
           validScene.formula = lookupFormula(validScene.known_formula, validScene.params);
         }
         setParsedVisualSpec(validScene);
-      } else {
-        // Universal Dynamic Visualizer so EVERY question receives an accurate interactive diagram!
+      } else if (isSpatialOrGeometric) {
+        // Dynamic Visualizer for spatial/geometric questions
         setParsedVisualSpec(createUniversalMathVisualizer(q));
+      } else {
+        setParsedVisualSpec(null);
       }
 
 

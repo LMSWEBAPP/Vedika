@@ -56,6 +56,20 @@ export const FORMULA_REGISTRY = {
     const area = (0.5 * (a + b) * h).toFixed(1);
     return { label: 'Trapezoid Area', value: `${area}` };
   },
+  pythagoras_theorem: (p) => {
+    const a = Number(p.a || p.base || 3);
+    const b = Number(p.b || p.height || 4);
+    const c = Math.sqrt(a * a + b * b).toFixed(2);
+    const area = (0.5 * a * b).toFixed(1);
+    return { label: 'Pythagoras Theorem', value: `a² + b² = c²  =>  ${a}² + ${b}² = ${c}² (Area: ${area})` };
+  },
+  two_squares: (p) => {
+    const s1 = Number(p.s1 || p.side1 || 15.33);
+    const s2 = Number(p.s2 || p.side2 || 15.27);
+    const a1 = (s1 * s1).toFixed(1);
+    const a2 = (s2 * s2).toFixed(1);
+    return { label: 'Two Squares Geometry', value: `Square 1: ${s1}m (A₁=${a1}m²) | Square 2: ${s2}m (A₂=${a2}m²)` };
+  },
   triangle_area: (p) => {
     const b = Number(p.base || p.b || 6);
     const h = Number(p.height || p.h || 8);

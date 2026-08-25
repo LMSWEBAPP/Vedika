@@ -9,6 +9,8 @@ import {
 } from 'lucide-react';
 import { T } from '@/lib/lms-data';
 
+import PhetSimViewer from '@/components/labs/PhetSimViewer';
+
 // --- Helical Spring Path Generator Helper ---
 class HelixPath extends THREE.Curve {
   constructor(radius = 0.25, turns = 10, height = 2) {
@@ -27,6 +29,8 @@ class HelixPath extends THREE.Curve {
 }
 
 export default function PhysicsLab() {
+  const [labMode, setLabMode] = useState('phet'); // 'phet' | '3d'
+  const [activePhetSim, setActivePhetSim] = useState('circuit-construction-kit-dc');
   const [selectedExperiment, setSelectedExperiment] = useState('pendulum');
   const [isPlaying, setIsPlaying] = useState(true);
   const [timeScale, setTimeScale] = useState(1); // 1 = normal, 0.25 = slow motion
@@ -673,6 +677,20 @@ export default function PhysicsLab() {
   const handlePendulumPreset = (gravityVal) => {
     setPendulumGravity(gravityVal);
   };
+
+  if (labMode === 'phet') {
+    return (
+      <div style={{ display: 'flex', flex: 1, height: '100%', overflow: 'hidden', padding: 12, background: '#07080F' }}>
+        <PhetSimViewer
+          subject="physics"
+          activeSimId={activePhetSim}
+          onSelectSim={setActivePhetSim}
+          onViewModeChange={setLabMode}
+          currentViewMode={labMode}
+        />
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flex: 1, height: '100%', overflow: 'hidden', background: '#07080F', color: '#DDE3F2', fontFamily: 'var(--font-outfit), sans-serif' }}>

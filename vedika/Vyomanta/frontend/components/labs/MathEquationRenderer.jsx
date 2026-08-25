@@ -4,6 +4,7 @@ import React, { useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Zap, CheckCircle2, ChevronRight } from 'lucide-react';
+import 'katex/dist/katex.min.css';
 
 let katex = null;
 try {
@@ -24,7 +25,7 @@ export function renderMathToHTML(tex, displayMode = false) {
         displayMode,
         throwOnError: false,
         trust: true,
-        output: 'htmlAndMathml'
+        output: 'html'
       });
     } catch (err) {
       console.warn('[KaTeX Render Notice]', err);
@@ -51,8 +52,8 @@ export function KaTeXSpan({ math, displayMode = false, style = {}, theme = {} })
   const html = useMemo(() => renderMathToHTML(math, displayMode), [math, displayMode]);
 
   const textColor = theme.text || 'inherit';
-  const blockBg = theme.s2 || 'var(--s2)';
-  const blockBorder = theme.border || 'var(--border)';
+  const blockBg = theme.s2 || 'rgba(91, 140, 248, 0.08)';
+  const blockBorder = theme.border || 'rgba(91, 140, 248, 0.25)';
 
   if (html) {
     return (
@@ -64,10 +65,12 @@ export function KaTeXSpan({ math, displayMode = false, style = {}, theme = {} })
           overflowX: displayMode ? 'auto' : 'visible',
           maxWidth: '100%',
           color: textColor,
-          padding: displayMode ? '12px 18px' : '0 2px',
-          background: displayMode ? blockBg : 'transparent',
-          borderRadius: displayMode ? '12px' : '0',
-          border: displayMode ? `1px solid ${blockBorder}` : 'none',
+          fontWeight: 700,
+          padding: displayMode ? '14px 20px' : '2px 4px',
+          background: displayMode ? blockBg : 'rgba(91, 140, 248, 0.06)',
+          borderRadius: displayMode ? '12px' : '6px',
+          border: displayMode ? `1px solid ${blockBorder}` : '1px solid rgba(91, 140, 248, 0.15)',
+          verticalAlign: 'middle',
           boxShadow: displayMode ? '0 2px 10px rgba(0, 0, 0, 0.04)' : 'none',
           ...style
         }}
@@ -82,10 +85,10 @@ export function KaTeXSpan({ math, displayMode = false, style = {}, theme = {} })
       style={{
         fontFamily: 'monospace',
         background: 'rgba(91, 140, 248, 0.15)',
-        color: '#729DF8',
+        color: theme.accent || '#3B82F6',
         padding: '2px 8px',
         borderRadius: 6,
-        fontWeight: 600,
+        fontWeight: 700,
         fontSize: 14,
         display: displayMode ? 'block' : 'inline-block',
         margin: displayMode ? '10px 0' : '2px 4px',
@@ -97,7 +100,7 @@ export function KaTeXSpan({ math, displayMode = false, style = {}, theme = {} })
   );
 }
 
-// Universal recursive child renderer for LaTeX inline ($...$) and block ($$...$$) math
+// Universal recursive child renderer for LaTeX inline ($...$) and block ($$...$$) math + Step/Case badge highlights
 export function renderTextWithMath(children, theme = {}) {
   return React.Children.map(children, (child) => {
     if (typeof child === 'string') {
@@ -111,6 +114,35 @@ export function renderTextWithMath(children, theme = {}) {
           const math = part.slice(1, -1).trim();
           return <KaTeXSpan key={idx} math={math} displayMode={false} theme={theme} />;
         }
+
+        // Format Step / Case / Equation / Condition headers as bold badges
+        const stepMatch = part.match(/^(Step\s*\d+:?|Case\s*\d+:?|Equation\s*\(?\d+\)?:?|Condition\s*\d+:?|Option\s*[A-Z]:?)/i);
+        if (stepMatch) {
+          const matchedStr = stepMatch[0];
+          const restStr = part.slice(matchedStr.length);
+          return (
+            <React.Fragment key={idx}>
+              <span
+                style={{
+                  background: `${theme.purple || '#8B5CF6'}18`,
+                  color: theme.purple || '#8B5CF6',
+                  border: `1px solid ${theme.purple || '#8B5CF6'}40`,
+                  padding: '3px 10px',
+                  borderRadius: '8px',
+                  fontWeight: 800,
+                  fontSize: '13px',
+                  marginRight: '6px',
+                  display: 'inline-block',
+                  letterSpacing: '0.3px'
+                }}
+              >
+                {matchedStr}
+              </span>
+              {restStr}
+            </React.Fragment>
+          );
+        }
+
         return part;
       });
     }
@@ -128,17 +160,37 @@ export default function MathEquationRenderer({ content, theme = {} }) {
   const parsedContent = useMemo(() => parseLaTeXInText(content), [content]);
 
   const T = {
-    text: theme.text || 'var(--text)',
-    muted: theme.muted || 'var(--muted)',
-    purple: theme.purple || 'var(--purple)',
-    accent: theme.accent || 'var(--accent)',
-    green: theme.green || 'var(--green)',
-    s2: theme.s2 || 'var(--s2)',
-    border: theme.border || 'var(--border)'
+    text: theme.text || 'var(--text, #0F172A)',
+    muted: theme.muted || 'var(--muted, #64748B)',
+    purple: theme.purple || 'var(--purple, #8B5CF6)',
+    accent: theme.accent || 'var(--accent, #3B82F6)',
+    green: theme.green || 'var(--green, #10B981)',
+    s2: theme.s2 || 'var(--s2, rgba(0, 0, 0, 0.03))',
+    border: theme.border || 'var(--border, rgba(0, 0, 0, 0.08))'
   };
 
   return (
-    <div style={{ fontSize: 15, lineHeight: 1.8, color: T.text }}>
+    <div style={{ fontSize: 15, lineHeight: 1.85, color: T.text, fontWeight: 500 }}>
+      <style>{`
+        .katex, .katex * {
+          color: inherit !important;
+        }
+        .katex .katex-html {
+          color: inherit !important;
+          max-width: 100%;
+        }
+        .katex-display {
+          margin: 12px 0 !important;
+          color: inherit !important;
+          overflow-x: auto !important;
+          overflow-y: hidden !important;
+          max-width: 100% !important;
+          padding: 8px 4px !important;
+        }
+        .katex .sqrt > .svg-align {
+          max-width: 100% !important;
+        }
+      `}</style>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
@@ -245,7 +297,7 @@ export default function MathEquationRenderer({ content, theme = {} }) {
                   padding: '14px 20px',
                   margin: '12px 0',
                   textAlign: 'center',
-                  color: T.accent,
+                  color: T.text,
                   fontWeight: 700,
                   fontSize: 16,
                   fontFamily: 'monospace',
@@ -258,13 +310,13 @@ export default function MathEquationRenderer({ content, theme = {} }) {
             );
           },
           p: ({ children }) => (
-            <p style={{ margin: '10px 0', lineHeight: 1.8 }}>{renderTextWithMath(children, T)}</p>
+            <p style={{ margin: '12px 0', lineHeight: 1.85, color: T.text }}>{renderTextWithMath(children, T)}</p>
           ),
           li: ({ children }) => (
-            <li style={{ margin: '6px 0', lineHeight: 1.8 }}>{renderTextWithMath(children, T)}</li>
+            <li style={{ margin: '8px 0', lineHeight: 1.85, color: T.text }}>{renderTextWithMath(children, T)}</li>
           ),
           strong: ({ children }) => (
-            <strong style={{ fontWeight: 700 }}>{renderTextWithMath(children, T)}</strong>
+            <strong style={{ fontWeight: 700, color: T.text }}>{renderTextWithMath(children, T)}</strong>
           ),
           em: ({ children }) => (
             <em style={{ fontStyle: 'italic' }}>{renderTextWithMath(children, T)}</em>
@@ -274,8 +326,8 @@ export default function MathEquationRenderer({ content, theme = {} }) {
               {renderTextWithMath(children, T)}
             </blockquote>
           ),
-          td: ({ children }) => <td style={{ padding: '8px 12px' }}>{renderTextWithMath(children, T)}</td>,
-          th: ({ children }) => <th style={{ padding: '8px 12px', fontWeight: 700 }}>{renderTextWithMath(children, T)}</th>
+          td: ({ children }) => <td style={{ padding: '8px 12px', color: T.text }}>{renderTextWithMath(children, T)}</td>,
+          th: ({ children }) => <th style={{ padding: '8px 12px', fontWeight: 700, color: T.text }}>{renderTextWithMath(children, T)}</th>
         }}
       >
         {parsedContent}

@@ -590,23 +590,26 @@ export default function ScenePrimitiveRenderer({ scene, width = 680, height = 42
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: paramKeys.length > 2 ? 'repeat(auto-fit, minmax(180px, 1fr))' : '1fr 1fr', gap: 14 }}>
             {paramKeys.map((key) => {
-              const numVal = parseFloat(params[key]);
-              const minVal = Math.min(-10, Math.floor(numVal * 2));
-              const maxVal = Math.max(20, Math.ceil(numVal * 2 || 10));
-              const step = Math.abs(numVal) < 2 ? 0.1 : 1;
+              const rawVal = Number(params[key]);
+              const numVal = Number.isFinite(rawVal) ? parseFloat(rawVal.toFixed(2)) : 5;
+              // Clamp numVal to reasonable human bounds (-500 to 500) to prevent 10-digit slider overflow
+              const safeVal = Math.max(-500, Math.min(500, numVal));
+              const minVal = safeVal < 0 ? Math.floor(safeVal * 1.5) : 0;
+              const maxVal = Math.max(10, Math.ceil(safeVal * 1.5 || 20));
+              const step = Math.abs(safeVal) < 5 ? 0.1 : 1;
 
               return (
                 <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   <label style={{ fontSize: 11, color: theme.muted || '#94A3B8', display: 'flex', justifyContent: 'space-between', fontWeight: 600 }}>
                     <span style={{ textTransform: 'capitalize' }}>Parameter {key}:</span>
-                    <strong style={{ color: theme.text || '#FFF' }}>{numVal}</strong>
+                    <strong style={{ color: theme.text || '#FFF' }}>{safeVal}</strong>
                   </label>
                   <input
                     type="range"
                     min={minVal}
                     max={maxVal}
                     step={step}
-                    value={numVal}
+                    value={safeVal}
                     onChange={(e) => updateParam(key, e.target.value)}
                     style={{ width: '100%', accentColor: theme.accent || '#5B8CF8', cursor: 'pointer' }}
                   />

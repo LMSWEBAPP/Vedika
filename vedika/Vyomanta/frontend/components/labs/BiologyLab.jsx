@@ -9,6 +9,8 @@ import {
 } from 'lucide-react';
 import { T } from '@/lib/lms-data';
 
+import PhetSimViewer from '@/components/labs/PhetSimViewer';
+
 // Biological Organelle Details
 const ORGANELLES = [
   { id: 'nucleus', name: 'Nucleus', color: 0xF55B6B, function: 'The control center of the cell. It houses DNA (genetic material) and coordinates key cellular operations like growth, metabolism, protein synthesis, and division.' },
@@ -19,6 +21,8 @@ const ORGANELLES = [
 ];
 
 export default function BiologyLab() {
+  const [labMode, setLabMode] = useState('phet'); // 'phet' | '3d'
+  const [activePhetSim, setActivePhetSim] = useState('natural-selection');
   const [selectedExperiment, setSelectedExperiment] = useState('cell');
   const [isPlaying, setIsPlaying] = useState(true);
   const [timeScale, setTimeScale] = useState(1);
@@ -466,6 +470,20 @@ export default function BiologyLab() {
       controls.dispose();
     };
   }, []);
+
+  if (labMode === 'phet') {
+    return (
+      <div style={{ display: 'flex', flex: 1, height: '100%', overflow: 'hidden', padding: 12, background: '#07080F' }}>
+        <PhetSimViewer
+          subject="biology"
+          activeSimId={activePhetSim}
+          onSelectSim={setActivePhetSim}
+          onViewModeChange={setLabMode}
+          currentViewMode={labMode}
+        />
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flex: 1, height: '100%', overflow: 'hidden', background: '#07080F', color: '#DDE3F2', fontFamily: 'var(--font-outfit), sans-serif' }}>
