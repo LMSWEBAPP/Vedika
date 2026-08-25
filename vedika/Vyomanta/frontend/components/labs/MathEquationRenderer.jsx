@@ -103,9 +103,6 @@ export function KaTeXSpan({ math, displayMode = false, style = {}, theme = {} })
   );
 }
 
-<<<<<<< HEAD
-// Universal recursive child renderer for LaTeX inline ($...$) and block ($$...$$) math + Step/Case badge highlights
-=======
 // Helper to visually render flipped/reversed characters for Mirror and Water Images notation e.g. G(rev) -> horizontally mirrored G, R(flip) -> vertically inverted R
 export function renderFlippedCharacters(text) {
   if (typeof text !== 'string') return text;
@@ -152,7 +149,6 @@ export function renderFlippedCharacters(text) {
 }
 
 // Universal recursive child renderer for LaTeX inline ($...$) and block ($$...$$) math
->>>>>>> 1c2230f (feat(aptitude): add on-demand AI question engine & responsive custom UI)
 export function renderTextWithMath(children, theme = {}) {
   return React.Children.map(children, (child) => {
     if (typeof child === 'string') {
@@ -166,7 +162,6 @@ export function renderTextWithMath(children, theme = {}) {
           const math = part.slice(1, -1).trim();
           return <KaTeXSpan key={idx} math={math} displayMode={false} theme={theme} />;
         }
-<<<<<<< HEAD
 
         // Format Step / Case / Equation / Condition headers as bold badges
         const stepMatch = part.match(/^(Step\s*\d+:?|Case\s*\d+:?|Equation\s*\(?\d+\)?:?|Condition\s*\d+:?|Option\s*[A-Z]:?)/i);
@@ -191,15 +186,12 @@ export function renderTextWithMath(children, theme = {}) {
               >
                 {matchedStr}
               </span>
-              {restStr}
+              {renderFlippedCharacters(restStr)}
             </React.Fragment>
           );
         }
 
-        return part;
-=======
         return renderFlippedCharacters(part);
->>>>>>> 1c2230f (feat(aptitude): add on-demand AI question engine & responsive custom UI)
       });
     }
     if (React.isValidElement(child) && child.props && child.props.children) {
@@ -356,19 +348,11 @@ export default function MathEquationRenderer({ content, theme = {} }) {
                   borderRadius: 12,
                   padding: '14px 18px',
                   margin: '12px 0',
-<<<<<<< HEAD
-                  textAlign: 'center',
-                  color: T.text,
-                  fontWeight: 700,
-                  fontSize: 16,
-                  fontFamily: 'monospace',
-=======
                   textAlign: 'left',
-                  color: 'var(--text)',
+                  color: T.text,
                   fontWeight: 600,
                   fontSize: '0.875rem',
                   fontFamily: 'Consolas, Monaco, "Andale Mono", monospace',
->>>>>>> 1c2230f (feat(aptitude): add on-demand AI question engine & responsive custom UI)
                   boxShadow: '0 2px 10px rgba(0, 0, 0, 0.03)',
                   overflowX: 'auto',
                   whiteSpace: 'pre-wrap'
