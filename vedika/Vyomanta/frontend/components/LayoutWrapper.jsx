@@ -141,13 +141,13 @@ export default function LayoutWrapper({ children }) {
   const isAdminRoute = pathname.startsWith('/admin');
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg)', color: 'var(--text)', width: '100%' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: 'var(--bg)', color: 'var(--text)', width: '100%' }}>
       {isAdminRoute ? (
         <AdminSidebar isCollapsed={sidebarCollapsed} onToggleCollapse={handleToggleCollapse} />
       ) : (
-        <Sidebar isCollapsed={sidebarCollapsed} onToggleCollapse={handleToggleCollapse} />
+        <Sidebar />
       )}
-      <div className="sidebar-content-area" style={{ flex: 1, overflowY: 'auto', maxHeight: '100vh' }}>
+      <div className="sidebar-content-area" style={{ flex: 1, overflowY: 'auto', width: '100%' }}>
         {children}
       </div>
     </div>

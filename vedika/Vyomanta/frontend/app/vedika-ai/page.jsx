@@ -2,7 +2,7 @@
 
 import { motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, Brain, Code, Zap } from 'lucide-react';
+import { ArrowRight, Brain, Code, FileText } from 'lucide-react';
 import { T } from '@/lib/lms-data';
 
 export default function VedikaAIHub() {
@@ -28,13 +28,13 @@ export default function VedikaAIHub() {
       url: '/vedika-ai/code'
     },
     {
-      id: 'puzzle',
-      title: 'Code Puzzles',
-      description: 'Solve coding challenges and visualize stack frames, arrays, and variables inside the 3D visualizer.',
+      id: 'viva',
+      title: 'Viva & Interview',
+      description: 'Practice rigorous voice-driven academic viva examinations and technical job interview prep with Vedika AI.',
       gradient: 'linear-gradient(135deg, #F59E0B 0%, #EF4444 100%)',
-      btnText: 'Play Puzzles',
-      Icon: Zap,
-      url: '/vedika-ai/puzzle'
+      btnText: 'Start Interview',
+      Icon: FileText,
+      url: '/viva-interview'
     }
   ];
 

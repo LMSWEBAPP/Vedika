@@ -2026,6 +2026,7 @@ export default function VivaInterviewPage() {
               <button
                 onClick={() => setSessionMode('aptitude')}
                 style={{
+                  display: 'none',
                   padding: '6px 14px',
                   borderRadius: 8,
                   fontSize: '0.8rem',
