@@ -54,7 +54,7 @@ export default function VedikaLabsHub() {
   return (
     <div style={{
       padding: '40px 24px',
-      maxWidth: 1000,
+      maxWidth: 1400,
       margin: '0 auto',
       fontFamily: 'var(--font-outfit), sans-serif',
       color: T.text
@@ -81,8 +81,8 @@ export default function VedikaLabsHub() {
       {/* Grid of Cards */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-        gap: 24,
+        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+        gap: 20,
         width: '100%'
       }}>
         {cards.map(({ id, title, badge, description, gradient, btnText, Icon, url }) => (
