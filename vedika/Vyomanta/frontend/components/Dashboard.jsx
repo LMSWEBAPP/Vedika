@@ -148,81 +148,51 @@ export default function Dashboard() {
           }
         } catch (e) {}
       }
-    }
-    const savedCompleted = localStorage.getItem(key);
-    let localCompleted = {};
-    if (savedCompleted) {
-      try {
-        localCompleted = JSON.parse(savedCompleted);
-        setCompleted(localCompleted);
-      } catch (e) {}
-    }
 
-    if (email) {
-      getProgressFromRedis(email).then(async (remoteCompleted) => {
-        if (remoteCompleted) {
-          const merged = { ...localCompleted, ...remoteCompleted };
-          setCompleted(merged);
-          localStorage.setItem(`completed_lessons_${email}`, JSON.stringify(merged));
-          
-          const remoteKeys = Object.keys(remoteCompleted).length;
-          const mergedKeys = Object.keys(merged).length;
-          if (mergedKeys > remoteKeys) {
-            await saveProgressToRedis(email, merged);
+      // Check localStorage first
+      const stored = localStorage.getItem(key);
+      if (stored) {
+        try { setCompleted(JSON.parse(stored)); } catch (e) {}
+      }
+
+      // Sync with Redis if email present
+      if (email) {
+        getProgressFromRedis(email).then(redisCompleted => {
+          if (redisCompleted && Object.keys(redisCompleted).length > 0) {
+            setCompleted(redisCompleted);
+            localStorage.setItem(key, JSON.stringify(redisCompleted));
           }
-        }
-      }).catch(err => console.error("Error synchronizing progress:", err));
+        }).catch(err => console.error("Error loading progress from Redis:", err));
+      }
     }
   }, []);
 
-  // Compute stats dynamically for enrolled courses
-  let totalLessons = 0;
-  let totalModules = 0;
-  let completedCount = 0;
+  const totalLessonsCompleted = Object.keys(completed).length;
 
-  const enrolledWithProgress = enrolledCourses.map(course => {
-    const details = course.details || getCourseDetails(course);
-    let courseLessonsCount = 0;
-    let courseCompletedCount = 0;
-    let courseModulesCount = 0;
-
-    if (details && details.modules) {
-      courseModulesCount = details.modules.length;
-      details.modules.forEach(m => {
-        if (m.lessons) {
-          courseLessonsCount += m.lessons.length;
-          m.lessons.forEach(l => {
-            if (completed[l.id]) {
-              courseCompletedCount++;
-            }
-          });
-        }
-      });
-    }
-
-    const pct = courseLessonsCount > 0 ? Math.round((courseCompletedCount / courseLessonsCount) * 100) : 0;
-
-    totalLessons += courseLessonsCount;
-    totalModules += courseModulesCount;
-    completedCount += courseCompletedCount;
-
+  const enrolledWithProgress = enrolledCourses.map(c => {
+    const details = c.details || getCourseDetails(c);
+    const allLessonIds = (details.chapters || []).flatMap(ch => (ch.lessons || []).map(l => l.id));
+    const total = allLessonIds.length || 1;
+    const done = allLessonIds.filter(id => completed[id]).length;
+    const progressPercent = Math.round((done / total) * 100);
     return {
-      ...course,
-      modulesCount: courseModulesCount,
-      lessonsCount: courseLessonsCount,
-      completedCount: courseCompletedCount,
-      progressPercent: pct
+      ...c,
+      modulesCount: (details.chapters || []).length,
+      lessonsCount: total,
+      progressPercent,
+      chapters: details.chapters || []
     };
   });
 
-  // Next up uncompleted lesson logic
-  const activeCourse = enrolledWithProgress[0];
+  const activeCourse = enrolledWithProgress[0] || null;
+  
+  // Find next uncompleted lesson in active course
   let nextLesson = null;
-  if (activeCourse && activeCourse.details && activeCourse.details.modules) {
-    for (const mod of activeCourse.details.modules) {
-      for (const les of mod.lessons) {
-        if (!completed[les.id]) {
-          nextLesson = les;
+  if (activeCourse) {
+    for (const chapter of activeCourse.chapters) {
+      for (const lesson of chapter.lessons || []) {
+        if (!completed[lesson.id]) {
+          nextLesson = lesson;
           break;
         }
       }
@@ -230,14 +200,20 @@ export default function Dashboard() {
     }
   }
 
-  const overallProgressPercent = totalLessons > 0 ? Math.round((completedCount / totalLessons) * 100) : 0;
+  const handleQuickAskSubmit = (e) => {
+    e.preventDefault();
+    if (!quickPrompt.trim()) return;
+    
+    // Check daily task
+    const updated = tasks.map(t => t.id === 'tutor' ? { ...t, completed: true } : t);
+    setTasks(updated);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('dashboard_daily_tasks', JSON.stringify(updated));
+      localStorage.setItem('dashboard_quick_ask_prompt', quickPrompt);
+    }
+    router.push('/general-tutor');
+  };
 
-  const stats = [
-    { label: 'Lessons Completed', val: `${completedCount}/${totalLessons}`, sub: `${overallProgressPercent}% done`, color: 'var(--accent)', Icon: CheckCircle },
-    { label: 'Enrolled Courses', val: `${enrolledCourses.length}`, sub: 'Active cohort learning', color: 'var(--green)', Icon: BookOpen },
-  ];
-
-  // Checklist Actions
   const toggleTask = (taskId) => {
     const updated = tasks.map(t => t.id === taskId ? { ...t, completed: !t.completed } : t);
     setTasks(updated);
@@ -246,57 +222,38 @@ export default function Dashboard() {
     }
   };
 
-  // Quick Ask Action
-  const handleQuickAskSubmit = (e) => {
-    e.preventDefault();
-    const query = quickPrompt.trim();
-    if (!query) return;
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('tutor_prefill_query', query);
-      
-      const updated = tasks.map(t => t.id === 'tutor' ? { ...t, completed: true } : t);
-      setTasks(updated);
-      localStorage.setItem('dashboard_daily_tasks', JSON.stringify(updated));
-    }
-    router.push('/general-tutor');
-  };
-
-  // Daily Quiz Action
-  const handleSelectQuizOption = (optIdx) => {
+  const handleSelectQuizOption = (index) => {
     if (quizSubmitted) return;
-    setSelectedQuizOption(optIdx);
+    setSelectedQuizOption(index);
     setQuizSubmitted(true);
     if (typeof window !== 'undefined') {
-      localStorage.setItem('dashboard_daily_quiz_opt', String(optIdx));
-      
-      const updated = tasks.map(t => t.id === 'skill_check' ? { ...t, completed: true } : t);
-      setTasks(updated);
-      localStorage.setItem('dashboard_daily_tasks', JSON.stringify(updated));
+      localStorage.setItem('dashboard_daily_quiz_opt', String(index));
     }
-  };
 
-  // Concept Card Flip
-  const handleFlipConcept = () => {
-    setConceptFlipped(!conceptFlipped);
-    const updated = tasks.map(t => t.id === 'daily_concept' ? { ...t, completed: true } : t);
+    // Check daily task
+    const updated = tasks.map(t => t.id === 'skill_check' ? { ...t, completed: true } : t);
     setTasks(updated);
     if (typeof window !== 'undefined') {
       localStorage.setItem('dashboard_daily_tasks', JSON.stringify(updated));
     }
   };
 
-  if (loading) {
-    return (
-      <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg)', alignItems: 'center', justifyContent: 'center', color: 'var(--text)' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 32, height: 32, borderRadius: '50%', border: '2px solid var(--border)', borderTopColor: 'var(--accent)', animation: 'spin 1s linear infinite' }} />
-          <div style={{ fontSize: 14, color: 'var(--muted)' }}>Loading student workspace...</div>
-        </div>
-      </div>
-    );
-  }
+  const handleFlipConcept = () => {
+    setConceptFlipped(!conceptFlipped);
+    if (!conceptFlipped) {
+      const updated = tasks.map(t => t.id === 'daily_concept' ? { ...t, completed: true } : t);
+      setTasks(updated);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('dashboard_daily_tasks', JSON.stringify(updated));
+      }
+    }
+  };
 
-  // Quiz values
+  const stats = [
+    { label: 'Lessons Completed', val: totalLessonsCompleted, sub: 'Topic milestones', color: '#38BDF8', Icon: CheckCircle },
+    { label: 'Enrolled Courses',  val: enrolledCourses.length,  sub: 'Active learning tracks', color: '#A855F7', Icon: BookOpen },
+  ];
+
   const quizAnswers = [
     "int x = 10",
     "x = 10",
@@ -305,63 +262,96 @@ export default function Dashboard() {
   ];
   const correctAnswerIdx = 1;
 
+  // Shiny Black Glass Container Styles matching reference image
+  const shinyCardStyle = {
+    background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.01) 100%), rgba(14, 15, 22, 0.75)',
+    border: '1px solid rgba(255, 255, 255, 0.12)',
+    borderRadius: 18,
+    boxShadow: '0 12px 36px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.14)',
+    backdropFilter: 'blur(16px)',
+    WebkitBackdropFilter: 'blur(16px)'
+  };
+
+  const shinyPillButtonStyle = {
+    background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.04) 100%), #181924',
+    border: '1px solid rgba(255, 255, 255, 0.2)',
+    borderRadius: 9999,
+    color: '#FFFFFF',
+    boxShadow: '0 4px 14px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.25)',
+    fontWeight: 600,
+    cursor: 'pointer',
+    transition: 'all 0.2s ease'
+  };
+
   return (
-    <div style={{ padding: `32px ${rPad}px`, fontFamily: 'var(--font-outfit), sans-serif' }}>
+    <div style={{
+      padding: `36px ${rPad}px`,
+      minHeight: '100vh',
+      background: 'radial-gradient(circle at 15% 15%, rgba(45, 55, 75, 0.35) 0%, rgba(5, 5, 8, 1) 45%), radial-gradient(circle at 85% 85%, rgba(35, 25, 55, 0.4) 0%, rgba(5, 5, 8, 1) 50%), #040406',
+      color: '#FFFFFF',
+      fontFamily: 'var(--font-outfit), sans-serif'
+    }}>
       
       {/* Dynamic Header & Greeting */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16, marginBottom: 24 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16, marginBottom: 28 }}>
         <div>
-          <h1 style={{ color: 'var(--text)', fontSize: isMobile ? 22 : 30, fontWeight: 800, margin: 0, letterSpacing: '-0.04em', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <h1 style={{ color: '#FFFFFF', fontSize: isMobile ? 24 : 32, fontWeight: 800, margin: 0, letterSpacing: '-0.04em', display: 'flex', alignItems: 'center', gap: 10 }}>
             {greeting}, {userName.split(' ')[0]}! 👋
           </h1>
-          <p style={{ color: 'var(--muted)', marginTop: 6, fontSize: isMobile ? 13.5 : 14.5 }}>
+          <p style={{ color: 'rgba(255, 255, 255, 0.65)', marginTop: 6, fontSize: isMobile ? 13.5 : 15 }}>
             Ready to explore Python concepts and sandboxes today?
           </p>
         </div>
 
-        {/* Dynamic Streak Badge */}
+        {/* Shiny Glass Streak Pill Badge */}
         <div style={{
           display: 'flex',
           alignItems: 'center',
           gap: 8,
-          background: 'linear-gradient(135deg, #FF8008 0%, #FFC837 100%)',
-          color: '#000',
-          padding: '8px 16px',
-          borderRadius: 20,
+          background: 'rgba(255, 255, 255, 0.06)',
+          border: '1px solid rgba(255, 255, 255, 0.18)',
+          color: '#FFFFFF',
+          padding: '8px 18px',
+          borderRadius: 9999,
           fontWeight: 700,
           fontSize: 13,
-          boxShadow: '0 6px 16px rgba(255, 128, 8, 0.25)',
+          boxShadow: '0 6px 20px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)',
+          backdropFilter: 'blur(12px)',
           cursor: 'pointer',
-          transition: 'transform 0.2s'
+          transition: 'all 0.2s'
         }}
         onClick={() => {
           const nextStreak = streak + 1;
           setStreak(nextStreak);
           localStorage.setItem('dashboard_learning_streak', String(nextStreak));
         }}
-        onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.04)'}
-        onMouseLeave={e => e.currentTarget.style.transform = 'none'}
+        onMouseEnter={e => {
+          e.currentTarget.style.transform = 'scale(1.04)';
+          e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.35)';
+        }}
+        onMouseLeave={e => {
+          e.currentTarget.style.transform = 'none';
+          e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.18)';
+        }}
         title="Click to increase streak!"
         >
-          <Flame size={16} fill="#000" />
+          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#38BDF8', boxShadow: '0 0 8px #38BDF8' }} />
+          <Flame size={16} color="#38BDF8" fill="#38BDF8" />
           <span>{streak}-Day Streak</span>
         </div>
       </div>
 
       {/* Interactive Quick-Ask AI Prompt Box */}
       <div style={{
-        background: 'linear-gradient(135deg, rgba(91, 140, 248, 0.08) 0%, rgba(155, 110, 248, 0.08) 100%)',
-        border: '1px solid var(--border)',
-        borderRadius: 16,
-        padding: '20px 24px',
-        marginBottom: 28,
-        boxShadow: '0 4px 20px rgba(0,0,0,0.05)'
+        ...shinyCardStyle,
+        padding: '22px 26px',
+        marginBottom: 32
       }}>
-        <form onSubmit={handleQuickAskSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13.5, color: 'var(--accent)', fontWeight: 600 }}>
-            <Sparkles size={15} /> Ask your AI Tutor anything...
+        <form onSubmit={handleQuickAskSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: '#38BDF8', fontWeight: 700, letterSpacing: '-0.01em' }}>
+            <Sparkles size={16} /> Ask your AI Tutor anything...
           </div>
-          <div style={{ display: 'flex', gap: 10 }}>
+          <div style={{ display: 'flex', gap: 12 }}>
             <input
               type="text"
               placeholder="e.g. What is a lambda function? or Give me a quiz on lists."
@@ -369,39 +359,40 @@ export default function Dashboard() {
               onChange={e => setQuickPrompt(e.target.value)}
               style={{
                 flex: 1,
-                background: 'var(--s1)',
-                border: '1px solid var(--border)',
-                borderRadius: 10,
-                padding: '12px 16px',
-                color: 'var(--text)',
-                fontSize: 13.5,
+                background: 'rgba(255, 255, 255, 0.04)',
+                border: '1px solid rgba(255, 255, 255, 0.14)',
+                borderRadius: 12,
+                padding: '12px 18px',
+                color: '#FFFFFF',
+                fontSize: 14,
                 outline: 'none',
                 fontFamily: 'inherit',
-                transition: 'border-color 0.2s'
+                transition: 'all 0.2s',
+                boxShadow: 'inset 0 2px 4px rgba(0, 0, 0, 0.4)'
               }}
-              onFocus={e => e.target.style.borderColor = 'var(--accent)'}
-              onBlur={e => e.target.style.borderColor = 'var(--border)'}
+              onFocus={e => e.target.style.borderColor = '#38BDF8'}
+              onBlur={e => e.target.style.borderColor = 'rgba(255, 255, 255, 0.14)'}
             />
             <button
               type="submit"
               style={{
-                background: 'linear-gradient(135deg, var(--accent) 0%, var(--purple) 100%)',
-                color: '#fff',
-                border: 'none',
-                padding: '0 24px',
-                borderRadius: 10,
+                ...shinyPillButtonStyle,
+                padding: '0 28px',
                 fontSize: 13.5,
-                fontWeight: 600,
-                cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                gap: 6,
-                boxShadow: '0 4px 12px rgba(91, 140, 248, 0.25)',
-                transition: 'opacity 0.2s'
+                gap: 8
               }}
-              onMouseEnter={e => e.currentTarget.style.opacity = 0.9}
-              onMouseLeave={e => e.currentTarget.style.opacity = 1}
+              onMouseEnter={e => {
+                e.currentTarget.style.background = 'linear-gradient(135deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.08) 100%), #222434';
+                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.35)';
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.background = 'linear-gradient(135deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.04) 100%), #181924';
+                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+              }}
             >
+              <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#FFFFFF' }} />
               Ask AI
             </button>
           </div>
@@ -409,31 +400,29 @@ export default function Dashboard() {
       </div>
 
       {/* Main Grid Content Layout */}
-      <div style={{ display: 'grid', gridTemplateColumns: mainGridCols, gap: 24, alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: mainGridCols, gap: 28, alignItems: 'start' }}>
         
         {/* Left Side (Learning Progress & Courses) */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
           
           {/* Stat Cards Row */}
-          <div style={{ display: 'grid', gridTemplateColumns: statCols, gap: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: statCols, gap: 16 }}>
             {stats.map(({ label, val, sub, color, Icon }) => (
               <div
                 key={label}
                 style={{
-                  background: 'var(--s1)',
-                  border: '1px solid var(--border)',
-                  borderRadius: 14,
-                  padding: '20px',
+                  ...shinyCardStyle,
+                  padding: '22px',
                   cursor: 'pointer',
-                  transition: 'all 0.2s'
+                  transition: 'all 0.2s ease'
                 }}
                 onMouseEnter={e => {
-                  e.currentTarget.style.transform = 'translateY(-2px)';
-                  e.currentTarget.style.borderColor = color;
+                  e.currentTarget.style.transform = 'translateY(-3px)';
+                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)';
                 }}
                 onMouseLeave={e => {
                   e.currentTarget.style.transform = 'none';
-                  e.currentTarget.style.borderColor = 'var(--border)';
+                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.12)';
                 }}
                 onClick={() => {
                   if (label === 'Lessons Completed') {
@@ -443,41 +432,38 @@ export default function Dashboard() {
                   }
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                  <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>{label}</span>
-                  <div style={{ width: 28, height: 28, borderRadius: 8, background: `${color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Icon size={14} color={color} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <span style={{ fontSize: 12.5, color: 'rgba(255, 255, 255, 0.65)', fontWeight: 600 }}>{label}</span>
+                  <div style={{ width: 32, height: 32, borderRadius: 10, background: 'rgba(255, 255, 255, 0.08)', border: '1px solid rgba(255, 255, 255, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Icon size={16} color={color} />
                   </div>
                 </div>
-                <div style={{ fontSize: 26, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.04em' }}>{val}</div>
-                <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 4 }}>{sub}</div>
+                <div style={{ fontSize: 28, fontWeight: 800, color: '#FFFFFF', letterSpacing: '-0.04em' }}>{val}</div>
+                <div style={{ fontSize: 12.5, color: 'rgba(255, 255, 255, 0.55)', marginTop: 4 }}>{sub}</div>
               </div>
             ))}
           </div>
 
           {/* Active / Continue learning syllabus */}
           <div style={{
-            background: 'var(--s1)',
-            border: '1px solid var(--border)',
-            borderRadius: 16,
-            padding: '24px',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.02)',
+            ...shinyCardStyle,
+            padding: '26px',
             display: 'flex',
             flexDirection: 'column',
             justifyContent: 'space-between',
-            minHeight: 180
+            minHeight: 200
           }}>
             <div>
-              <div style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                <GraduationCap size={14} /> Active Syllabus
+              <div style={{ fontSize: 11.5, color: '#38BDF8', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                <GraduationCap size={15} /> Active Syllabus
               </div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', marginBottom: 6 }}>
+              <div style={{ fontSize: 18, fontWeight: 800, color: '#FFFFFF', marginBottom: 8, letterSpacing: '-0.02em' }}>
                 {activeCourse?.title || 'No Courses Enrolled'}
               </div>
-              <p style={{ color: 'var(--muted)', fontSize: 13, margin: '0 0 16px 0', lineHeight: 1.5 }}>
+              <p style={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: 14, margin: '0 0 18px 0', lineHeight: 1.55 }}>
                 {activeCourse ? (
                   nextLesson ? (
-                    <>📖 Next Lesson: <span style={{ fontWeight: 600, color: 'var(--text)' }}>{nextLesson.title}</span> ({nextLesson.dur})</>
+                    <>📖 Next Lesson: <span style={{ fontWeight: 700, color: '#FFFFFF' }}>{nextLesson.title}</span> ({nextLesson.dur})</>
                   ) : (
                     '🎉 You completed all lessons in this syllabus! Perfect!'
                   )
@@ -490,17 +476,16 @@ export default function Dashboard() {
             <div>
               {activeCourse && (
                 <>
-                  <div style={{ background: 'var(--s3)', borderRadius: 99, height: 6, marginBottom: 12, overflow: 'hidden' }}>
-                    <div style={{ background: 'var(--accent)', height: '100%', borderRadius: 99, width: `${activeCourse.progressPercent}%`, transition: 'width 0.5s' }} />
+                  <div style={{ background: 'rgba(255, 255, 255, 0.08)', borderRadius: 99, height: 7, marginBottom: 14, overflow: 'hidden' }}>
+                    <div style={{ background: 'linear-gradient(90deg, #38BDF8 0%, #818CF8 100%)', height: '100%', borderRadius: 99, width: `${activeCourse.progressPercent}%`, transition: 'width 0.5s' }} />
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: 12.5, color: 'var(--muted)', fontWeight: 500 }}>{activeCourse.progressPercent}% complete</span>
+                    <span style={{ fontSize: 13, color: 'rgba(255, 255, 255, 0.6)', fontWeight: 500 }}>{activeCourse.progressPercent}% complete</span>
                     <button
                       onClick={() => {
                         if (typeof window !== 'undefined') {
                           localStorage.setItem('selected_course_id', activeCourse.id);
                         }
-                        // Check daily task
                         const updated = tasks.map(t => t.id === 'resume' ? { ...t, completed: true } : t);
                         setTasks(updated);
                         localStorage.setItem('dashboard_daily_tasks', JSON.stringify(updated));
@@ -512,21 +497,21 @@ export default function Dashboard() {
                         }
                       }}
                       style={{
-                        background: 'var(--accent)',
-                        color: '#000',
-                        border: 'none',
-                        padding: '9px 18px',
-                        borderRadius: 8,
-                        fontSize: 12.5,
-                        fontWeight: 700,
-                        cursor: 'pointer',
+                        ...shinyPillButtonStyle,
+                        padding: '9px 20px',
+                        fontSize: 13,
                         display: 'flex',
                         alignItems: 'center',
-                        gap: 5,
-                        boxShadow: '0 4px 10px rgba(91, 140, 248, 0.2)'
+                        gap: 6
+                      }}
+                      onMouseEnter={e => {
+                        e.currentTarget.style.background = 'linear-gradient(135deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.08) 100%), #222434';
+                      }}
+                      onMouseLeave={e => {
+                        e.currentTarget.style.background = 'linear-gradient(135deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.04) 100%), #181924';
                       }}
                     >
-                      {nextLesson ? 'Resume Learning' : 'View Course'} <ChevronRight size={14} />
+                      {nextLesson ? 'Resume Learning' : 'View Course'} <ChevronRight size={15} />
                     </button>
                   </div>
                 </>
@@ -535,108 +520,74 @@ export default function Dashboard() {
                 <button
                   onClick={() => router.push('/courses')}
                   style={{
-                    background: 'var(--accent)',
-                    color: '#faf5f5ff',
-                    border: 'none',
-                    padding: '10px 20px',
-                    borderRadius: 8,
-                    fontSize: 13,
-                    fontWeight: 700,
-                    cursor: 'pointer',
+                    ...shinyPillButtonStyle,
+                    padding: '10px 22px',
+                    fontSize: 13.5,
                     display: 'inline-flex',
                     alignItems: 'center',
-                    gap: 5,
-                    boxShadow: '0 4px 10px rgba(91, 140, 248, 0.2)'
+                    gap: 6
                   }}
                 >
-                  Explore Courses <ChevronRight size={14} />
+                  Explore Courses <ChevronRight size={15} />
                 </button>
               )}
             </div>
           </div>
 
           {/* AI Tools Cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: bottomCols, gap: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: bottomCols, gap: 18 }}>
             
             {/* General Tutor Shortcut */}
-            <div style={{ background: 'var(--s1)', border: '1px solid var(--border)', borderRadius: 14, padding: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: 160 }}>
+            <div style={{ ...shinyCardStyle, padding: '22px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: 170 }}>
               <div>
-                <div style={{ fontSize: 11, color: 'var(--purple)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  <Brain size={14} /> AI Assistant Hub
+                <div style={{ fontSize: 11, color: '#A855F7', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  <Brain size={15} /> AI Assistant Hub
                 </div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', marginBottom: 6 }}>Ask your AI Tutor</div>
-                <div style={{ fontSize: 12.5, color: 'var(--muted)', lineHeight: 1.5, marginBottom: 12 }}>
+                <div style={{ fontSize: 16, fontWeight: 700, color: '#FFFFFF', marginBottom: 6 }}>Ask your AI Tutor</div>
+                <div style={{ fontSize: 13, color: 'rgba(255, 255, 255, 0.65)', lineHeight: 1.5, marginBottom: 14 }}>
                   Ask questions, generate flashcards, and study customized visual outlines.
                 </div>
               </div>
               <button
                 onClick={() => router.push('/general-tutor')}
                 style={{
+                  ...shinyPillButtonStyle,
+                  padding: '7px 16px',
+                  fontSize: 12.5,
                   alignSelf: 'start',
-                  background: 'transparent',
-                  border: '1px solid var(--border)',
-                  color: 'var(--purple)',
-                  padding: '6px 14px',
-                  borderRadius: 8,
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 4,
-                  transition: 'background 0.2s'
-                }}
-                onMouseEnter={e => {
-                  e.currentTarget.style.background = 'rgba(155, 110, 248, 0.08)';
-                  e.currentTarget.style.borderColor = 'var(--purple)';
-                }}
-                onMouseLeave={e => {
-                  e.currentTarget.style.background = 'transparent';
-                  e.currentTarget.style.borderColor = 'var(--border)';
+                  gap: 6
                 }}
               >
-                Open Tutor Hub <ArrowRight size={13} />
+                Open Tutor Hub <ArrowRight size={14} />
               </button>
             </div>
 
             {/* Coding Tutor Shortcut */}
-            <div style={{ background: 'var(--s1)', border: '1px solid var(--border)', borderRadius: 14, padding: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: 160 }}>
+            <div style={{ ...shinyCardStyle, padding: '22px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: 170 }}>
               <div>
-                <div style={{ fontSize: 11, color: 'var(--green)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  <Flame size={14} /> Practice Sandbox
+                <div style={{ fontSize: 11, color: '#34D399', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  <Flame size={15} /> Practice Sandbox
                 </div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', marginBottom: 6 }}>Code with AI Tutor</div>
-                <div style={{ fontSize: 12.5, color: 'var(--muted)', lineHeight: 1.5, marginBottom: 12 }}>
+                <div style={{ fontSize: 16, fontWeight: 700, color: '#FFFFFF', marginBottom: 6 }}>Code with AI Tutor</div>
+                <div style={{ fontSize: 13, color: 'rgba(255, 255, 255, 0.65)', lineHeight: 1.5, marginBottom: 14 }}>
                   Write, test, and debug Python code samples directly with an AI helper.
                 </div>
               </div>
               <button
                 onClick={() => router.push('/coding-tutor')}
                 style={{
+                  ...shinyPillButtonStyle,
+                  padding: '7px 16px',
+                  fontSize: 12.5,
                   alignSelf: 'start',
-                  background: 'transparent',
-                  border: '1px solid var(--border)',
-                  color: 'var(--green)',
-                  padding: '6px 14px',
-                  borderRadius: 8,
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 4,
-                  transition: 'background 0.2s'
-                }}
-                onMouseEnter={e => {
-                  e.currentTarget.style.background = 'rgba(34, 197, 160, 0.08)';
-                  e.currentTarget.style.borderColor = 'var(--green)';
-                }}
-                onMouseLeave={e => {
-                  e.currentTarget.style.background = 'transparent';
-                  e.currentTarget.style.borderColor = 'var(--border)';
+                  gap: 6
                 }}
               >
-                Start Sandbox <ArrowRight size={13} />
+                Start Sandbox <ArrowRight size={14} />
               </button>
             </div>
 
@@ -645,30 +596,30 @@ export default function Dashboard() {
           {/* Other Enrolled Courses List */}
           {enrolledWithProgress.length > 1 && (
             <div style={{ marginTop: 8 }}>
-              <h2 style={{ color: 'var(--text)', fontSize: 16, fontWeight: 700, marginBottom: 14, letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: 6 }}>
-                <BookOpen size={16} color="var(--accent)" /> Other Enrolled Courses
+              <h2 style={{ color: '#FFFFFF', fontSize: 17, fontWeight: 800, marginBottom: 16, letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <BookOpen size={18} color="#38BDF8" /> Other Enrolled Courses
               </h2>
-              <div style={{ display: 'grid', gridTemplateColumns: bottomCols, gap: 16 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: bottomCols, gap: 18 }}>
                 {enrolledWithProgress.slice(1).map(course => (
-                  <div key={course.id} style={{ background: 'var(--s1)', border: '1px solid var(--border)', borderRadius: 14, padding: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: 140 }}>
+                  <div key={course.id} style={{ ...shinyCardStyle, padding: '22px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: 150 }}>
                     <div>
-                      <div style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 600, marginBottom: 4 }}>
+                      <div style={{ fontSize: 11.5, color: '#38BDF8', fontWeight: 700, marginBottom: 4 }}>
                         {course.category}
                       </div>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: '#FFFFFF', marginBottom: 4 }}>
                         {course.title}
                       </div>
-                      <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 14 }}>
+                      <div style={{ fontSize: 12.5, color: 'rgba(255, 255, 255, 0.6)', marginBottom: 14 }}>
                         {course.modulesCount} modules · {course.lessonsCount} lessons
                       </div>
                     </div>
 
                     <div>
-                      <div style={{ background: 'var(--s3)', borderRadius: 99, height: 6, marginBottom: 8, overflow: 'hidden' }}>
-                        <div style={{ background: 'var(--accent)', height: 6, borderRadius: 99, width: `${course.progressPercent}%`, transition: 'width 0.5s' }} />
+                      <div style={{ background: 'rgba(255, 255, 255, 0.08)', borderRadius: 99, height: 6, marginBottom: 8, overflow: 'hidden' }}>
+                        <div style={{ background: '#38BDF8', height: 6, borderRadius: 99, width: `${course.progressPercent}%`, transition: 'width 0.5s' }} />
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 }}>
-                        <span style={{ fontSize: 12, color: 'var(--muted)' }}>{course.progressPercent}% complete</span>
+                        <span style={{ fontSize: 12.5, color: 'rgba(255, 255, 255, 0.6)' }}>{course.progressPercent}% complete</span>
                         <button 
                           onClick={() => {
                             if (typeof window !== 'undefined') {
@@ -677,20 +628,15 @@ export default function Dashboard() {
                             router.push('/courses');
                           }}
                           style={{
-                            background: 'transparent',
-                            border: '1px solid var(--border)',
-                            color: 'var(--text)',
-                            padding: '5px 12px',
-                            borderRadius: 6,
-                            fontSize: 11.5,
-                            fontWeight: 600,
-                            cursor: 'pointer',
+                            ...shinyPillButtonStyle,
+                            padding: '6px 14px',
+                            fontSize: 12,
                             display: 'flex',
                             alignItems: 'center',
                             gap: 4
                           }}
                         >
-                          Continue <ChevronRight size={12} />
+                          Continue <ChevronRight size={13} />
                         </button>
                       </div>
                     </div>
@@ -703,18 +649,12 @@ export default function Dashboard() {
         </div>
 
         {/* Right Side (Daily Checklist, Interactive Quiz, Concept Card) */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
           
           {/* Interactive Checklist */}
-          <div style={{
-            background: 'var(--s1)',
-            border: '1px solid var(--border)',
-            borderRadius: 16,
-            padding: '20px',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.02)'
-          }}>
-            <h3 style={{ margin: '0 0 14px 0', fontSize: 14.5, fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <CheckSquare size={16} color="var(--accent)" /> Today's Task Checklist
+          <div style={{ ...shinyCardStyle, padding: '22px' }}>
+            <h3 style={{ margin: '0 0 16px 0', fontSize: 15, fontWeight: 800, color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <CheckSquare size={17} color="#38BDF8" /> Today's Task Checklist
             </h3>
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -725,40 +665,40 @@ export default function Dashboard() {
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 10,
-                    padding: '10px 12px',
-                    borderRadius: 10,
-                    background: task.completed ? 'rgba(34, 197, 160, 0.05)' : 'var(--s2)',
-                    border: `1px solid ${task.completed ? 'rgba(34, 197, 160, 0.2)' : 'var(--border)'}`,
+                    gap: 12,
+                    padding: '12px 14px',
+                    borderRadius: 12,
+                    background: task.completed ? 'rgba(52, 211, 153, 0.08)' : 'rgba(255, 255, 255, 0.03)',
+                    border: `1px solid ${task.completed ? 'rgba(52, 211, 153, 0.25)' : 'rgba(255, 255, 255, 0.1)'}`,
                     cursor: 'pointer',
                     transition: 'all 0.15s'
                   }}
                   onMouseEnter={e => {
-                    if (!task.completed) e.currentTarget.style.borderColor = 'var(--accent)';
+                    if (!task.completed) e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.25)';
                   }}
                   onMouseLeave={e => {
-                    if (!task.completed) e.currentTarget.style.borderColor = 'var(--border)';
+                    if (!task.completed) e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)';
                   }}
                 >
                   <div style={{
-                    width: 18,
-                    height: 18,
-                    borderRadius: 4,
-                    border: `2px solid ${task.completed ? 'var(--green)' : 'var(--muted)'}`,
-                    background: task.completed ? 'var(--green)' : 'transparent',
+                    width: 20,
+                    height: 20,
+                    borderRadius: 6,
+                    border: `2px solid ${task.completed ? '#34D399' : 'rgba(255, 255, 255, 0.3)'}`,
+                    background: task.completed ? '#34D399' : 'transparent',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     color: '#000',
-                    fontSize: 11,
+                    fontSize: 12,
                     fontWeight: 900,
                     transition: 'all 0.15s'
                   }}>
                     {task.completed && '✓'}
                   </div>
                   <span style={{
-                    fontSize: 13,
-                    color: task.completed ? 'var(--muted)' : 'var(--text)',
+                    fontSize: 13.5,
+                    color: task.completed ? 'rgba(255, 255, 255, 0.45)' : '#FFFFFF',
                     textDecoration: task.completed ? 'line-through' : 'none',
                     fontWeight: 500
                   }}>
@@ -770,44 +710,38 @@ export default function Dashboard() {
           </div>
 
           {/* Interactive Skill Check Quiz */}
-          <div style={{
-            background: 'var(--s1)',
-            border: '1px solid var(--border)',
-            borderRadius: 16,
-            padding: '20px',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.02)'
-          }}>
-            <h3 style={{ margin: '0 0 4px 0', fontSize: 14.5, fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <HelpCircle size={16} color="var(--purple)" /> Daily Skill Check
+          <div style={{ ...shinyCardStyle, padding: '22px' }}>
+            <h3 style={{ margin: '0 0 4px 0', fontSize: 15, fontWeight: 800, color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <HelpCircle size={17} color="#A855F7" /> Daily Skill Check
             </h3>
-            <span style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 12 }}>Answer to check your Python foundation</span>
+            <span style={{ fontSize: 12, color: 'rgba(255, 255, 255, 0.6)', display: 'block', marginBottom: 14 }}>Answer to check your Python foundation</span>
             
-            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 12, lineHeight: 1.5 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 600, color: '#FFFFFF', marginBottom: 14, lineHeight: 1.5 }}>
               How does Python handle memory management for variables?
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
               {quizAnswers.map((answer, index) => {
                 const isSelected = selectedQuizOption === index;
                 const isCorrectOption = index === correctAnswerIdx;
-                let optBg = 'var(--s2)';
-                let optBorder = 'var(--border)';
-                let optColor = 'var(--text)';
+                let optBg = 'rgba(255, 255, 255, 0.03)';
+                let optBorder = 'rgba(255, 255, 255, 0.12)';
+                let optColor = '#FFFFFF';
 
                 if (quizSubmitted) {
                   if (isCorrectOption) {
-                    optBg = 'rgba(34, 197, 160, 0.12)';
-                    optBorder = 'var(--green)';
-                    optColor = 'var(--green)';
+                    optBg = 'rgba(52, 211, 153, 0.15)';
+                    optBorder = '#34D399';
+                    optColor = '#34D399';
                   } else if (isSelected) {
-                    optBg = 'rgba(245, 91, 107, 0.12)';
-                    optBorder = 'var(--red)';
-                    optColor = 'var(--red)';
+                    optBg = 'rgba(248, 113, 113, 0.15)';
+                    optBorder = '#F87171';
+                    optColor = '#F87171';
                   }
                 } else {
                   if (isSelected) {
-                    optBg = 'rgba(91, 140, 248, 0.1)';
-                    optBorder = 'var(--accent)';
+                    optBg = 'rgba(56, 189, 248, 0.15)';
+                    optBorder = '#38BDF8';
                   }
                 }
 
@@ -819,10 +753,10 @@ export default function Dashboard() {
                     style={{
                       background: optBg,
                       border: `1px solid ${optBorder}`,
-                      borderRadius: 10,
-                      padding: '10px 12px',
+                      borderRadius: 12,
+                      padding: '11px 14px',
                       color: optColor,
-                      fontSize: 12.5,
+                      fontSize: 13,
                       fontWeight: 500,
                       textAlign: 'left',
                       cursor: quizSubmitted ? 'default' : 'pointer',
@@ -832,8 +766,8 @@ export default function Dashboard() {
                     }}
                     onMouseEnter={e => {
                       if (!quizSubmitted) {
-                        e.currentTarget.style.borderColor = 'var(--purple)';
-                        e.currentTarget.style.background = 'var(--s3)';
+                        e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)';
+                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
                       }
                     }}
                     onMouseLeave={e => {
@@ -843,7 +777,7 @@ export default function Dashboard() {
                       }
                     }}
                   >
-                    <span style={{ fontWeight: 700, marginRight: 6 }}>{'ABCD'[index]})</span>
+                    <span style={{ fontWeight: 700, marginRight: 8, color: 'rgba(255, 255, 255, 0.5)' }}>{'ABCD'[index]})</span>
                     {answer}
                   </button>
                 );
@@ -852,13 +786,14 @@ export default function Dashboard() {
 
             {quizSubmitted && (
               <div style={{
-                marginTop: 14,
-                padding: '12px',
-                borderRadius: 8,
-                background: selectedQuizOption === correctAnswerIdx ? 'rgba(34, 197, 160, 0.08)' : 'rgba(245, 91, 107, 0.08)',
-                fontSize: 12,
-                color: selectedQuizOption === correctAnswerIdx ? 'var(--green)' : 'var(--red)',
-                lineHeight: 1.4
+                marginTop: 16,
+                padding: '14px',
+                borderRadius: 12,
+                background: selectedQuizOption === correctAnswerIdx ? 'rgba(52, 211, 153, 0.12)' : 'rgba(248, 113, 113, 0.12)',
+                border: `1px solid ${selectedQuizOption === correctAnswerIdx ? 'rgba(52, 211, 153, 0.3)' : 'rgba(248, 113, 113, 0.3)'}`,
+                fontSize: 12.5,
+                color: selectedQuizOption === correctAnswerIdx ? '#34D399' : '#F87171',
+                lineHeight: 1.5
               }}>
                 {selectedQuizOption === correctAnswerIdx ? (
                   <strong>✓ Correct!</strong>
@@ -871,15 +806,9 @@ export default function Dashboard() {
           </div>
 
           {/* Concept of the Day Flashcard */}
-          <div style={{
-            background: 'var(--s1)',
-            border: '1px solid var(--border)',
-            borderRadius: 16,
-            padding: '20px',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.02)'
-          }}>
-            <h3 style={{ margin: '0 0 12px 0', fontSize: 14.5, fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Award size={16} color="var(--amber)" /> Concept of the Day
+          <div style={{ ...shinyCardStyle, padding: '22px' }}>
+            <h3 style={{ margin: '0 0 14px 0', fontSize: 15, fontWeight: 800, color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Award size={17} color="#FBBF24" /> Concept of the Day
             </h3>
 
             <div
@@ -890,11 +819,11 @@ export default function Dashboard() {
               }}
             >
               <div style={{
-                background: conceptFlipped ? 'rgba(245, 169, 91, 0.08)' : 'var(--s2)',
-                border: `1px solid ${conceptFlipped ? 'var(--amber)' : 'var(--border)'}`,
-                borderRadius: 12,
-                padding: '24px 16px',
-                minHeight: 130,
+                background: conceptFlipped ? 'rgba(251, 191, 36, 0.08)' : 'rgba(255, 255, 255, 0.03)',
+                border: `1px solid ${conceptFlipped ? 'rgba(251, 191, 36, 0.35)' : 'rgba(255, 255, 255, 0.12)'}`,
+                borderRadius: 14,
+                padding: '26px 18px',
+                minHeight: 140,
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
@@ -904,17 +833,17 @@ export default function Dashboard() {
                 transformStyle: 'preserve-3d'
               }}
               onMouseEnter={e => {
-                e.currentTarget.style.borderColor = 'var(--amber)';
+                e.currentTarget.style.borderColor = 'rgba(251, 191, 36, 0.4)';
               }}
               onMouseLeave={e => {
-                if (!conceptFlipped) e.currentTarget.style.borderColor = 'var(--border)';
+                if (!conceptFlipped) e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.12)';
               }}
               >
-                <span style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>
+                <span style={{ fontSize: 10.5, color: 'rgba(255, 255, 255, 0.5)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>
                   {conceptFlipped ? 'Definition' : 'Concept \u2014 click to reveal'}
                 </span>
                 
-                <h4 style={{ color: 'var(--text)', fontSize: conceptFlipped ? 13 : 15, fontWeight: conceptFlipped ? 500 : 700, margin: 0, lineHeight: 1.5 }}>
+                <h4 style={{ color: '#FFFFFF', fontSize: conceptFlipped ? 13.5 : 16, fontWeight: conceptFlipped ? 500 : 800, margin: 0, lineHeight: 1.55 }}>
                   {conceptFlipped ? (
                     "A decorator is a function that wraps another function to dynamically extend or modify its behavior without modifying the actual function's source code explicitly. Annotated using the @decorator syntax."
                   ) : (
@@ -922,7 +851,7 @@ export default function Dashboard() {
                   )}
                 </h4>
                 
-                <span style={{ fontSize: 10, color: 'var(--amber)', fontWeight: 600, marginTop: 12 }}>
+                <span style={{ fontSize: 11, color: '#FBBF24', fontWeight: 600, marginTop: 14 }}>
                   {conceptFlipped ? 'Click to flip back' : 'Click to flip'}
                 </span>
               </div>
