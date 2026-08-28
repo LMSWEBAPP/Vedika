@@ -1,161 +1,327 @@
-@import url('https://fonts.googleapis.com/css2?family=Bubblegum+Sans&family=Fredoka:wght@400;600;700&family=Outfit:wght@400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bubblegum+Sans&family=Fredoka:wght@400;600;700&family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
 /* ═══════════════════════════════════════════════════════════════
    Vedika Labs Hub — vedika-labs.css
-   Compact viewport-fitted layout — zero scroll, zero overflow:hidden
+   Split Hero + Transparent 3D Glowing Orb Lab Navigation
+   Zero Scroll, No Image Border, Seamless Dark Integration
    ═══════════════════════════════════════════════════════════════ */
 
-/* ── Page Container (Naturally fits within 100vh viewport) ──────── */
+:root {
+  --vl-bg-dark: #050811;
+  --vl-physics-color: #34D399;
+  --vl-chem-color: #38BDF8;
+  --vl-bio-color: #D85590;
+  --vl-math-color: #F9E79F;
+}
+
+/* ── Main Page Container (Zero-Scroll Viewport Fitted) ──────────── */
 .vl-page {
-  padding: 10px 32px 14px;
-  max-width: 1440px;
-  margin: 0 auto;
-  font-family: var(--font-outfit), 'Outfit', system-ui, sans-serif;
-  color: var(--text, #E2E8F0);
-  box-sizing: border-box;
+  position: relative;
+  width: 100%;
   min-height: calc(100vh - 64px);
+  background-color: var(--vl-bg-dark);
+  color: #E2E8F0;
+  font-family: 'Outfit', 'Plus Jakarta Sans', system-ui, sans-serif;
+  box-sizing: border-box;
+  padding: 12px 32px 18px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  transition: opacity 0.3s ease;
+  overflow-x: hidden;
 }
 
-.vl-page.is-loading-model {
-  opacity: 0;
-}
-
-/* ── Header ─────────────────────────────────────────────────────── */
-.vl-header {
-  text-align: center;
-  margin-bottom: 4px;
-  flex-shrink: 0;
-}
-
-.vl-title {
-  font-size: clamp(22px, 2.5vw, 32px);
-  font-weight: 800;
-  letter-spacing: -0.03em;
-  margin: 0 0 3px;
-  background: linear-gradient(to right, #FFFFFF 0%, #10B981 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-.vl-subtitle {
-  color: #94A3B8;
-  font-size: 13.5px;
-  margin: 0;
-}
-
-/* ── Grid (Lowered by another 10px) ────────────────────────────── */
-.vl-grid {
-  flex: 1;
+/* ── Top Hero Split Container (Left: Text, Right: 3D Stage) ─────── */
+.vl-hero-split {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 20px;
+  grid-template-columns: 0.95fr 1.25fr;
+  align-items: center;
+  gap: 32px;
   width: 100%;
-  box-sizing: border-box;
-  align-items: center;
-  margin-top: 14px;
-  margin-bottom: 0px;
-}
-
-/* ── Transparent Card Container ─────────────────────────────────── */
-.vl-card {
+  max-width: 1400px;
+  margin: 0 auto;
   position: relative;
-  padding: 0;
-  margin: 0;
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  background: transparent;
-  border: none;
-  box-shadow: none;
+  flex: 1;
   min-height: 0;
 }
 
-/* ── Avatar Wrapper & Motion Container ─────────────────────────── */
-.vl-avatar-wrap {
+/* ── Left Hero Typography ───────────────────────────────────────── */
+.vl-hero-left {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  padding-left: 8px;
+}
+
+.vl-hero-title {
+  font-size: clamp(30px, 3.2vw, 46px);
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+  margin: 0 0 12px 0;
+  color: #FFFFFF;
+}
+
+.vl-hero-title-gradient {
+  background: linear-gradient(135deg, #A7F3D0 0%, #34D399 35%, #38BDF8 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  display: block;
+}
+
+.vl-hero-desc {
+  font-size: 15.5px;
+  line-height: 1.55;
+  color: #94A3B8;
+  margin: 0 0 18px 0;
+  max-width: 480px;
+}
+
+/* Voice Studio Trigger */
+.vl-voice-trigger {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #34D399;
+  border-radius: 20px;
+  padding: 5px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  transition: all 0.2s ease;
+  align-self: flex-start;
+}
+
+.vl-voice-trigger:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(52, 211, 153, 0.4);
+  color: #FFFFFF;
+}
+
+/* ── Right 3D Lab Stage (Seamlessly Blended, NO BORDER) ──────────── */
+.vl-stage-wrapper {
   position: relative;
+  width: 100%;
+  max-width: 680px;
+  aspect-ratio: 1024 / 560;
+  margin: 0 auto;
+  background: url('/labs-bg.jpg') center bottom / contain no-repeat;
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  flex: 1;
-  width: 100%;
-  margin: 0;
-  padding: 0;
-}
-
-.vl-avatar-motion {
-  position: relative;
-  width: 250px;
-  height: 250px;
-  will-change: transform;
-  transform-origin: center bottom;
-}
-
-/* ── Curved Name Arch (Hidden for now) ─────────────────────────── */
-.vl-curved-text-wrap {
-  display: none;
-}
-
-.vl-curved-text-svg {
-  width: 100%;
-  height: 100%;
   overflow: visible;
-  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.8));
 }
 
-.vl-curved-name-text {
-  font-family: 'Bubble Sans', 'Bubblegum Sans', 'Fredoka', cursive, sans-serif;
-  font-size: 30px;
-  font-weight: 400;
-  letter-spacing: 0.06em;
-  text-transform: capitalize;
-  opacity: 1;
+/* Soft Seamless Edge Gradient (No hard rectangle or border) */
+.vl-stage-vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 60%, transparent 55%, rgba(5, 8, 17, 0.3) 80%, rgba(5, 8, 17, 0.95) 100%),
+              linear-gradient(to right, rgba(5, 8, 17, 0.9) 0%, transparent 15%, transparent 85%, rgba(5, 8, 17, 0.9) 100%),
+              linear-gradient(to bottom, rgba(5, 8, 17, 0.8) 0%, transparent 15%, transparent 85%, rgba(5, 8, 17, 0.95) 100%);
+  pointer-events: none;
+  z-index: 1;
 }
 
-/* ── Enter Lab Button ──────────────────────────────────────────── */
-.vl-card-btn {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 10px;
-  margin-bottom: 4px;
-  padding: 9.5px 22px;
-  border-radius: 14px;
-  border: 1.5px solid rgba(255, 255, 255, 0.16);
-  background: rgba(255, 255, 255, 0.06);
-  color: #FFFFFF;
-  font-size: 13.5px;
-  font-weight: 700;
+/* ── 4 Hovering Avatars Positioned Exactly Above Their Pedestals ─── */
+.vl-pedestal-avatar {
+  position: absolute;
+  will-change: transform;
+  pointer-events: auto;
   cursor: pointer;
-  transition: background 0.2s ease, border-color 0.2s ease;
-  font-family: inherit;
-  white-space: nowrap;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  z-index: 5;
+  transform-origin: center bottom;
+  transition: filter 0.3s ease;
+}
+
+/* 1. Mowgli (Physics) — Above Newton's Cradle (Green Pedestal) */
+.vl-avatar-physics {
+  left: 24.5%;
+  top: 10%;
+  transform: translateX(-50%);
+  animation: vlFloatPhysics 4.2s ease-in-out infinite alternate;
+}
+
+/* 2. Belle (Chemistry) — Above Chemical Flask (Blue Pedestal) */
+.vl-avatar-chemistry {
+  left: 41.2%;
+  top: -5%;
+  transform: translateX(-50%);
+  animation: vlFloatChem 3.8s ease-in-out infinite alternate;
+}
+
+/* 3. Moana (Biology) — Above Molecule Model (Pink Pedestal) */
+.vl-avatar-biology {
+  left: 57.5%;
+  top: 8%;
+  transform: translateX(-50%);
+  animation: vlFloatBio 4.6s ease-in-out infinite alternate;
+}
+
+/* 4. Bagheera (Math) — Above Geometric Cone (Yellow Pedestal) */
+.vl-avatar-math {
+  left: 74.2%;
+  top: -1%;
+  transform: translateX(-50%);
+  animation: vlFloatMath 4.0s ease-in-out infinite alternate;
+}
+
+@keyframes vlFloatPhysics {
+  0% { transform: translateX(-50%) translateY(0px) rotate(-1deg); }
+  100% { transform: translateX(-50%) translateY(-10px) rotate(2deg); }
+}
+
+@keyframes vlFloatChem {
+  0% { transform: translateX(-50%) translateY(0px) rotate(1deg); }
+  100% { transform: translateX(-50%) translateY(-12px) rotate(-2deg); }
+}
+
+@keyframes vlFloatBio {
+  0% { transform: translateX(-50%) translateY(0px) rotate(-2deg); }
+  100% { transform: translateX(-50%) translateY(-10px) rotate(1deg); }
+}
+
+@keyframes vlFloatMath {
+  0% { transform: translateX(-50%) translateY(0px) rotate(2deg); }
+  100% { transform: translateX(-50%) translateY(-11px) rotate(-1deg); }
+}
+
+/* ── Bottom Lab Stations Navigation Row (Transparent, No Box) ───── */
+.vl-labs-container {
+  position: relative;
+  width: 100%;
+  max-width: 1360px;
+  margin: 8px auto 0;
+  box-sizing: border-box;
+  z-index: 2;
   flex-shrink: 0;
 }
 
-.vl-card-btn:hover {
-  background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.3);
+/* Curved Dotted Orbit Line Connecting the 4 Stations */
+.vl-orbit-bg-svg {
+  position: absolute;
+  top: 32px;
+  left: 40px;
+  right: 40px;
+  width: calc(100% - 80px);
+  height: 60px;
+  pointer-events: none;
+  z-index: 0;
+  overflow: visible;
+  opacity: 0.35;
 }
 
-/* ── Voice Modal ────────────────────────────────────────────────── */
+.vl-labs-grid {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+}
+
+/* Lab Station Card (Transparent, Zero Box Background) */
+.vl-station-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
+  padding: 4px 12px;
+  margin: 0;
+  backdrop-filter: none;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.vl-station-card:hover {
+  transform: translateY(-4px);
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+/* Glowing 3D Badge Image Container */
+.vl-station-badge-wrap {
+  width: 66px;
+  height: 66px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.vl-station-badge-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.6));
+  transition: filter 0.3s ease, transform 0.3s ease;
+}
+
+.vl-station-card:hover .vl-station-badge-wrap {
+  transform: scale(1.12);
+}
+
+.vl-station-card:hover .vl-badge-physics .vl-station-badge-img {
+  filter: drop-shadow(0 0 16px rgba(52, 211, 153, 0.95));
+}
+
+.vl-station-card:hover .vl-badge-chemistry .vl-station-badge-img {
+  filter: drop-shadow(0 0 16px rgba(56, 189, 248, 0.95));
+}
+
+.vl-station-card:hover .vl-badge-biology .vl-station-badge-img {
+  filter: drop-shadow(0 0 16px rgba(216, 85, 144, 0.95));
+}
+
+.vl-station-card:hover .vl-badge-math .vl-station-badge-img {
+  filter: drop-shadow(0 0 16px rgba(249, 231, 159, 0.95));
+}
+
+/* Lab Title */
+.vl-station-title {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0 0 4px 0;
+  transition: color 0.2s ease;
+}
+
+.vl-title-physics { color: #34D399; }
+.vl-title-chemistry { color: #38BDF8; }
+.vl-title-biology { color: #D85590; }
+.vl-title-math { color: #F9E79F; }
+
+/* Lab Description */
+.vl-station-desc {
+  font-size: 12px;
+  line-height: 1.45;
+  color: #94A3B8;
+  margin: 0;
+  max-width: 220px;
+}
+
+/* ── Voice Audition Modal ───────────────────────────────────────── */
 .vl-modal-backdrop {
   position: fixed;
   inset: 0;
   z-index: 9999;
-  background: rgba(5, 7, 15, 0.75);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(5, 8, 17, 0.8);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -169,7 +335,7 @@
   padding: 24px 28px;
   max-width: 540px;
   width: 100%;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
   color: #E2E8F0;
   font-family: inherit;
 }
@@ -279,37 +445,35 @@
   color: #FFFFFF;
 }
 
-.vl-header-btn {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  color: #34D399;
-  border-radius: 20px;
-  padding: 4px 12px;
-  font-size: 12px;
-  font-weight: 600;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.vl-header-btn:hover {
-  background: rgba(255, 255, 255, 0.14);
-}
-
-/* ── Responsive ─────────────────────────────────────────────────── */
-@media (max-width: 1200px) {
-  .vl-grid {
+/* ── Responsive Media Queries ───────────────────────────────────── */
+@media (max-width: 1024px) {
+  .vl-hero-split {
+    grid-template-columns: 1fr;
+    gap: 20px;
+    text-align: center;
+  }
+  .vl-hero-left {
+    align-items: center;
+    padding-left: 0;
+  }
+  .vl-hero-desc {
+    text-align: center;
+  }
+  .vl-voice-trigger {
+    align-self: center;
+  }
+  .vl-labs-grid {
     grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+  }
+  .vl-orbit-bg-svg {
+    display: none;
   }
 }
 
 @media (max-width: 640px) {
-  .vl-grid {
+  .vl-labs-grid {
     grid-template-columns: 1fr;
-  }
-  .vl-page {
-    padding: 16px 16px 24px;
+    gap: 12px;
   }
 }
