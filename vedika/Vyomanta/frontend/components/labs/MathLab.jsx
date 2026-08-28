@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
-  Calculator, Edit3, Eraser, Trash2, RotateCcw, Play, Sparkles,
+  Calculator, Edit3, Eraser, Trash2, RotateCcw, Play, Brain,
   Sliders, Activity, HelpCircle, Compass, Zap, Lightbulb, ChevronRight,
   TrendingUp, Circle, Triangle, Layers, ZoomIn, ZoomOut, RefreshCw, Send, Image as ImageIcon,
   Crop, Mic, MicOff, Square, CheckCircle2, Award, Box, Volume2
@@ -1203,7 +1203,7 @@ Rules:
         <div style={{ display: 'flex', background: T.s2, padding: 4, borderRadius: 10, gap: 4, border: `1px solid ${T.border}` }}>
           {[
             { id: 'whiteboard', label: 'Whiteboard & Plotter', icon: Edit3 },
-            { id: 'ai_tutor', label: 'AI Math Tutor', icon: Sparkles },
+            { id: 'ai_tutor', label: 'AI Math Tutor', icon: Calculator },
             { id: 'visualizers', label: 'Visual Concepts', icon: Triangle }
           ].map(({ id, label, icon: Icon }) => (
             <button
@@ -1361,7 +1361,7 @@ Rules:
                       gap: 6
                     }}
                   >
-                    <Sparkles size={14} /> Analyze Selected Box
+                    <Zap size={14} /> Analyze Selected Box
                   </button>
                 )}
               </div>
@@ -1386,7 +1386,7 @@ Rules:
                     cursor: isRecognizing ? 'not-allowed' : 'pointer'
                   }}
                 >
-                  <Sparkles size={18} />
+                  <Zap size={18} />
                   {isRecognizing ? 'Analyzing Handwriting...' : cropBox.isSelected ? 'Recognize Selected Region' : 'Recognize Full Whiteboard'}
                 </button>
               </div>
@@ -1463,7 +1463,7 @@ Rules:
           <div style={{ display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 960, margin: '0 auto' }}>
             <div style={{ background: T.s1, borderRadius: 16, border: `1px solid ${T.border}`, padding: 28, boxShadow: '0 4px 20px rgba(0,0,0,0.04)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-                <Sparkles size={24} color={T.accent} />
+                <Brain size={24} color={T.accent} />
                 <div>
                   <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0, color: T.text }}>AI Step-by-Step Math Tutor</h2>
                   <p style={{ fontSize: 13, color: T.muted, margin: 0 }}>
@@ -1543,7 +1543,7 @@ Rules:
                     whiteSpace: 'nowrap'
                   }}
                 >
-                  <Sparkles size={18} />
+                  <Zap size={18} />
                   {isTutorThinking ? 'Thinking & Generating Scene...' : 'Solve & Visualize'}
                 </button>
               </div>
@@ -1552,7 +1552,7 @@ Rules:
               {/* LIVE FORMATTED MATH PREVIEW BADGE FOR LATEX INPUT */}
               {tutorQuery && (tutorQuery.includes('\\') || tutorQuery.includes('^') || tutorQuery.includes('_')) && (
                 <div style={{ marginTop: '-8px', marginBottom: '20px', padding: '10px 16px', background: `${T.purple}15`, borderRadius: 10, border: `1px solid ${T.purple}40`, display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <Sparkles size={14} color={T.purple} />
+                  <Zap size={14} color={T.purple} />
                   <span style={{ fontSize: 11, fontWeight: 700, color: T.purple, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Formatted Preview:</span>
                   <span style={{ fontSize: 14, fontWeight: 600, color: T.text, fontFamily: 'serif' }}>
                     {cleanMathLaTeX(tutorQuery)}

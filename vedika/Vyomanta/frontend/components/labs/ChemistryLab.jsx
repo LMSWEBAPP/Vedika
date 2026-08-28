@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import {
-  FlaskConical, Sparkles, Sliders, Info, Zap,
+  FlaskConical, Sliders, Info, Zap,
   RotateCcw, Play, Pause, AlertCircle, Compass, Database
 } from 'lucide-react';
 import { T } from '@/lib/lms-data';
@@ -949,7 +949,7 @@ export default function ChemistryLab() {
                   opacity: baseAdded >= 50 ? 0.5 : 1
                 }}
               >
-                <Sparkles size={12} fill="currentColor" /> {isDripping ? 'Stop Stopcock' : 'Open Stopcock (Drip)'}
+                <Zap size={12} fill="currentColor" /> {isDripping ? 'Stop Stopcock' : 'Open Stopcock (Drip)'}
               </button>
 
               {/* Titration Live Readout */}

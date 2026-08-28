@@ -1,14 +1,100 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   BookOpen, Brain, CheckCircle, ChevronRight, GraduationCap, Flame,
-  Sparkles, CheckSquare, HelpCircle, ArrowRight, Award, Trophy, Clock
+  CheckSquare, HelpCircle, ArrowRight, Award, Trophy, Clock
 } from 'lucide-react';
 import { T, getCourseDetails } from '@/lib/lms-data';
 import { getCourses, getStudentEnrollments, getCourseSyllabus, saveProgressToRedis, getProgressFromRedis } from '@/lib/frappe';
 import { useMediaQuery, isMobileMQ, isTabletMQ } from '@/lib/useMediaQuery';
+
+// 60FPS Canvas Video Wave Text Difference Blend Component
+function WaveBlendCanvas({ isMobile }) {
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+
+    let animId;
+    const ctx = canvas.getContext('2d');
+
+    const draw = () => {
+      if (video.readyState >= 2) {
+        const w = canvas.width;
+        const h = canvas.height;
+
+        ctx.clearRect(0, 0, w, h);
+
+        // 1. Draw video rotated 180 degrees (matching wave direction)
+        ctx.save();
+        ctx.translate(w / 2, h / 2);
+        ctx.rotate(Math.PI);
+        ctx.drawImage(video, -w / 2, -h / 2, w, h);
+        ctx.restore();
+
+        // 2. Draw text with difference blend mode
+        ctx.globalCompositeOperation = 'difference';
+        ctx.fillStyle = '#efefef';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        const mainFontSize = isMobile ? 52 : 92;
+        ctx.font = `900 ${mainFontSize}px "Outfit", "Montserrat", sans-serif`;
+        
+        ctx.fillText('Where Learning', w / 2, h * 0.36);
+        ctx.fillText('Flows Into Mastery', w / 2, h * 0.53);
+
+        const subFontSize = isMobile ? 18 : 22;
+        ctx.font = `700 ${subFontSize}px "Outfit", "Montserrat", sans-serif`;
+        ctx.fillText('Master Python, explore interactive 3D STEM labs, and practice real-time AI viva examinations.', w / 2, h * 0.72);
+
+        // Reset blend mode
+        ctx.globalCompositeOperation = 'source-over';
+      }
+      animId = requestAnimationFrame(draw);
+    };
+
+    draw();
+
+    return () => {
+      if (animId) cancelAnimationFrame(animId);
+    };
+  }, [isMobile]);
+
+  return (
+    <div style={{ position: 'relative', width: '100%', height: '100%', borderBottomRightRadius: '15vw', overflow: 'hidden' }}>
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        loop
+        muted
+        style={{ display: 'none' }}
+      >
+        <source src="/videos/tactus-waves-hero-sm.mp4" type="video/mp4" />
+        <source src="/videos/beach-waves.mp4" type="video/mp4" />
+        <source src="/videos/oceans.mp4" type="video/mp4" />
+      </video>
+      <canvas
+        ref={canvasRef}
+        width={1400}
+        height={650}
+        style={{
+          width: '100%',
+          height: '100%',
+          objectFit: 'cover',
+          borderBottomRightRadius: '15vw',
+          display: 'block'
+        }}
+      />
+    </div>
+  );
+}
 
 export default function Dashboard() {
   const router = useRouter();
@@ -42,6 +128,32 @@ export default function Dashboard() {
     { id: 'daily_concept', label: 'Review Daily Concept Card', completed: false },
     { id: 'skill_check', label: 'Complete Daily Skill Check', completed: false }
   ]);
+
+  // Scroll parallax and custom cursor state
+  const [scrollY, setScrollY] = useState(0);
+  const [cursorPos, setCursorPos] = useState({ x: -100, y: -100, visible: false });
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setScrollY(window.scrollY);
+    };
+    const handleMouseMove = (e) => {
+      setCursorPos({ x: e.clientX, y: e.clientY, visible: true });
+    };
+    const handleMouseLeave = () => {
+      setCursorPos(prev => ({ ...prev, visible: false }));
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    window.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseleave', handleMouseLeave);
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseleave', handleMouseLeave);
+    };
+  }, []);
 
   useEffect(() => {
     // Dynamic greeting based on time of day
@@ -138,10 +250,10 @@ export default function Dashboard() {
     let key = 'completed_lessons';
     let email = '';
     if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('frappe_user');
-      if (stored) {
+      const storedUser = localStorage.getItem('frappe_user');
+      if (storedUser) {
         try {
-          const user = JSON.parse(stored);
+          const user = JSON.parse(storedUser);
           if (user && user.email) {
             key = `completed_lessons_${user.email}`;
             email = user.email;
@@ -150,9 +262,9 @@ export default function Dashboard() {
       }
 
       // Check localStorage first
-      const stored = localStorage.getItem(key);
-      if (stored) {
-        try { setCompleted(JSON.parse(stored)); } catch (e) {}
+      const storedProgress = localStorage.getItem(key);
+      if (storedProgress) {
+        try { setCompleted(JSON.parse(storedProgress)); } catch (e) {}
       }
 
       // Sync with Redis if email present
@@ -262,22 +374,24 @@ export default function Dashboard() {
   ];
   const correctAnswerIdx = 1;
 
-  // Shiny Black Glass Container Styles matching reference image
+  // Extra Shiny Obsidian Glass Container Styles matching reference image
   const shinyCardStyle = {
-    background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.01) 100%), rgba(14, 15, 22, 0.75)',
-    border: '1px solid rgba(255, 255, 255, 0.12)',
+    background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.03) 35%, rgba(255, 255, 255, 0.005) 100%), rgba(12, 13, 20, 0.85)',
+    border: '1px solid rgba(255, 255, 255, 0.16)',
+    borderTop: '1px solid rgba(255, 255, 255, 0.35)',
     borderRadius: 18,
-    boxShadow: '0 12px 36px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.14)',
-    backdropFilter: 'blur(16px)',
-    WebkitBackdropFilter: 'blur(16px)'
+    boxShadow: '0 16px 40px rgba(0, 0, 0, 0.7), inset 0 1px 1px rgba(255, 255, 255, 0.3), inset 0 -1px 2px rgba(0, 0, 0, 0.5)',
+    backdropFilter: 'blur(20px)',
+    WebkitBackdropFilter: 'blur(20px)'
   };
 
   const shinyPillButtonStyle = {
-    background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.04) 100%), #181924',
-    border: '1px solid rgba(255, 255, 255, 0.2)',
+    background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.08) 50%, rgba(255, 255, 255, 0.02) 100%), #1B1D2C',
+    border: '1px solid rgba(255, 255, 255, 0.28)',
+    borderTop: '1px solid rgba(255, 255, 255, 0.45)',
     borderRadius: 9999,
     color: '#FFFFFF',
-    boxShadow: '0 4px 14px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.25)',
+    boxShadow: '0 6px 18px rgba(0, 0, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.4), inset 0 -1px 2px rgba(0, 0, 0, 0.6)',
     fontWeight: 600,
     cursor: 'pointer',
     transition: 'all 0.2s ease'
@@ -285,12 +399,87 @@ export default function Dashboard() {
 
   return (
     <div style={{
-      padding: `36px ${rPad}px`,
+      padding: '0 0 48px 0',
       minHeight: '100vh',
-      background: 'radial-gradient(circle at 15% 15%, rgba(45, 55, 75, 0.35) 0%, rgba(5, 5, 8, 1) 45%), radial-gradient(circle at 85% 85%, rgba(35, 25, 55, 0.4) 0%, rgba(5, 5, 8, 1) 50%), #040406',
+      background: 'radial-gradient(circle at 18% 12%, rgba(70, 90, 140, 0.45) 0%, rgba(5, 5, 8, 1) 45%), radial-gradient(circle at 82% 82%, rgba(90, 50, 130, 0.4) 0%, rgba(5, 5, 8, 1) 50%), #030305',
       color: '#FFFFFF',
       fontFamily: 'var(--font-outfit), sans-serif'
     }}>
+      
+      {/* Custom Mix-Blend-Mode Cursor */}
+      {cursorPos.visible && !isMobile && (
+        <div style={{
+          position: 'fixed',
+          top: cursorPos.y,
+          left: cursorPos.x,
+          width: 32,
+          height: 32,
+          borderRadius: '50%',
+          backgroundColor: '#00BCD4',
+          mixBlendMode: 'difference',
+          pointerEvents: 'none',
+          zIndex: 9999,
+          transform: 'translate(-50%, -50%)',
+          transition: 'transform 0.1s ease, opacity 0.2s ease',
+          boxShadow: '0 0 16px #00BCD4'
+        }} />
+      )}
+
+      {/* Hero Section with 60FPS Video Wave Text Difference Blend Canvas */}
+      <section style={{
+        position: 'relative',
+        width: '100%',
+        height: isMobile ? '520px' : '650px',
+        backgroundColor: '#050508',
+        borderBottomRightRadius: '15vw',
+        overflow: 'hidden',
+        marginBottom: 56,
+        boxShadow: '0 20px 50px rgba(0, 0, 0, 0.8)'
+      }}>
+        <WaveBlendCanvas isMobile={isMobile} />
+
+        {/* Scroll Down Button Overlay */}
+        <div style={{
+          position: 'absolute',
+          bottom: 40,
+          left: 0,
+          width: '100%',
+          display: 'flex',
+          justifyContent: 'center',
+          zIndex: 10
+        }}>
+          <button
+            onClick={() => {
+              window.scrollTo({
+                top: isMobile ? 500 : 620,
+                behavior: 'smooth'
+              });
+            }}
+            style={{
+              background: 'rgba(255, 255, 255, 0.15)',
+              border: '1px solid rgba(255, 255, 255, 0.3)',
+              borderRadius: 9999,
+              color: '#FFFFFF',
+              padding: '12px 28px',
+              fontSize: 14,
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              boxShadow: '0 6px 20px rgba(0, 0, 0, 0.5)',
+              backdropFilter: 'blur(12px)',
+              WebkitBackdropFilter: 'blur(12px)',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            Scroll to Dashboard ↓
+          </button>
+        </div>
+      </section>
+
+      {/* Main Dashboard Content Area */}
+      <div style={{ padding: `0 ${rPad}px` }}>
       
       {/* Dynamic Header & Greeting */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16, marginBottom: 28 }}>
@@ -349,7 +538,7 @@ export default function Dashboard() {
       }}>
         <form onSubmit={handleQuickAskSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: '#38BDF8', fontWeight: 700, letterSpacing: '-0.01em' }}>
-            <Sparkles size={16} /> Ask your AI Tutor anything...
+            <Brain size={16} /> Ask your AI Tutor anything...
           </div>
           <div style={{ display: 'flex', gap: 12 }}>
             <input
@@ -863,5 +1052,6 @@ export default function Dashboard() {
       </div>
 
     </div>
+  </div>
   );
 }

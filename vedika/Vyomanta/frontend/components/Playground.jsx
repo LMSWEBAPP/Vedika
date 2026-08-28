@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
 import { python } from '@codemirror/lang-python';
 import { usePyodide } from '@/hooks/usePyodide';
-import { Play, Square, Trash2, CheckCircle, Loader2, Sparkles, ChevronLeft, ChevronRight, Pause, BookOpen, AlertCircle, X } from 'lucide-react';
+import { Play, Square, Trash2, CheckCircle, Loader2, ChevronLeft, ChevronRight, Pause, BookOpen, AlertCircle, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
@@ -1539,7 +1539,7 @@ except Exception as e:
               )}
               {!isTracing && !traceData && !traceError && (
                 <div style={{ display: 'flex', height: '100%', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0 24px', textAlign: 'center', color: '#8892B0', gap: 8 }}>
-                  <Sparkles size={24} color="#F5A95B" />
+                  <Play size={24} color="#F5A95B" />
                   <span style={{ fontSize: 13, maxWidth: 360 }}>
                     Run your code first to generate a trace timeline and inspect Python execution step-by-step.
                   </span>
@@ -1765,7 +1765,7 @@ except Exception as e:
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                       {verifyState === 'success' && (
                         <div style={{ background: 'rgba(34, 197, 160, 0.1)', border: '1px solid rgba(34, 197, 160, 0.25)', borderRadius: 6, padding: 10, display: 'flex', alignItems: 'center', gap: 8, color: '#22C5A0', fontSize: 12, fontWeight: 600 }}>
-                          <Sparkles size={14} />
+                          <CheckCircle size={14} />
                           <span>All test cases passed! 🎉</span>
                         </div>
                       )}

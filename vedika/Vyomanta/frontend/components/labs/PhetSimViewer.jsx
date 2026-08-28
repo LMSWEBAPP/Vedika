@@ -2,7 +2,7 @@
 
 import React, { useState, useRef } from 'react';
 import { 
-  Maximize2, RotateCcw, Sparkles, BookOpen, HelpCircle, 
+  Maximize2, RotateCcw, BookOpen, HelpCircle, 
   ExternalLink, Layers, CheckCircle2, ChevronDown, Award, Send, Bot, RefreshCw
 } from 'lucide-react';
 import { PHET_SIMULATIONS, LAB_SUBJECT_METADATA } from '@/lib/phet-simulations';
@@ -172,7 +172,7 @@ export default function PhetSimViewer({ subject = 'physics', activeSimId, onSele
               transition: 'all 0.2s'
             }}
           >
-            <Sparkles size={14} />
+            <Maximize2 size={14} />
             Interactive HTML5 Sim
           </button>
           <button
@@ -254,7 +254,7 @@ export default function PhetSimViewer({ subject = 'physics', activeSimId, onSele
         overflowX: 'auto'
       }}>
         {[
-          { id: 'sim', label: 'Interactive Canvas', icon: Sparkles },
+          { id: 'sim', label: 'Interactive Canvas', icon: Layers },
           { id: 'objectives', label: 'Objectives & Steps', icon: BookOpen },
           { id: 'formulas', label: 'Formulas & Principles', icon: Award },
           { id: 'questions', label: 'Viva & Self Test', icon: HelpCircle },

@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Brain, CheckCircle, ChevronRight, Clock,
-  Loader2, Sparkles, RotateCcw, ArrowLeft, Send,
+  Loader2, RotateCcw, ArrowLeft, Send,
   FileText, Award, AlertCircle, ThumbsUp, HelpCircle, Terminal
 } from 'lucide-react';
 import { T, COURSE, geminiCall, buildQuizPrompt, parseQuizOutput, getCourseDetails } from '@/lib/lms-data';
@@ -745,7 +745,7 @@ export default function LessonPage({ lesson, completed = {}, onComplete }) {
           {!aiQuiz && !aiLoading && (
             <button onClick={handleGenerateQuiz}
               style={{ background: T.purple, color: '#fff', border: 'none', padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Sparkles size={13} /> Generate Quiz
+              <Brain size={13} /> Generate Quiz
             </button>
           )}
         </div>

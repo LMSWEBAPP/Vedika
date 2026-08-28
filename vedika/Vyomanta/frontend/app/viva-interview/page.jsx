@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Award, FileText, ChevronRight, ChevronDown, HelpCircle, ArrowLeft, Send, 
   AlertCircle, ShieldAlert, CheckCircle, Volume2, VolumeX, RotateCcw, 
-  BookOpen, Code, Brain, Settings, Sparkles, Loader2, FlaskConical, 
+  BookOpen, Code, Brain, Settings, Loader2, FlaskConical, 
   Upload, Mic, MicOff, Check, RefreshCw, Printer, AlertTriangle, FileCheck,
   Edit3, ListFilter, Gauge, Zap, Search, Activity, BarChart2, Trash2,
   Radio, PhoneOff, Wifi, Lightbulb, Flag, Clock, Target, CheckCircle2, XCircle
@@ -1952,7 +1952,7 @@ export default function VivaInterviewPage() {
                 alignItems: 'center',
                 gap: 6
               }}>
-                <Sparkles size={14} />
+                <BookOpen size={14} />
                 <span>Topic {currentStageInfo.topicIndex}: {currentStageInfo.topicName}</span>
                 {currentStageInfo.questionType === 'follow_up' && (
                   <span style={{ fontSize: '0.7rem', opacity: 0.85 }}> (Probe {currentStageInfo.followUpIndex})</span>
@@ -3030,7 +3030,7 @@ export default function VivaInterviewPage() {
                 </>
               ) : (
                 <>
-                  <Sparkles size={20} />
+                  <Mic size={20} />
                   <span>Start Voice {sessionMode === 'viva' ? 'Viva Examination' : 'Technical Interview'} ({difficulty})</span>
                 </>
               )}
@@ -3669,7 +3669,7 @@ export default function VivaInterviewPage() {
                       gap: 10
                     }}>
                       <div style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--purple)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <Sparkles size={16} /> Step-by-Step Explanation & Solution
+                        <Brain size={16} /> Step-by-Step Explanation & Solution
                       </div>
                       <div style={{ fontSize: '0.9rem', color: 'var(--text)', lineHeight: 1.6 }}>
                         <MathEquationRenderer content={currentAptQuestion.explanation} />
@@ -3706,7 +3706,7 @@ export default function VivaInterviewPage() {
                   color: '#FFFFFF',
                   boxShadow: '0 6px 20px rgba(245, 158, 11, 0.35)'
                 }}>
-                  <Sparkles size={32} className="animate-pulse" />
+                  <Zap size={32} />
                 </div>
 
                 <div>
@@ -4873,7 +4873,7 @@ export default function VivaInterviewPage() {
                 gap: 12
               }}>
                 <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 800, color: 'var(--purple)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Sparkles size={18} />
+                  <Target size={18} />
                   <span>Targeted Study Roadmap</span>
                 </h4>
                 <ul style={{ margin: 0, paddingLeft: 18, fontSize: '0.8rem', color: 'var(--text)', display: 'flex', flexDirection: 'column', gap: 6 }}>

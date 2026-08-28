@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
-  Mic, MicOff, CheckCircle2, Trash2, ArrowLeft, Radio, Sparkles, 
+  Mic, MicOff, CheckCircle2, Trash2, ArrowLeft, Radio, 
   HelpCircle, Plus, X, Layers, Activity, Command, Layout, Eye, ChevronRight,
   FolderPlus, Folder, Image as ImageIcon, FileText, Upload, RefreshCw, Wand2,
   Download, Copy, Check, Presentation, History, ChevronLeft, Bookmark
@@ -534,7 +534,7 @@ export default function DynamicPresentation() {
               alignItems: 'center',
               gap: 8
             }}>
-              <Sparkles size={20} style={{ color: 'var(--accent)' }} className="animate-pulse" />
+              <Presentation size={20} style={{ color: 'var(--accent)' }} />
               Dynamic Presentation HUD
             </h1>
             <p style={{ margin: '2px 0 0 0', fontSize: '0.75rem', color: 'var(--muted)' }}>
@@ -1160,7 +1160,7 @@ export default function DynamicPresentation() {
               </div>
             ) : !highlightSentence && bulletPoints.length === 0 && !activeImage && (
               <div style={{ textAlign: 'center', padding: '48px 16px', opacity: 0.85 }}>
-                <Sparkles size={44} style={{ color: 'var(--accent)', margin: '0 auto 12px auto' }} className="animate-pulse" />
+                <Presentation size={44} style={{ color: 'var(--accent)', margin: '0 auto 12px auto' }} />
                 <h2 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 800, color: 'var(--text)' }}>Your AI Presentation Stage is Ready</h2>
                 <p style={{ margin: '8px auto 0 auto', fontSize: '0.85rem', color: 'var(--muted)', maxWidth: 440, lineHeight: 1.5 }}>
                   Click <strong style={{ color: 'var(--accent)' }}>Start Presentation</strong> and begin speaking. Vedika automatically formats your speech into live presentation slides in real-time.
@@ -1178,7 +1178,7 @@ export default function DynamicPresentation() {
                 boxShadow: '0 8px 32px rgba(79, 131, 246, 0.15)'
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', fontWeight: 800, color: 'var(--accent)', letterSpacing: '0.08em', marginBottom: 8 }}>
-                  <Sparkles size={14} />
+                  <Activity size={14} />
                   <span>KEY HIGHLIGHT</span>
                 </div>
                 <p style={{ margin: 0, fontSize: isMobile ? '1.25rem' : '1.75rem', fontWeight: 800, color: 'var(--text)', lineHeight: 1.4 }}>

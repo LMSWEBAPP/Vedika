@@ -1,0 +1,21 @@
+/* ═══════════════════════════════════════════════════════════════
+   FluffyFurAvatar.css
+   Fluffy Sage Monster Avatar with Interactive Luminous Glass Eyes
+   ═══════════════════════════════════════════════════════════════ */
+
+.fluffy-avatar-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.fluffy-avatar-canvas {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}

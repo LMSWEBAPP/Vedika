@@ -4,23 +4,23 @@ import { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   BookOpen, Brain, BarChart3, Zap, LogOut, Briefcase, Sun, Moon,
-  FlaskConical, ChevronDown, Plus, Code2
+  FlaskConical, ChevronDown, Plus, Code2, Award, FileText, FolderOpen
 } from 'lucide-react';
 import { T, getTheme, setTheme } from '@/lib/lms-data';
 import { useMediaQuery, isMobileMQ } from '@/lib/useMediaQuery';
 import MobileNav from './MobileNav';
 
 const NAV = [
-  { id: '/courses',       Icon: BookOpen,      label: 'Courses'       },
-  { id: '/vedika-ai',     Icon: Brain,         label: 'Vedika AI'     },
-  { id: '/vedika-labs',   Icon: FlaskConical,  label: 'Vedika Labs'   },
-  { id: '/jobs',          Icon: Briefcase,     label: 'Jobs'          },
-  { id: '/progress',      Icon: BarChart3,     label: 'Progress'      },
+  { id: '/courses', Icon: BookOpen, label: 'Courses' },
+  { id: '/vedika-ai', Icon: Brain, label: 'Vedika AI' },
+  { id: '/vedika-labs', Icon: FlaskConical, label: 'Vedika Labs' },
+  { id: '/jobs', Icon: Briefcase, label: 'Jobs' },
+  { id: '/progress', Icon: BarChart3, label: 'Progress' },
 ];
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const router   = useRouter();
+  const router = useRouter();
   const isMobile = useMediaQuery(isMobileMQ);
   const isGeneralTutor = pathname.startsWith('/vedika-ai/ask');
   const isCodingTutor = pathname.startsWith('/vedika-ai/code');
@@ -30,6 +30,7 @@ export default function Sidebar() {
   const [sessions, setSessions] = useState([]);
   const [currentSessionId, setCurrentSessionId] = useState(null);
   const [historyDropdownOpen, setHistoryDropdownOpen] = useState(false);
+  const [coursesDropdownOpen, setCoursesDropdownOpen] = useState(false);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -37,7 +38,7 @@ export default function Sidebar() {
       if (stored) {
         try {
           setUser(JSON.parse(stored));
-        } catch (e) {}
+        } catch (e) { }
       }
     }
   }, []);
@@ -157,7 +158,7 @@ export default function Sidebar() {
       fontFamily: 'var(--font-outfit), sans-serif'
     }}>
       {/* Brand Header */}
-      <div 
+      <div
         onClick={() => router.push('/')}
         style={{
           display: 'flex',
@@ -189,6 +190,113 @@ export default function Sidebar() {
       <nav style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         {NAV.map(({ id, Icon, label }) => {
           const active = isActive(id);
+          const isCourses = id === '/courses';
+
+          if (isCourses) {
+            const COURSES_DROPDOWN = [
+              { id: 'explore', label: 'Explore Courses', Icon: BookOpen, url: '/courses?tab=explore' },
+              { id: 'quizzes', label: 'Quizzes', Icon: Award, url: '/courses?tab=quizzes' },
+              { id: 'assignments', label: 'Assignments', Icon: FileText, url: '/courses?tab=assignments' },
+              { id: 'resources', label: 'Resource Hub', Icon: FolderOpen, url: '/courses?tab=resources' },
+            ];
+
+            return (
+              <div
+                key={id}
+                style={{ position: 'relative' }}
+                onMouseEnter={() => setCoursesDropdownOpen(true)}
+                onMouseLeave={() => setCoursesDropdownOpen(false)}
+              >
+                <button
+                  onClick={() => {
+                    setCoursesDropdownOpen(!coursesDropdownOpen);
+                    router.push('/courses');
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '8px 16px',
+                    borderRadius: 10,
+                    background: active ? `${T.accent}18` : 'transparent',
+                    border: active ? `1px solid ${T.accent}30` : '1px solid transparent',
+                    color: active ? T.accent : T.muted,
+                    cursor: 'pointer',
+                    fontSize: 13.5,
+                    fontWeight: active ? 700 : 500,
+                    letterSpacing: '-0.01em',
+                    transition: 'all 0.15s ease',
+                    fontFamily: 'inherit'
+                  }}
+                >
+                  <Icon size={16} />
+                  <span>{label}</span>
+                  <ChevronDown size={14} style={{ transform: coursesDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
+                </button>
+
+                {coursesDropdownOpen && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: 0,
+                      marginTop: 6,
+                      width: 210,
+                      background: T.s1,
+                      border: `1px solid ${T.border}`,
+                      borderRadius: 14,
+                      boxShadow: '0 12px 32px rgba(0, 0, 0, 0.4)',
+                      backdropFilter: 'blur(16px)',
+                      padding: 6,
+                      zIndex: 100,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 4
+                    }}
+                  >
+                    {COURSES_DROPDOWN.map((item) => (
+                      <button
+                        key={item.id}
+                        onClick={() => {
+                          setCoursesDropdownOpen(false);
+                          router.push(item.url);
+                        }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 10,
+                          padding: '10px 12px',
+                          borderRadius: 8,
+                          background: 'transparent',
+                          border: 'none',
+                          color: T.text,
+                          fontSize: 13,
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                          width: '100%',
+                          transition: 'all 0.15s',
+                          fontFamily: 'inherit'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = `${T.accent}15`;
+                          e.currentTarget.style.color = T.accent;
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = 'transparent';
+                          e.currentTarget.style.color = T.text;
+                        }}
+                      >
+                        <item.Icon size={15} color={T.accent} />
+                        <span>{item.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          }
+
           return (
             <button
               key={id}

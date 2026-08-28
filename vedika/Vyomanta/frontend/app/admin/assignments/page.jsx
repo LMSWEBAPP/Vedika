@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, X, GraduationCap, ClipboardList, CheckCircle, FileText, Star, User, Sparkles, Check, AlertCircle, Loader2 } from 'lucide-react';
+import { Plus, Edit2, Trash2, X, GraduationCap, ClipboardList, CheckCircle, FileText, Star, User, Check, AlertCircle, Loader2, Brain } from 'lucide-react';
 import { T } from '@/lib/lms-data';
 import { useMediaQuery, isMobileMQ } from '@/lib/useMediaQuery';
 import { getAssignments, createAssignment, updateAssignment, deleteAssignment, getCourses, getAssignmentSubmissions, gradeAssignmentSubmission } from '@/lib/frappe';
@@ -650,7 +650,7 @@ export default function AdminAssignmentsPage() {
                         </>
                       ) : (
                         <>
-                          <Sparkles size={12} /> Evaluate with AI
+                          <Brain size={12} /> Evaluate with AI
                         </>
                       )}
                     </button>
@@ -910,7 +910,7 @@ export default function AdminAssignmentsPage() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, background: T.s2, border: `1px solid ${T.border}`, padding: 14, borderRadius: 10 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <label style={{ fontSize: 12, fontWeight: 700, color: T.purple, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <Sparkles size={14} /> Custom Evaluation Criteria / Rubric Points
+                    <Brain size={14} /> Custom Evaluation Criteria / Rubric Points
                   </label>
                   <button
                     type="button"
@@ -1133,7 +1133,7 @@ export default function AdminAssignmentsPage() {
                 <div style={{ background: T.s2, border: `1px solid ${T.purple}40`, borderRadius: 10, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: 13, fontWeight: 700, color: T.purple, display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <Sparkles size={14} /> AI Analysis Score: {gradingForm.score}/100
+                      <Brain size={14} /> AI Analysis Score: {gradingForm.score}/100
                     </span>
                     <span style={{
                       fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 4,

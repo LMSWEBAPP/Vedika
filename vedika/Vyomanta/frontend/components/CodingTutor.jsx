@@ -8,7 +8,7 @@ import CodeMirror from '@uiw/react-codemirror';
 import { python } from '@codemirror/lang-python';
 import {
   Code2, Loader2, ChevronRight, Lock, FlipHorizontal,
-  Paperclip, Mic, Image, HelpCircle, Send, AlignLeft, Sparkles, ChevronLeft,
+  Paperclip, Mic, Image, HelpCircle, Send, AlignLeft, ChevronLeft,
   BookOpen, BarChart3, Home, Zap, Brain, Award, FileText, FolderOpen, Briefcase,
   Trash, X, Puzzle
 } from 'lucide-react';
@@ -51,7 +51,7 @@ const SUGGESTIONS = [
   { id: 'flashcards', label: 'Flashcards', Icon: FlipHorizontal, color: T.purple },
   { id: 'infographic', label: 'Visual Summary', Icon: Image, color: T.amber },
   { id: 'simpler', label: 'Explain Simpler', Icon: AlignLeft, color: T.green },
-  { id: 'examples', label: 'Code Examples', Icon: Sparkles, color: T.accent },
+  { id: 'examples', label: 'Code Examples', Icon: Zap, color: T.accent },
 ];
 
 const FEATURE_SYSTEMS = {

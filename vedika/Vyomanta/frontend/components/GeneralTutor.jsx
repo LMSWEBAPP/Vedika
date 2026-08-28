@@ -5,7 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
   Brain, Loader2, ChevronRight, Lock, FlipHorizontal,
-  Paperclip, Mic, Image, HelpCircle, Send, AlignLeft, Sparkles, ChevronLeft,
+  Paperclip, Mic, Image, HelpCircle, Send, AlignLeft, ChevronLeft,
   BookOpen, Code2, BarChart3, Home, Zap, Award, FileText, FolderOpen, Briefcase,
   Trash
 } from 'lucide-react';
@@ -43,7 +43,7 @@ const SUGGESTIONS = [
   { id: 'flashcards', label: 'Flashcards', Icon: FlipHorizontal, color: T.purple },
   { id: 'infographic', label: 'Visual Summary', Icon: Image, color: T.amber },
   { id: 'simpler', label: 'Explain Simpler', Icon: AlignLeft, color: T.green },
-  { id: 'examples', label: 'Examples', Icon: Sparkles, color: T.accent },
+  { id: 'examples', label: 'Examples', Icon: Zap, color: T.accent },
 ];
 
 const cleanMarkdown = (text) => {

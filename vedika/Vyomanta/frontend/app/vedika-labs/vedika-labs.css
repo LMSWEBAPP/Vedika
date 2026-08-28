@@ -1,0 +1,131 @@
+/* ═══════════════════════════════════════════════════════════════
+   Vedika Labs Hub — vedika-labs.css
+   Clean layout — 3D avatars with low button placement and spacious bounce room
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Page ──────────────────────────────────────────────────────── */
+.vl-page {
+  padding: 44px 32px 72px;
+  max-width: 1440px;
+  margin: 0 auto;
+  font-family: var(--font-outfit), system-ui, sans-serif;
+  color: var(--text, #E2E8F0);
+  box-sizing: border-box;
+  min-height: 100vh;
+  transition: opacity 0.3s ease;
+}
+
+.vl-page.is-loading-model {
+  opacity: 0;
+}
+
+/* ── Header ─────────────────────────────────────────────────────── */
+.vl-header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.vl-title {
+  font-size: clamp(26px, 3.5vw, 40px);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  margin: 0 0 10px;
+  background: linear-gradient(to right, #FFFFFF 0%, #10B981 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.vl-subtitle {
+  color: #94A3B8;
+  font-size: 16px;
+  margin: 0;
+}
+
+/* ── Grid ───────────────────────────────────────────────────────── */
+.vl-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 24px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* ── Transparent Card Container (High Headroom for Chaotic Bounces) ── */
+.vl-card {
+  position: relative;
+  padding: 64px 16px 28px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: 480px;
+  box-sizing: border-box;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+/* ── Avatar Wrapper & Motion Container (Lowered Position) ────────── */
+.vl-avatar-wrap {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  flex: 1;
+  width: 100%;
+  min-height: 310px;
+  margin-top: 36px;
+}
+
+.vl-avatar-motion {
+  position: relative;
+  width: 270px;
+  height: 270px;
+  will-change: transform;
+  transform-origin: center bottom;
+}
+
+/* ── Enter Lab Button (Positioned Lower with Generous Space) ─────── */
+.vl-card-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 36px;
+  padding: 12px 28px;
+  border-radius: 14px;
+  border: 1.5px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+  color: #FFFFFF;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+  font-family: inherit;
+  white-space: nowrap;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.vl-card-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+/* ── Responsive ─────────────────────────────────────────────────── */
+@media (max-width: 1200px) {
+  .vl-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .vl-grid {
+    grid-template-columns: 1fr;
+  }
+  .vl-page {
+    padding: 32px 16px 48px;
+  }
+}

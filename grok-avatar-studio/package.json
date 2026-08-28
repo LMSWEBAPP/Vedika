@@ -1,0 +1,13 @@
+{
+  "name": "grok-avatar-studio",
+  "version": "1.0.0",
+  "description": "Animated Grok-Style Avatar Creator Studio - Standalone Web Application",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}

@@ -6,9 +6,9 @@ import { python } from '@codemirror/lang-python';
 import { html } from '@codemirror/lang-html';
 import { usePyodide } from '@/hooks/usePyodide';
 import {
-  Play, Pause, Square, Trash2, CheckCircle, Loader2, Sparkles,
-  ChevronLeft, ChevronRight, BookOpen, AlertCircle, X, Award, Zap,
-  Gamepad2, HelpCircle, ChevronDown, Check, Info, Code, Globe, HelpCircle as HelpIcon, Sun, Moon
+  Play, Pause, Square, Trash2, CheckCircle, Loader2, Brain, Zap,
+  ChevronLeft, ChevronRight, BookOpen, AlertCircle, X,
+  Gamepad2, HelpCircle, ChevronDown, Check, Info, Code, Globe, HelpCircle as HelpIcon, Sun, Moon, ArrowRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Terminal } from 'xterm';
@@ -1619,7 +1619,7 @@ export default function CodePuzzle() {
                     {puzzleSource === 'ai' && (
                       <div style={{ padding: 14, background: 'rgba(91, 140, 248, 0.03)', border: '1px solid rgba(91, 140, 248, 0.15)', borderRadius: 10, display: 'flex', flexDirection: 'column', gap: 12 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <Sparkles size={16} color="#5B8CF8" />
+                          <Brain size={16} color="#5B8CF8" />
                           <span style={{ fontSize: 11, color: '#8892B0', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>AI Tutor Config</span>
                         </div>
                         
@@ -1666,7 +1666,7 @@ export default function CodePuzzle() {
                               opacity: isGeneratingPuzzle ? 0.6 : 1
                             }}
                           >
-                            {isGeneratingPuzzle ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <Sparkles size={12} fill="currentColor" />}
+                            {isGeneratingPuzzle ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <Zap size={12} fill="currentColor" />}
                             Generate AI Puzzle
                           </button>
                         </div>
@@ -1879,7 +1879,7 @@ export default function CodePuzzle() {
                                     gap: 4
                                   }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#22C5A0', fontSize: 11.5, fontWeight: 800 }}>
-                                      <Sparkles size={12} fill="currentColor" />
+                                      <CheckCircle size={12} fill="currentColor" />
                                       CONGRATULATIONS!
                                     </div>
                                     <span style={{ fontSize: 11, color: '#8892B0', lineHeight: 1.3 }}>

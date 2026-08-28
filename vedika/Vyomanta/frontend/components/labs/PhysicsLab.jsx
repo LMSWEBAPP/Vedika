@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import {
   Play, Pause, RotateCcw, Award, Sliders, Info, Zap,
-  ChevronRight, Sparkles, HelpCircle, Activity, Lightbulb, Compass
+  ChevronRight, HelpCircle, Activity, Lightbulb, Compass
 } from 'lucide-react';
 import { T } from '@/lib/lms-data';
 

@@ -1,0 +1,1493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Animated Grok Avatar Creator Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@600;700;800;900&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #F8FAFC;
+      --panel-bg: #FFFFFF;
+      --card-bg: #F1F5F9;
+      --border: #E2E8F0;
+      --text: #0F172A;
+      --muted: #64748B;
+      --accent: #2563EB;
+      --accent-hover: #1D4ED8;
+      --orange: #F97316;
+      --shadow-sm: 0 2px 8px rgba(15, 23, 42, 0.05);
+      --shadow-md: 0 12px 32px rgba(15, 23, 42, 0.08);
+      --shadow-lg: 0 20px 48px rgba(15, 23, 42, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+      /* Dot grid pattern matching Creator Studio Espresso */
+      background-image: radial-gradient(#CBD5E1 1.2px, transparent 1.2px);
+      background-size: 24px 24px;
+    }
+
+    /* Header Bar */
+    header {
+      background: rgba(255, 255, 255, 0.9);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .brand-logo {
+      width: 44px;
+      height: 44px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, #BE123C 0%, #E11D48 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #FFF;
+      box-shadow: 0 4px 12px rgba(225, 29, 72, 0.3);
+    }
+
+    .brand-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .verified-badge {
+      color: #3B82F6;
+      display: inline-flex;
+    }
+
+    .brand-sub {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 18px;
+      border-radius: 12px;
+      font-size: 13.5px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: var(--panel-bg);
+      color: var(--text);
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .btn:hover {
+      border-color: #CBD5E1;
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-md);
+    }
+
+    .btn-primary {
+      background: var(--text);
+      color: #FFF;
+      border-color: var(--text);
+    }
+
+    .btn-primary:hover {
+      background: #1E293B;
+      border-color: #1E293B;
+    }
+
+    .btn-accent {
+      background: var(--accent);
+      color: #FFF;
+      border-color: var(--accent);
+    }
+
+    .btn-accent:hover {
+      background: var(--accent-hover);
+      border-color: var(--accent-hover);
+    }
+
+    /* Main Studio Container */
+    .studio-layout {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 60px 1fr 380px;
+      gap: 0;
+      height: calc(100vh - 170px);
+      max-height: calc(100vh - 170px);
+      position: relative;
+    }
+
+    /* Left Floating Tool Dock */
+    .left-dock {
+      background: var(--panel-bg);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px 0;
+      gap: 16px;
+      z-index: 20;
+    }
+
+    .dock-btn {
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--muted);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .dock-btn:hover, .dock-btn.active {
+      background: var(--card-bg);
+      color: var(--text);
+      border-color: var(--border);
+    }
+
+    /* Center Canvas Preview Area */
+    .viewport-area {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      overflow: hidden;
+    }
+
+    .canvas-card {
+      background: #FFFFFF;
+      border-radius: 28px;
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-lg);
+      width: 100%;
+      max-width: 780px;
+      height: 100%;
+      max-height: 480px;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      transition: all 0.3s ease;
+    }
+
+    #avatarCanvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: pointer;
+    }
+
+    .export-popover {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(12px);
+      padding: 8px 14px;
+      border-radius: 16px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    }
+
+    .export-popover button {
+      background: transparent;
+      border: none;
+      color: #FFF;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 6px 14px;
+      border-radius: 10px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: background 0.15s;
+    }
+
+    .export-popover button:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    /* Right Control Sidebar */
+    .controls-sidebar {
+      background: var(--panel-bg);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      padding: 24px;
+      gap: 28px;
+      z-index: 20;
+    }
+
+    .control-group-title {
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 12px;
+    }
+
+    .grid-options {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+    }
+
+    .option-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 12px 6px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      color: var(--text);
+    }
+
+    .option-btn:hover {
+      border-color: #CBD5E1;
+      transform: translateY(-1px);
+    }
+
+    .option-btn.active {
+      background: #0F172A;
+      color: #FFFFFF;
+      border-color: #0F172A;
+      box-shadow: 0 4px 14px rgba(15, 23, 42, 0.2);
+    }
+
+    .option-icon {
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .option-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-align: center;
+    }
+
+    /* Color Swatches Grid */
+    .palette-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 7px;
+      margin-top: 6px;
+    }
+
+    /* Color Picker Row */
+    .color-picker-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 4px;
+    }
+
+    .color-picker-row input[type="color"] {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      border: 2px solid var(--border);
+      padding: 2px;
+      cursor: pointer;
+      background: none;
+      flex-shrink: 0;
+    }
+
+    .color-hex-input {
+      flex: 1;
+      font-size: 12px;
+      font-weight: 600;
+      font-family: monospace;
+      background: var(--card-bg);
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      padding: 6px 10px;
+      color: var(--text);
+      outline: none;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .color-hex-input:focus {
+      border-color: #94A3B8;
+    }
+
+    /* Sliders & Dimension Controls */
+    .slider-control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 14px;
+      margin-top: 4px;
+    }
+
+    .slider-row {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .slider-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .slider-val {
+      font-family: monospace;
+      font-size: 11px;
+      color: var(--muted);
+      background: #FFFFFF;
+      padding: 2px 6px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+    }
+
+    .slider-input {
+      width: 100%;
+      height: 6px;
+      border-radius: 3px;
+      background: #CBD5E1;
+      outline: none;
+      -webkit-appearance: none;
+      appearance: none;
+      cursor: pointer;
+    }
+
+    .slider-input::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #0F172A;
+      border: 2px solid #FFFFFF;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+      cursor: pointer;
+      transition: transform 0.1s ease;
+    }
+
+    .slider-input::-webkit-slider-thumb:hover {
+      transform: scale(1.2);
+    }
+
+    .color-swatch {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      border: 2px solid transparent;
+      cursor: pointer;
+      transition: all 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+      position: relative;
+    }
+
+    .color-swatch:hover {
+      transform: scale(1.15);
+    }
+
+    .color-swatch.active {
+      border-color: #0F172A;
+      transform: scale(1.15);
+      box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.15);
+    }
+
+    /* Bottom Timeline Bar */
+    .timeline-bar {
+      background: var(--panel-bg);
+      border-top: 1px solid var(--border);
+      padding: 16px 32px;
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      height: 90px;
+      position: sticky;
+      bottom: 0;
+      z-index: 100;
+      box-shadow: 0 -4px 20px rgba(15, 23, 42, 0.05);
+    }
+
+    .playback-controls {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-shrink: 0;
+    }
+
+    .play-btn {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: var(--text);
+      color: #FFF;
+      border: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 4px 14px rgba(15, 23, 42, 0.2);
+      transition: transform 0.15s ease;
+    }
+
+    .play-btn:hover {
+      transform: scale(1.08);
+    }
+
+    .time-display {
+      font-size: 13px;
+      font-weight: 700;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      color: var(--text);
+      min-width: 75px;
+    }
+
+    .timeline-tracks {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 6px 0;
+    }
+
+    .timeline-clip {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      padding: 8px 16px;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      min-width: 76px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      flex-shrink: 0;
+    }
+
+    .timeline-clip:hover, .timeline-clip.active {
+      background: #E2E8F0;
+      border-color: #94A3B8;
+    }
+
+    .timeline-clip.current {
+      background: #EFF6FF;
+      border-color: #3B82F6;
+      box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+    }
+
+    .clip-icon {
+      width: 18px;
+      height: 18px;
+      color: var(--text);
+    }
+
+    .clip-duration {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--muted);
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #CBD5E1;
+      border-radius: 10px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header Bar -->
+  <header>
+    <div class="brand">
+      <div class="brand-logo">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M17 8h1a4 4 0 1 1 0 8h-1"></path>
+          <path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"></path>
+          <line x1="6" y1="2" x2="6" y2="4"></line>
+          <line x1="10" y1="2" x2="10" y2="4"></line>
+          <line x1="14" y1="2" x2="14" y2="4"></line>
+        </svg>
+      </div>
+      <div>
+        <div class="brand-title">
+          Creator Studio Espresso
+          <span class="verified-badge">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+            </svg>
+          </span>
+        </div>
+        <div class="brand-sub">@creatorstudioespresso • Animated Grok Avatar Creator</div>
+      </div>
+    </div>
+
+    <div class="header-actions">
+      <button class="btn" id="btnPresetDefault">Reset Avatar</button>
+      <button class="btn btn-accent" id="btnExportMontage">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Export Montage
+      </button>
+    </div>
+  </header>
+
+  <!-- Studio Main Layout -->
+  <div class="studio-layout">
+
+    <!-- Left Dock -->
+    <div class="left-dock">
+      <button class="dock-btn active" title="Avatar Customizer">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+      </button>
+      <button class="dock-btn" title="Timeline Animation Editor">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      </button>
+      <button class="dock-btn" title="Background Grid Toggle">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+      </button>
+      <button class="dock-btn" title="Studio Settings">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </div>
+
+    <!-- Center Viewport -->
+    <div class="viewport-area">
+      <div class="canvas-card">
+        <canvas id="avatarCanvas" width="680" height="420"></canvas>
+        <div class="export-popover">
+          <button id="btnExportPNG">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Export as PNG
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Control Panel -->
+    <div class="controls-sidebar">
+      
+      <!-- Body Shape Section -->
+      <div>
+        <div class="control-group-title">Body Shape</div>
+        <div class="grid-options" id="shapeGrid">
+          <!-- Dynamically populated shapes -->
+        </div>
+      </div>
+
+      <!-- Expression Section -->
+      <div>
+        <div class="control-group-title">Expression</div>
+        <div class="grid-options" id="expressionGrid">
+          <!-- Dynamically populated expressions -->
+        </div>
+      </div>
+
+      <!-- Colour System -->
+      <div>
+        <div class="control-group-title">Body Fill</div>
+        <div class="color-picker-row">
+          <input type="color" id="pickerBody" value="#0F172A" title="Pick body colour" />
+          <input type="text" id="hexBody" class="color-hex-input" value="#0F172A" maxlength="7" placeholder="#hex" />
+        </div>
+        <div class="palette-grid" id="bodyColorPalette"></div>
+      </div>
+
+      <div>
+        <div class="control-group-title">Outline / Glow</div>
+        <div class="color-picker-row">
+          <input type="color" id="pickerGlow" value="#00FFEE" title="Pick outline colour" />
+          <input type="text" id="hexGlow" class="color-hex-input" value="#00FFEE" maxlength="7" placeholder="#hex" />
+        </div>
+        <div class="palette-grid" id="glowColorPalette"></div>
+      </div>
+
+      <div>
+        <div class="control-group-title">Eyes &amp; Mouth</div>
+        <div class="color-picker-row">
+          <input type="color" id="pickerFeature" value="#FFFFFF" title="Pick feature colour" />
+          <input type="text" id="hexFeature" class="color-hex-input" value="#FFFFFF" maxlength="7" placeholder="#hex" />
+        </div>
+        <div class="palette-grid" id="featureColorPalette"></div>
+      </div>
+
+      <!-- Dimensions & Outline Customizer -->
+      <div>
+        <div class="control-group-title">Dimensions &amp; Outline</div>
+        <div class="slider-control-group">
+          <div class="slider-row">
+            <div class="slider-header">
+              <span>Glow Oval Height</span>
+              <span class="slider-val" id="valOvalHeight">1.18</span>
+            </div>
+            <input type="range" class="slider-input" id="sliderOvalHeight" min="0.70" max="1.80" step="0.01" value="1.18" />
+          </div>
+
+          <div class="slider-row">
+            <div class="slider-header">
+              <span>Glow Oval Width</span>
+              <span class="slider-val" id="valOvalWidth">1.32</span>
+            </div>
+            <input type="range" class="slider-input" id="sliderOvalWidth" min="0.70" max="1.90" step="0.01" value="1.32" />
+          </div>
+
+          <div class="slider-row">
+            <div class="slider-header">
+              <span>Outline Thickness</span>
+              <span class="slider-val" id="valOutlineThick">3.5px</span>
+            </div>
+            <input type="range" class="slider-input" id="sliderOutlineThick" min="0.5" max="12" step="0.5" value="3.5" />
+          </div>
+
+          <div class="slider-row">
+            <div class="slider-header">
+              <span>Glow / Bloom Intensity</span>
+              <span class="slider-val" id="valGlowBlur">22px</span>
+            </div>
+            <input type="range" class="slider-input" id="sliderGlowBlur" min="0" max="60" step="1" value="22" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Animation Cycle Section -->
+      <div>
+        <div class="control-group-title">Animation State</div>
+        <div class="grid-options" id="animationGrid">
+          <!-- Dynamically populated animation clips -->
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- Bottom Timeline Bar -->
+  <div class="timeline-bar">
+    <div class="playback-controls">
+      <button class="play-btn" id="btnPlayPause">
+        <svg id="playIcon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        <svg id="pauseIcon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="display:none;"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+      </button>
+      <div class="time-display" id="timeDisplay">0:00 / 0:33</div>
+    </div>
+
+    <div class="timeline-tracks" id="timelineTracks">
+      <!-- Dynamically populated timeline clips -->
+    </div>
+  </div>
+
+  <script>
+    // Studio State
+    const state = {
+      shape: 'hexagon',
+      expression: 'neutral',
+      color: '#0F172A',
+      bodyColor: '#0F172A',     // body fill colour
+      glowColor: '#00FFEE',     // outline / glow colour
+      featureColor: '#FFFFFF',  // eyes + mouth colour
+      ovalHeight: 1.18,         // GlowOval height multiplier (default 1.18)
+      ovalWidth: 1.32,          // GlowOval width multiplier
+      outlineThickness: 3.5,    // Universal outline width (px)
+      glowBlur: 22,             // Universal glow intensity (px)
+      animation: 'idle',
+      isPlaying: true,
+      time: 0,
+      totalTime: 33.0,
+      mouse: { x: 0, y: 0 },
+      squish: { x: 1, y: 1 }
+    };
+
+    // Preset Definitions
+    const SHAPES = [
+      { id: 'hexagon', label: 'Hexagon' },
+      { id: 'glowoval', label: 'Glow Oval ✨' },
+      { id: 'pebble', label: 'Pebble' },
+      { id: 'circle', label: 'Circle' },
+      { id: 'squircle', label: 'Squircle' },
+      { id: 'capsule', label: 'Capsule' },
+      { id: 'triangle', label: 'Triangle' },
+      { id: 'cloud', label: 'Cloud' },
+      { id: 'droplet', label: 'Droplet' }
+    ];
+
+    const EXPRESSIONS = [
+      { id: 'neutral', label: 'Neutral' },
+      { id: 'happy', label: 'Happy 😊' },
+      { id: 'sad', label: 'Sad 😢' },
+      { id: 'curious', label: 'Curious 🤔' },
+      { id: 'excited', label: 'Excited 🤩' },
+      { id: 'angry', label: 'Angry 😠' },
+      { id: 'confused', label: 'Confused 😵' },
+      { id: 'attentive', label: 'Attentive' },
+      { id: 'surprised', label: 'Surprised' },
+      { id: 'laughing', label: 'Laughing' },
+      { id: 'scared', label: 'Scared' },
+      { id: 'suspicious', label: 'Suspicious' },
+      { id: 'proud', label: 'Proud' },
+      { id: 'shy', label: 'Shy' },
+      { id: 'sleepy', label: 'Sleepy' }
+    ];
+
+    const COLORS = [
+      '#0F172A', '#451A03', '#991B1B', '#C2410C', '#EA580C', '#EAB308', '#65A30D', '#059669',
+      '#0891B2', '#2563EB', '#7C3AED', '#C026D3', '#DB2777', '#475569', '#94A3B8', '#38BDF8'
+    ];
+
+    // Body fill palette (includes white/light tones)
+    const BODY_COLORS = [
+      '#FFFFFF', '#F1F5F9', '#E2E8F0', '#CBD5E1', '#0F172A', '#1E293B', '#334155',
+      '#FEF9C3', '#DBEAFE', '#FCE7F3', '#D1FAE5', '#FEE2E2', '#EDE9FE', '#FFEDD5'
+    ];
+
+    // Glow / outline palette (vivid neons + solids)
+    const GLOW_COLORS = [
+      '#00FFEE', '#00FF88', '#FF00AA', '#FF6B00', '#FFD700', '#7B61FF', '#00BFFF',
+      '#FF4444', '#FFFFFF', '#0F172A', '#64748B', '#38BDF8', '#A78BFA', '#F472B6'
+    ];
+
+    // Feature (eyes + mouth) colour palette
+    const FEATURE_COLORS = [
+      '#0F172A', '#1E293B', '#7C3AED', '#2563EB', '#059669', '#991B1B', '#C026D3',
+      '#FFFFFF', '#94A3B8', '#EA580C', '#EAB308', '#38BDF8', '#F472B6', '#A78BFA'
+    ];
+
+    const ANIMATIONS = [
+      { id: 'idle', label: 'Idle', dur: 2.4 },
+      { id: 'thinking', label: 'Thinking', dur: 2.6 },
+      { id: 'wink', label: 'Wink', dur: 1.6 },
+      { id: 'wideeyes', label: 'Wide Eyes', dur: 1.8 },
+      { id: 'alert', label: 'Alert !', dur: 2.4 },
+      { id: 'notification', label: 'Notification', dur: 2.2 },
+      { id: 'exclamation', label: 'Exclamation', dur: 2.0 },
+      { id: 'sleep', label: 'Sleep', dur: 2.4 },
+      { id: 'orbit', label: 'Orbit', dur: 2.0 },
+      { id: 'burst', label: 'Burst', dur: 1.6 }
+    ];
+
+    // Canvas Setup
+    const canvas = document.getElementById('avatarCanvas');
+    const ctx = canvas.getContext('2d');
+
+    function resizeCanvas() {
+      const rect = canvas.parentElement.getBoundingClientRect();
+      canvas.width = rect.width;
+      canvas.height = rect.height;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // Mouse Tracking
+    canvas.addEventListener('mousemove', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      state.mouse.x = (e.clientX - rect.left - rect.width / 2) * 0.15;
+      state.mouse.y = (e.clientY - rect.top - rect.height / 2) * 0.15;
+    });
+
+    canvas.addEventListener('mouseleave', () => {
+      state.mouse.x = 0;
+      state.mouse.y = 0;
+    });
+
+    canvas.addEventListener('click', () => {
+      // Trigger interactive squish bounce
+      state.squish.x = 1.25;
+      state.squish.y = 0.75;
+    });
+
+    // Populate UI Grids
+    function initUI() {
+      // Shapes
+      const shapeGrid = document.getElementById('shapeGrid');
+      shapeGrid.innerHTML = '';
+      SHAPES.forEach(s => {
+        const btn = document.createElement('div');
+        btn.className = `option-btn ${state.shape === s.id ? 'active' : ''}`;
+        btn.innerHTML = `<div class="option-label">${s.label}</div>`;
+        btn.onclick = () => {
+          state.shape = s.id;
+          document.querySelectorAll('#shapeGrid .option-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+        };
+        shapeGrid.appendChild(btn);
+      });
+
+      // Expressions
+      const expressionGrid = document.getElementById('expressionGrid');
+      expressionGrid.innerHTML = '';
+      EXPRESSIONS.forEach(e => {
+        const btn = document.createElement('div');
+        btn.className = `option-btn ${state.expression === e.id ? 'active' : ''}`;
+        btn.innerHTML = `<div class="option-label">${e.label}</div>`;
+        btn.onclick = () => {
+          state.expression = e.id;
+          document.querySelectorAll('#expressionGrid .option-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+        };
+        expressionGrid.appendChild(btn);
+      });
+
+      // ── Helper: sync a color channel across picker, hex input, and state ──
+      function bindColorChannel(pickerId, hexId, paletteId, stateKey, palette) {
+        const picker = document.getElementById(pickerId);
+        const hexInp = document.getElementById(hexId);
+        const pal    = document.getElementById(paletteId);
+
+        // Set picker + hex to current state value
+        picker.value = state[stateKey];
+        hexInp.value = state[stateKey].toUpperCase();
+
+        // Native color picker → update state + hex
+        picker.addEventListener('input', () => {
+          state[stateKey] = picker.value;
+          hexInp.value = picker.value.toUpperCase();
+          pal.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+        });
+
+        // Hex text input → update state + picker
+        hexInp.addEventListener('input', () => {
+          const v = hexInp.value.trim();
+          if (/^#[0-9a-fA-F]{6}$/.test(v)) {
+            state[stateKey] = v;
+            picker.value = v;
+            pal.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+          }
+        });
+
+        // Swatches
+        pal.innerHTML = '';
+        palette.forEach(c => {
+          const sw = document.createElement('div');
+          sw.className = `color-swatch ${state[stateKey] === c ? 'active' : ''}`;
+          sw.style.backgroundColor = c;
+          sw.style.border = (c === '#FFFFFF' || c === '#F1F5F9') ? '1.5px solid #CBD5E1' : '';
+          sw.title = c;
+          sw.onclick = () => {
+            state[stateKey] = c;
+            picker.value = c;
+            hexInp.value = c.toUpperCase();
+            pal.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+            sw.classList.add('active');
+          };
+          pal.appendChild(sw);
+        });
+      }
+
+      bindColorChannel('pickerBody',    'hexBody',    'bodyColorPalette',    'bodyColor',    BODY_COLORS);
+      bindColorChannel('pickerGlow',    'hexGlow',    'glowColorPalette',    'glowColor',    GLOW_COLORS);
+      bindColorChannel('pickerFeature', 'hexFeature', 'featureColorPalette', 'featureColor', FEATURE_COLORS);
+
+      // Dimension & Outline Sliders
+      const sliderHeight = document.getElementById('sliderOvalHeight');
+      const valHeight    = document.getElementById('valOvalHeight');
+      sliderHeight.value = state.ovalHeight;
+      valHeight.textContent = Number(state.ovalHeight).toFixed(2);
+      sliderHeight.oninput = () => {
+        state.ovalHeight = parseFloat(sliderHeight.value);
+        valHeight.textContent = Number(state.ovalHeight).toFixed(2);
+      };
+
+      const sliderWidth = document.getElementById('sliderOvalWidth');
+      const valWidth    = document.getElementById('valOvalWidth');
+      sliderWidth.value = state.ovalWidth;
+      valWidth.textContent = Number(state.ovalWidth).toFixed(2);
+      sliderWidth.oninput = () => {
+        state.ovalWidth = parseFloat(sliderWidth.value);
+        valWidth.textContent = Number(state.ovalWidth).toFixed(2);
+      };
+
+      const sliderThick = document.getElementById('sliderOutlineThick');
+      const valThick    = document.getElementById('valOutlineThick');
+      sliderThick.value = state.outlineThickness;
+      valThick.textContent = state.outlineThickness + 'px';
+      sliderThick.oninput = () => {
+        state.outlineThickness = parseFloat(sliderThick.value);
+        valThick.textContent = state.outlineThickness + 'px';
+      };
+
+      const sliderGlow = document.getElementById('sliderGlowBlur');
+      const valGlow    = document.getElementById('valGlowBlur');
+      sliderGlow.value = state.glowBlur;
+      valGlow.textContent = state.glowBlur + 'px';
+      sliderGlow.oninput = () => {
+        state.glowBlur = parseInt(sliderGlow.value, 10);
+        valGlow.textContent = state.glowBlur + 'px';
+      };
+
+      // Animations
+      const animationGrid = document.getElementById('animationGrid');
+      const timelineTracks = document.getElementById('timelineTracks');
+      animationGrid.innerHTML = '';
+      timelineTracks.innerHTML = '';
+
+      ANIMATIONS.forEach((a, i) => {
+        const btn = document.createElement('div');
+        btn.className = `option-btn ${state.animation === a.id ? 'active' : ''}`;
+        btn.innerHTML = `<div class="option-label">${a.label}</div>`;
+        btn.onclick = () => {
+          state.animation = a.id;
+          document.querySelectorAll('#animationGrid .option-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+        };
+        animationGrid.appendChild(btn);
+
+        // Timeline Clip
+        const clip = document.createElement('div');
+        clip.className = `timeline-clip ${i === 0 ? 'current' : ''}`;
+        clip.innerHTML = `
+          <div style="font-size:12px; font-weight:700;">${a.label}</div>
+          <div class="clip-duration">${a.dur}s</div>
+        `;
+        clip.onclick = () => {
+          state.animation = a.id;
+          document.querySelectorAll('.timeline-clip').forEach(c => c.classList.remove('current'));
+          clip.classList.add('current');
+        };
+        timelineTracks.appendChild(clip);
+      });
+    }
+
+    // Drawing Engine
+    let frameTime = 0;
+    function render() {
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+
+      if (state.isPlaying) {
+        frameTime += 0.03;
+        state.time = (state.time + 0.03) % state.totalTime;
+      }
+
+      // Format Timecode
+      const mins = Math.floor(state.time / 60);
+      const secs = Math.floor(state.time % 60).toString().padStart(2, '0');
+      document.getElementById('timeDisplay').innerText = `0:${secs} / 0:33`;
+
+      // Smooth Squish Recovery
+      state.squish.x += (1 - state.squish.x) * 0.1;
+      state.squish.y += (1 - state.squish.y) * 0.1;
+
+      // Breathing & Floating Oscillations
+      const breathe = Math.sin(frameTime * 2) * 4;
+      const floatY = Math.sin(frameTime * 1.5) * 6;
+
+      const centerX = w / 2 + state.mouse.x;
+      const centerY = h / 2 + floatY + state.mouse.y;
+
+      ctx.save();
+      ctx.translate(centerX, centerY);
+      ctx.scale(state.squish.x, state.squish.y);
+
+      // ─── EXTERNAL DECORATION (drawn BEHIND body, before body fill) ───────────────
+
+      // (No external decoration for happy anymore - clean look)
+
+      // Sad: Falling rain droplets around face
+      if (state.expression === 'sad') {
+        for (let ri = 0; ri < 6; ri++) {
+          const rx = (ri - 3) * 42 + Math.sin(frameTime * 0.6 + ri) * 8;
+          const ry = -150 + ((frameTime * 60 + ri * 38) % 130);
+          const rAlpha = 0.3 + (ry + 150) / 130 * 0.5;
+          ctx.fillStyle = `rgba(147, 197, 253, ${rAlpha})`;
+          ctx.beginPath();
+          ctx.ellipse(rx, ry, 3, 7, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      // Angry: Red heat lines / steam puffs outside face
+      if (state.expression === 'angry') {
+        const heatLines = [
+          { x: 145, y: -80 }, { x: -148, y: -60 }, { x: 138, y: 30 }
+        ];
+        heatLines.forEach((h, hi) => {
+          const wob = Math.sin(frameTime * 3.5 + hi * 1.1) * 4;
+          ctx.strokeStyle = 'rgba(239, 68, 68, 0.75)';
+          ctx.lineWidth = 4;
+          ctx.lineCap = 'round';
+          for (let li = 0; li < 3; li++) {
+            ctx.beginPath();
+            ctx.moveTo(h.x + li * 10 + wob, h.y);
+            ctx.lineTo(h.x + li * 10 + wob, h.y - 24 - li * 5);
+            ctx.stroke();
+          }
+        });
+      }
+
+      // Curious: Question mark floating above
+      if (state.expression === 'curious') {
+        const qBob = Math.sin(frameTime * 1.8) * 5;
+        ctx.save();
+        ctx.translate(90, -140 + qBob);
+        ctx.fillStyle = 'rgba(251, 191, 36, 0.9)';
+        ctx.font = 'bold 36px Inter, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('?', 0, 0);
+        ctx.restore();
+      }
+
+      // ─── BODY SHAPE ────────────────────────────────────────────────────────────────
+      ctx.fillStyle = state.bodyColor;
+      const size = 110 + breathe;
+
+      if (state.shape === 'hexagon') {
+        // Flat-bottom hexagon: angle offset = 0 → vertices at 0°,60°,120°,180°,240°,300°
+        const R = size * 1.08;
+        const cornerRadius = 22;
+        const pts = [];
+        for (let i = 0; i < 6; i++) {
+          const a = (Math.PI / 3) * i;
+          pts.push({ x: R * Math.cos(a), y: R * Math.sin(a) });
+        }
+        ctx.beginPath();
+        ctx.moveTo((pts[0].x + pts[1].x) / 2, (pts[0].y + pts[1].y) / 2);
+        for (let i = 0; i < 6; i++) {
+          const pNext = pts[(i + 1) % 6];
+          const pAfter = pts[(i + 2) % 6];
+          ctx.arcTo(pNext.x, pNext.y, pAfter.x, pAfter.y, cornerRadius);
+        }
+        ctx.closePath();
+      } else if (state.shape === 'glowoval') {
+        // Crushed circle: customized width & height (height default 1.18)
+        const ow = size * state.ovalWidth;
+        const oh = size * state.ovalHeight;
+        const cr = oh * 0.98;
+        ctx.beginPath();
+        ctx.roundRect(-ow, -oh, ow * 2, oh * 2, cr);
+      } else if (state.shape === 'circle') {
+        ctx.beginPath();
+        ctx.arc(0, 0, size, 0, Math.PI * 2);
+      } else if (state.shape === 'pebble') {
+        ctx.beginPath();
+        ctx.moveTo(-size * 0.9, -size * 0.4);
+        ctx.bezierCurveTo(-size * 1.1, -size * 1.1, size * 0.8, -size * 1.2, size * 0.95, -size * 0.3);
+        ctx.bezierCurveTo(size * 1.15, size * 0.7, -size * 0.4, size * 1.15, -size * 0.9, size * 0.6);
+        ctx.closePath();
+      } else if (state.shape === 'squircle') {
+        ctx.beginPath();
+        ctx.roundRect(-size, -size, size * 2, size * 2, 44);
+      } else {
+        ctx.beginPath();
+        ctx.ellipse(0, 0, size * 1.05, size * 0.95, 0, 0, Math.PI * 2);
+      }
+      ctx.fill();
+
+      // ── Universal outline stroke (applies to ALL shapes using glowColor) ──
+      {
+        const pulse = 0.65 + Math.sin(frameTime * 2.5) * 0.35;
+        ctx.save();
+        ctx.shadowColor = state.glowColor;
+        ctx.shadowBlur = state.glowBlur * pulse;
+        ctx.strokeStyle = state.glowColor;
+        ctx.lineWidth = state.outlineThickness;
+        // Re-draw the same path for each shape
+        if (state.shape === 'hexagon') {
+          const R = size * 1.08;
+          const cr = 22;
+          const pts2 = [];
+          for (let i = 0; i < 6; i++) {
+            pts2.push({ x: R * Math.cos((Math.PI / 3) * i), y: R * Math.sin((Math.PI / 3) * i) });
+          }
+          ctx.beginPath();
+          ctx.moveTo((pts2[0].x + pts2[1].x) / 2, (pts2[0].y + pts2[1].y) / 2);
+          for (let i = 0; i < 6; i++) {
+            ctx.arcTo(pts2[(i + 1) % 6].x, pts2[(i + 1) % 6].y, pts2[(i + 2) % 6].x, pts2[(i + 2) % 6].y, cr);
+          }
+          ctx.closePath();
+        } else if (state.shape === 'glowoval') {
+          const ow = size * state.ovalWidth, oh = size * state.ovalHeight;
+          ctx.beginPath();
+          ctx.roundRect(-ow, -oh, ow * 2, oh * 2, oh * 0.98);
+        } else if (state.shape === 'circle') {
+          ctx.beginPath();
+          ctx.arc(0, 0, size, 0, Math.PI * 2);
+        } else if (state.shape === 'pebble') {
+          ctx.beginPath();
+          ctx.moveTo(-size * 0.9, -size * 0.4);
+          ctx.bezierCurveTo(-size * 1.1, -size * 1.1, size * 0.8, -size * 1.2, size * 0.95, -size * 0.3);
+          ctx.bezierCurveTo(size * 1.15, size * 0.7, -size * 0.4, size * 1.15, -size * 0.9, size * 0.6);
+          ctx.closePath();
+        } else if (state.shape === 'squircle') {
+          ctx.beginPath();
+          ctx.roundRect(-size, -size, size * 2, size * 2, 44);
+        } else {
+          ctx.beginPath();
+          ctx.ellipse(0, 0, size * 1.05, size * 0.95, 0, 0, Math.PI * 2);
+        }
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // (Glowoval gets an extra stronger outer halo on top)
+      if (state.shape === 'glowoval') {
+        const ow = size * state.ovalWidth, oh = size * state.ovalHeight, cr = oh * 0.98;
+        const pulse = 0.65 + Math.sin(frameTime * 2.5) * 0.35;
+        ctx.save();
+        ctx.shadowColor = state.glowColor;
+        ctx.shadowBlur = (state.glowBlur * 1.6) * pulse;
+        ctx.strokeStyle = state.glowColor + 'AA';
+        ctx.lineWidth = Math.max(1.5, state.outlineThickness * 0.5);
+        ctx.beginPath();
+        ctx.roundRect(-ow - 5, -oh - 5, (ow + 5) * 2, (oh + 5) * 2, cr + 5);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // ─── FACE EXPRESSIONS ─────────────────────────────────────────────────────────
+      const eyeOffset = state.mouse.x * 0.3;
+      const eyeY = -size * 0.13 + state.mouse.y * 0.3;
+
+      // Auto-blink (blinks every ~3 sec briefly, always active regardless of expression)
+      const isAutoBlink = Math.sin(frameTime * 3.5) > 0.975;
+
+      if (isAutoBlink) {
+        // Blink animation: smooth closed lines
+        ctx.lineWidth = 7.5;
+        ctx.strokeStyle = state.featureColor;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(-48 + eyeOffset, eyeY);
+        ctx.lineTo(-22 + eyeOffset, eyeY);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(22 + eyeOffset, eyeY);
+        ctx.lineTo(48 + eyeOffset, eyeY);
+        ctx.stroke();
+      } else if (state.expression === 'happy') {
+        // Happy: Squinted capsule eyes + smaller smile mouth
+        ctx.fillStyle = state.featureColor;
+        ctx.save();
+        ctx.translate(-36 + eyeOffset, eyeY + 4);
+        ctx.beginPath();
+        ctx.roundRect(-14, -10, 28, 20, 10);
+        ctx.fill();
+        ctx.restore();
+        ctx.save();
+        ctx.translate(36 + eyeOffset, eyeY + 4);
+        ctx.beginPath();
+        ctx.roundRect(-14, -10, 28, 20, 10);
+        ctx.fill();
+        ctx.restore();
+        // Small smile mouth
+        ctx.lineWidth = 6;
+        ctx.strokeStyle = state.featureColor;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.arc(eyeOffset, eyeY + 38, 20, Math.PI * 0.12, Math.PI * 0.88);
+        ctx.stroke();
+      } else if (state.expression === 'sad') {
+        // Sad: Droopy eyes + tear
+        ctx.lineWidth = 8;
+        ctx.strokeStyle = state.featureColor;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.arc(-36 + eyeOffset, eyeY + 18, 18, Math.PI * 0.12, Math.PI * 0.88);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(36 + eyeOffset, eyeY + 18, 18, Math.PI * 0.12, Math.PI * 0.88);
+        ctx.stroke();
+        // Animated falling tear
+        const tearY = (frameTime * 35) % 55;
+        ctx.fillStyle = 'rgba(147, 197, 253, 0.9)';
+        ctx.beginPath();
+        ctx.moveTo(44 + eyeOffset, eyeY + 30 + tearY);
+        ctx.bezierCurveTo(50 + eyeOffset, eyeY + 36 + tearY, 50 + eyeOffset, eyeY + 44 + tearY, 44 + eyeOffset, eyeY + 46 + tearY);
+        ctx.bezierCurveTo(38 + eyeOffset, eyeY + 44 + tearY, 38 + eyeOffset, eyeY + 36 + tearY, 44 + eyeOffset, eyeY + 30 + tearY);
+        ctx.fill();
+      } else if (state.expression === 'curious') {
+        // 🤔 Thinking emoji style
+        // Left eye sclera
+        ctx.fillStyle = state.featureColor;
+        ctx.beginPath();
+        ctx.arc(-36 + eyeOffset, eyeY, 19, 0, Math.PI * 2);
+        ctx.fill();
+        // Pupil (body color for contrast)
+        ctx.fillStyle = state.bodyColor;
+        ctx.beginPath();
+        ctx.arc(-34 + eyeOffset + state.mouse.x * 0.12, eyeY + 1 + state.mouse.y * 0.12, 9, 0, Math.PI * 2);
+        ctx.fill();
+        // Glint
+        ctx.fillStyle = state.featureColor;
+        ctx.globalAlpha = 0.5;
+        ctx.beginPath();
+        ctx.arc(-30 + eyeOffset, eyeY - 5, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+
+        // Right eye sclera
+        ctx.fillStyle = state.featureColor;
+        ctx.beginPath();
+        ctx.arc(36 + eyeOffset, eyeY, 19, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = state.bodyColor;
+        ctx.beginPath();
+        ctx.arc(38 + eyeOffset + state.mouse.x * 0.1, eyeY + 1 + state.mouse.y * 0.1, 9, 0, Math.PI * 2);
+        ctx.fill();
+        // Right eye half-lid overlay
+        ctx.fillStyle = state.bodyColor;
+        ctx.beginPath();
+        ctx.rect(17 + eyeOffset, eyeY - 24, 38, 14);
+        ctx.fill();
+
+        // Raised RIGHT eyebrow
+        ctx.lineWidth = 6;
+        ctx.strokeStyle = state.featureColor;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(16 + eyeOffset, eyeY - 30);
+        ctx.quadraticCurveTo(36 + eyeOffset, eyeY - 44, 57 + eyeOffset, eyeY - 30);
+        ctx.stroke();
+        // Left eyebrow flat
+        ctx.beginPath();
+        ctx.moveTo(-56 + eyeOffset, eyeY - 28);
+        ctx.lineTo(-16 + eyeOffset, eyeY - 28);
+        ctx.stroke();
+        // Thinking smirk mouth
+        ctx.lineWidth = 5;
+        ctx.strokeStyle = state.featureColor;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(-10 + eyeOffset, eyeY + 48);
+        ctx.quadraticCurveTo(8 + eyeOffset, eyeY + 54, 28 + eyeOffset, eyeY + 46);
+        ctx.stroke();
+      } else if (state.expression === 'excited') {
+        // Excited: Capsule eyes with spinning star inside
+        const eyeW = 20, eyeH = 44, eyeR = 10;
+        ctx.fillStyle = state.featureColor;
+        ctx.save();
+        ctx.translate(-36 + eyeOffset, eyeY);
+        ctx.beginPath();
+        ctx.roundRect(-eyeW / 2, -eyeH / 2, eyeW, eyeH, eyeR);
+        ctx.fill();
+        ctx.save();
+        ctx.rotate(frameTime * 3);
+        const starR1 = 7 + Math.sin(frameTime * 8) * 1.5;
+        ctx.fillStyle = '#FDE047';
+        ctx.beginPath();
+        for (let si = 0; si < 8; si++) {
+          const sa = (Math.PI / 4) * si;
+          const rl = si % 2 === 0 ? starR1 : starR1 * 0.42;
+          if (si === 0) ctx.moveTo(Math.cos(sa) * rl, Math.sin(sa) * rl);
+          else ctx.lineTo(Math.cos(sa) * rl, Math.sin(sa) * rl);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+        ctx.restore();
+
+        ctx.fillStyle = state.featureColor;
+        ctx.save();
+        ctx.translate(36 + eyeOffset, eyeY);
+        ctx.beginPath();
+        ctx.roundRect(-eyeW / 2, -eyeH / 2, eyeW, eyeH, eyeR);
+        ctx.fill();
+        ctx.save();
+        ctx.rotate(frameTime * 3 + 0.6);
+        const starR2 = 7 + Math.sin(frameTime * 8 + 1) * 1.5;
+        ctx.fillStyle = '#FDE047';
+        ctx.beginPath();
+        for (let si = 0; si < 8; si++) {
+          const sa = (Math.PI / 4) * si;
+          const rl = si % 2 === 0 ? starR2 : starR2 * 0.42;
+          if (si === 0) ctx.moveTo(Math.cos(sa) * rl, Math.sin(sa) * rl);
+          else ctx.lineTo(Math.cos(sa) * rl, Math.sin(sa) * rl);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+        ctx.restore();
+      } else if (state.expression === 'confused') {
+        // Confused: White spirals + circle mouth
+        const drawSpiral = (cx, cy, dir) => {
+          ctx.save();
+          ctx.translate(cx, cy);
+          ctx.rotate(frameTime * 2 * dir);
+          ctx.strokeStyle = state.featureColor;
+          ctx.lineWidth = 3.5;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          for (let t2 = 0; t2 < Math.PI * 4; t2 += 0.07) {
+            const sr = (t2 / (Math.PI * 4)) * 18;
+            if (t2 === 0) ctx.moveTo(Math.cos(t2) * sr, Math.sin(t2) * sr);
+            else ctx.lineTo(Math.cos(t2) * sr, Math.sin(t2) * sr);
+          }
+          ctx.stroke();
+          ctx.restore();
+        };
+        drawSpiral(-36 + eyeOffset, eyeY, 1);
+        drawSpiral(36 + eyeOffset, eyeY, -1);
+        // Circle mouth
+        ctx.strokeStyle = state.featureColor;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(eyeOffset, eyeY + 46, 13, 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (state.expression === 'angry') {
+        // Angry: Slanted eyes + V-brows
+        ctx.fillStyle = state.featureColor;
+        ctx.save();
+        ctx.translate(-36 + eyeOffset, eyeY + 10);
+        ctx.rotate(0.3);
+        ctx.beginPath();
+        ctx.roundRect(-9, -16, 18, 32, 8);
+        ctx.fill();
+        ctx.restore();
+        ctx.save();
+        ctx.translate(36 + eyeOffset, eyeY + 10);
+        ctx.rotate(-0.3);
+        ctx.fillStyle = state.featureColor;
+        ctx.beginPath();
+        ctx.roundRect(-9, -16, 18, 32, 8);
+        ctx.fill();
+        ctx.restore();
+        // Eyebrows
+        ctx.lineWidth = 7.5;
+        ctx.strokeStyle = state.featureColor;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        ctx.moveTo(-58 + eyeOffset, eyeY - 28);
+        ctx.lineTo(-20 + eyeOffset, eyeY - 14);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(58 + eyeOffset, eyeY - 28);
+        ctx.lineTo(20 + eyeOffset, eyeY - 14);
+        ctx.stroke();
+      } else if (state.expression === 'surprised') {
+        ctx.fillStyle = state.featureColor;
+        ctx.beginPath();
+        ctx.arc(-36 + eyeOffset, eyeY, 22, 0, Math.PI * 2);
+        ctx.arc(36 + eyeOffset, eyeY, 22, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = state.bodyColor;
+        ctx.beginPath();
+        ctx.arc(-36 + eyeOffset, eyeY, 10, 0, Math.PI * 2);
+        ctx.arc(36 + eyeOffset, eyeY, 10, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        // Neutral: Straight upright capsule eyes
+        ctx.fillStyle = state.featureColor;
+        ctx.save();
+        ctx.translate(-36 + eyeOffset, eyeY);
+        ctx.beginPath();
+        ctx.roundRect(-10, -22, 20, 44, 10);
+        ctx.fill();
+        ctx.restore();
+        ctx.save();
+        ctx.translate(36 + eyeOffset, eyeY);
+        ctx.fillStyle = state.featureColor;
+        ctx.beginPath();
+        ctx.roundRect(-10, -22, 20, 44, 10);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      ctx.restore();
+
+      requestAnimationFrame(render);
+    }
+
+    // Init Events
+    initUI();
+    render();
+
+    // Export Handler
+    document.getElementById('btnExportPNG').onclick = () => {
+      const link = document.createElement('a');
+      link.download = `grok-avatar-${state.shape}-${state.expression}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    };
+
+    const btnPlayPause = document.getElementById('btnPlayPause');
+    const playIcon = document.getElementById('playIcon');
+    const pauseIcon = document.getElementById('pauseIcon');
+
+    btnPlayPause.onclick = () => {
+      state.isPlaying = !state.isPlaying;
+      playIcon.style.display = state.isPlaying ? 'none' : 'block';
+      pauseIcon.style.display = state.isPlaying ? 'block' : 'none';
+    };
+
+    document.getElementById('btnPresetDefault').onclick = () => {
+      state.shape = 'hexagon';
+      state.expression = 'neutral';
+      state.color = '#0F172A';
+      state.animation = 'idle';
+      initUI();
+    };
+  </script>
+</body>
+</html>
