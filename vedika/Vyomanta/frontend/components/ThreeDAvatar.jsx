@@ -8,12 +8,11 @@ import './ThreeDPhysicsAvatar.css';
 /**
  * ThreeDAvatar — Ultra-Optimized 3D Avatar (Zero Loading Flash)
  *
- * Optimizations:
- *  1. 90% Geometry & Texture Compression: Meshopt polygon reduction from 1.4M to ~45k triangles, 1024 WebP textures.
- *  2. IndexedDB Client-Side Binary Storage: 0ms instant reload from local disk cache.
- *  3. In-Memory RAM Singleton: Shared clone across all 4 avatar instances in 0.0001ms.
- *  4. Zero Loading Text/Spinners: Seamless instant WebGL rendering.
- *  5. onLoaded callback for smooth synchronized page excitement jumps.
+ * Avatars:
+ *  1. Mowgli   — Physics Lab   (Boy)
+ *  2. Belle    — Chemistry Lab (Girl)
+ *  3. Moana    — Biology Lab   (Girl)
+ *  4. Bagheera — Math Lab      (Boy)
  */
 
 const DB_NAME = 'Vedika3DModelCache';
@@ -132,8 +131,9 @@ export default function ThreeDAvatar({
   expression = 'idle',
   glowColor = '#34D399',
   modelColor = '#FFFFFF',
-  size = 270,
+  size = 250,
   mouseOffset = { x: 0, y: 0 },
+  isSpeaking = false,
   className = '',
   onLoaded,
   onClick,
@@ -150,19 +150,21 @@ export default function ThreeDAvatar({
     targetMouse: mouseOffset,
     mouse: { x: 0, y: 0 },
     mouseVel: { x: 0, y: 0 },
+    isSpeaking,
 
     // 3D Model Rotation Springs
     rotX: 0, rotVX: 0,
     rotY: 0, rotVY: 0,
     rotZ: 0, rotVZ: 0,
 
-    // Expression Morph Weights (0 to 1)
+    // Expression Morph Weights
     happyWeight: 0, vHappy: 0,
     sadWeight: 0,   vSad: 0,
     angryWeight: 0, vAngry: 0,
 
-    // Mouth Smile Curvature (-1 sad to +1 happy)
+    // Mouth Smile Curvature
     smileCurve: 0.35, vSmile: 0,
+    mouthOpen: 0,
 
     frameTime: 0,
   });
@@ -173,7 +175,8 @@ export default function ThreeDAvatar({
     s.glowColor = glowColor;
     s.modelColor = modelColor;
     s.targetMouse = mouseOffset;
-  }, [expression, glowColor, modelColor, mouseOffset]);
+    s.isSpeaking = isSpeaking;
+  }, [expression, glowColor, modelColor, mouseOffset, isSpeaking]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -306,9 +309,9 @@ export default function ThreeDAvatar({
       s.mouse.y = my; s.mouseVel.y = mvy;
 
       // Expression Morph Weights
-      const isHappy = s.currentExpr === 'happy';
-      const isSad   = s.currentExpr === 'sad';
-      const isAngry = s.currentExpr === 'angry';
+      const isHappy = s.currentExpr === 'happy' || s.isSpeaking;
+      const isSad   = s.currentExpr === 'sad' && !s.isSpeaking;
+      const isAngry = s.currentExpr === 'angry' && !s.isSpeaking;
 
       const [hw, hvw] = updateSpring(s.happyWeight, s.vHappy, isHappy ? 1 : 0, 130, 15, dt);
       const [sw, svw] = updateSpring(s.sadWeight, s.vSad, isSad ? 1 : 0, 130, 15, dt);
@@ -326,6 +329,13 @@ export default function ThreeDAvatar({
       const [sc, vsc] = updateSpring(s.smileCurve, s.vSmile, targetSmile, 120, 14, dt);
       s.smileCurve = sc; s.vSmile = vsc;
 
+      // Dynamic Speaking Mouth Movement
+      if (s.isSpeaking) {
+        s.mouthOpen = Math.abs(Math.sin(t * 13)) * 0.75 + Math.sin(t * 7) * 0.25;
+      } else {
+        s.mouthOpen = Math.max(0, s.mouthOpen - dt * 4);
+      }
+
       // 3D Model Head Follow
       if (modelRoot) {
         let targetYaw = (s.mouse.x / 55) * 0.45;
@@ -342,6 +352,11 @@ export default function ThreeDAvatar({
           targetPitch = 0.18; targetRoll = -0.06;
         } else if (isAngry) {
           targetPitch = -0.15;
+        }
+
+        // Speaking head nod
+        if (s.isSpeaking) {
+          targetPitch += Math.sin(t * 6) * 0.06;
         }
 
         const [rx, rvx] = updateSpring(s.rotX, s.rotVX, targetPitch, 120, 15, dt);
@@ -363,9 +378,9 @@ export default function ThreeDAvatar({
         modelRoot.scale.set(breathScale, 1 / breathScale, breathScale);
       }
 
-      // Render 2D Dynamic Smile Mouth on Face Texture
+      // Render 2D Dynamic Smile / Speaking Mouth on Face Texture
       faceCtx.clearRect(0, 0, 512, 512);
-      drawSmileLine(faceCtx, 256, 335, s.smileCurve, s.happyWeight, s.sadWeight, s.angryWeight);
+      drawSmileLine(faceCtx, 256, 335, s.smileCurve, s.happyWeight, s.sadWeight, s.angryWeight, s.mouthOpen);
       faceTexture.needsUpdate = true;
 
       renderer.render(scene, camera);
@@ -403,9 +418,9 @@ export default function ThreeDAvatar({
 }
 
 /**
- * Draw Cute Small Smile Line (Mouth)
+ * Draw Cute Small Smile Line or Speaking Mouth
  */
-function drawSmileLine(ctx, mx, my, curve, happyW, sadW, angryW) {
+function drawSmileLine(ctx, mx, my, curve, happyW, sadW, angryW, mouthOpen = 0) {
   ctx.save();
   ctx.translate(mx, my);
 
@@ -417,18 +432,37 @@ function drawSmileLine(ctx, mx, my, curve, happyW, sadW, angryW) {
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 
-  ctx.beginPath();
-  ctx.moveTo(-w / 2, -curveY * 0.3);
-  ctx.quadraticCurveTo(0, curveY, w / 2, -curveY * 0.3);
-  ctx.stroke();
-
-  if (happyW > 0.25) {
-    ctx.globalAlpha = happyW;
+  if (mouthOpen > 0.06) {
+    // Talking open mouth shape (cute rounded talk shape)
+    const openH = mouthOpen * 16;
     ctx.fillStyle = '#122B1E';
     ctx.beginPath();
-    ctx.arc(-w / 2, -curveY * 0.3 - 1, 2.0, 0, Math.PI * 2);
-    ctx.arc(w / 2, -curveY * 0.3 - 1, 2.0, 0, Math.PI * 2);
+    ctx.moveTo(-w / 2, -curveY * 0.25);
+    ctx.quadraticCurveTo(0, curveY * 0.35 + openH, w / 2, -curveY * 0.25);
+    ctx.quadraticCurveTo(0, -curveY * 0.25 - openH * 0.35, -w / 2, -curveY * 0.25);
     ctx.fill();
+    ctx.stroke();
+
+    // Cute pink tongue
+    ctx.fillStyle = '#FF758F';
+    ctx.beginPath();
+    ctx.ellipse(0, (curveY * 0.35 + openH) * 0.55, w * 0.28, openH * 0.35, 0, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    // Cute smile line
+    ctx.beginPath();
+    ctx.moveTo(-w / 2, -curveY * 0.3);
+    ctx.quadraticCurveTo(0, curveY, w / 2, -curveY * 0.3);
+    ctx.stroke();
+
+    if (happyW > 0.25) {
+      ctx.globalAlpha = happyW;
+      ctx.fillStyle = '#122B1E';
+      ctx.beginPath();
+      ctx.arc(-w / 2, -curveY * 0.3 - 1, 2.0, 0, Math.PI * 2);
+      ctx.arc(w / 2, -curveY * 0.3 - 1, 2.0, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 
   ctx.restore();
