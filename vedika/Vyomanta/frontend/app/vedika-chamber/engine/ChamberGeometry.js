@@ -14,6 +14,8 @@ export const CHAMBERS_DATA = [
     id: 'ask',
     index: 0,
     name: 'Ask Vedika',
+    subtitle: 'Your curious learning buddy',
+    route: '/vedika-ai',
     colorHex: '#10B981', // Distinct Rich Emerald Green
     bodyColor: '#10B981',
     themeColor: '#10B981',
@@ -24,6 +26,8 @@ export const CHAMBERS_DATA = [
     id: 'code',
     index: 1,
     name: 'Code with Vedika',
+    subtitle: 'Your AI pair programmer & coding mentor',
+    route: '/vedika-ai',
     colorHex: '#0284C7', // Distinct Rich Sky Blue
     bodyColor: '#0284C7',
     themeColor: '#0284C7',
@@ -34,6 +38,8 @@ export const CHAMBERS_DATA = [
     id: 'puzzles',
     index: 2,
     name: 'Code Puzzles',
+    subtitle: 'Interactive logic & algorithmic challenges',
+    route: '/vedika-ai',
     colorHex: '#DB2777', // Distinct Rich Magenta Pink
     bodyColor: '#DB2777',
     themeColor: '#DB2777',
@@ -44,6 +50,8 @@ export const CHAMBERS_DATA = [
     id: 'viva',
     index: 3,
     name: 'Viva and Interview',
+    subtitle: 'Real-time voice & technical mock interviews',
+    route: '/vedika-ai',
     colorHex: '#D97706', // Distinct Rich Warm Amber Gold
     bodyColor: '#D97706',
     themeColor: '#D97706',
@@ -70,7 +78,7 @@ export class Chamber {
 
     this.group = new THREE.Group();
 
-    // ── 3D Circular Metallic Pedestal Disc (No square box shape, subtle clean neon ring) ──
+    // ── 3D Circular Metallic Pedestal & Neon Ring ──
     this._createCircularPedestal();
 
     this.setFocusState(index === 0 ? 1.0 : 0.0);
@@ -90,33 +98,34 @@ export class Chamber {
     discMesh.position.y = -1.20;
     this.pedestalGroup.add(discMesh);
 
-    // 2. Clean Neon Ring around the disc rim (Subtle, not overexposed)
-    const ringGeo = new THREE.TorusGeometry(1.39, 0.035, 24, 64);
+    // 2. Vibrant Glowing Neon Ring around the disc rim
+    const ringGeo = new THREE.TorusGeometry(1.39, 0.038, 24, 64);
     ringGeo.rotateX(Math.PI / 2);
     this.ringMat = new THREE.MeshStandardMaterial({
       color: this.primaryColor,
       emissive: this.primaryColor,
       emissiveIntensity: 1.0,
-      roughness: 0.2,
+      roughness: 0.15,
       metalness: 0.1,
     });
     this.ringMesh = new THREE.Mesh(ringGeo, this.ringMat);
     this.ringMesh.position.y = -1.14;
     this.pedestalGroup.add(this.ringMesh);
 
-    // 3. Soft subtle floor shadow/reflection ring
-    const softGlowGeo = new THREE.RingGeometry(1.35, 1.70, 64);
-    softGlowGeo.rotateX(-Math.PI / 2);
-    this.softGlowMat = new THREE.MeshBasicMaterial({
+    // 3. Subtle floor reflection ring beneath pedestal
+    const haloGeo = new THREE.RingGeometry(1.28, 1.85, 64);
+    haloGeo.rotateX(-Math.PI / 2);
+    this.haloMat = new THREE.MeshBasicMaterial({
       color: this.primaryColor,
       transparent: true,
-      opacity: 0.15,
+      opacity: 0.12,
+      blending: THREE.AdditiveBlending,
       depthWrite: false,
       side: THREE.DoubleSide,
     });
-    this.softGlowRing = new THREE.Mesh(softGlowGeo, this.softGlowMat);
-    this.softGlowRing.position.y = -1.25;
-    this.pedestalGroup.add(this.softGlowRing);
+    this.haloMesh = new THREE.Mesh(haloGeo, this.haloMat);
+    this.haloMesh.position.y = -1.22;
+    this.pedestalGroup.add(this.haloMesh);
 
     this.group.add(this.pedestalGroup);
   }
@@ -129,16 +138,24 @@ export class Chamber {
 
     this.group.position.set(targetX, targetY, targetZ);
 
-    const pedScale = THREE.MathUtils.lerp(0.85, 1.25, w);
+    const pedScale = THREE.MathUtils.lerp(0.85, 1.22, w);
     if (this.pedestalGroup) {
       this.pedestalGroup.scale.setScalar(pedScale);
     }
+
+    // Neon Ring: Clean bright emissive intensity on focus
     if (this.ringMat) {
-      this.ringMat.emissiveIntensity = THREE.MathUtils.lerp(0.8, 1.6, w);
+      this.ringMat.emissiveIntensity = THREE.MathUtils.lerp(0.8, 3.2, Math.pow(w, 1.2));
     }
-    if (this.softGlowMat) {
-      this.softGlowMat.opacity = THREE.MathUtils.lerp(0.12, 0.25, w);
+
+    // Floor halo
+    if (this.haloMat) {
+      this.haloMat.opacity = THREE.MathUtils.lerp(0.08, 0.45, w);
     }
+  }
+
+  update(time) {
+    // Optional pedestal animations
   }
 
   dispose() {

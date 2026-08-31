@@ -15,7 +15,7 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en" className={outfit.variable}>
+    <html lang="en" className={outfit.variable} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: `
           (function() {
@@ -24,7 +24,7 @@ export default function RootLayout({ children }) {
           })();
         `}} />
       </head>
-      <body style={{ margin: 0, padding: 0, backgroundColor: 'var(--bg)' }}>
+      <body suppressHydrationWarning>
         <LayoutWrapper>{children}</LayoutWrapper>
       </body>
     </html>

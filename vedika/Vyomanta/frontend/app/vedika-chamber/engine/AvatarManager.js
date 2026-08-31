@@ -100,21 +100,220 @@ function drawSpeechTag(ctx, name, colorHex, isFocused) {
 }
 
 /**
+ * Generates an ultra-soft, dreamy, foggy Gaussian aura texture with zero hard edges
+ */
+function createCelestialAuraTexture() {
+  if (typeof document === 'undefined') return null;
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 512;
+  const ctx = canvas.getContext('2d');
+
+  // Multi-stop ultra-soft radial fog gradient with smoothstep falloff
+  const gradient = ctx.createRadialGradient(256, 256, 0, 256, 256, 256);
+  gradient.addColorStop(0.0, 'rgba(255, 255, 255, 1.0)');
+  gradient.addColorStop(0.10, 'rgba(255, 255, 255, 0.90)');
+  gradient.addColorStop(0.25, 'rgba(255, 255, 255, 0.60)');
+  gradient.addColorStop(0.45, 'rgba(255, 255, 255, 0.28)');
+  gradient.addColorStop(0.68, 'rgba(255, 255, 255, 0.09)');
+  gradient.addColorStop(0.86, 'rgba(255, 255, 255, 0.015)');
+  gradient.addColorStop(1.0, 'rgba(255, 255, 255, 0.0)');
+
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, 512, 512);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.needsUpdate = true;
+  return texture;
+}
+
+/**
+ * Generates a cute 3D-stylized cartoon Star King Crown texture (Option 1)
+ * with a glowing star peak, royal gold curves, and theme-colored centerpiece diamond
+ */
+function createCrownTexture(themeColorHex) {
+  if (typeof document === 'undefined') return null;
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+
+  ctx.clearRect(0, 0, 256, 256);
+
+  const cx = 128;
+  const cy = 142;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+
+  // Soft atmospheric aura glow in avatar's color
+  const glowGrad = ctx.createRadialGradient(0, -10, 10, 0, -10, 115);
+  glowGrad.addColorStop(0.0, 'rgba(255, 255, 255, 0.95)');
+  glowGrad.addColorStop(0.35, themeColorHex + '99');
+  glowGrad.addColorStop(0.70, themeColorHex + '25');
+  glowGrad.addColorStop(1.0, 'rgba(0,0,0,0)');
+  ctx.fillStyle = glowGrad;
+  ctx.fillRect(-128, -142, 256, 256);
+
+  // 1. Royal Gold Crown Body with curved cartoon silhouette
+  ctx.beginPath();
+  ctx.moveTo(-62, 32);
+  // Left wing tip
+  ctx.quadraticCurveTo(-68, 8, -76, -20);
+  ctx.arc(-72, -24, 7, Math.PI, 0, false);
+  // Left valley
+  ctx.quadraticCurveTo(-46, -4, -30, 10);
+  // Center high star pillar
+  ctx.quadraticCurveTo(-14, -22, 0, -50);
+  ctx.quadraticCurveTo(14, -22, 30, 10);
+  // Right valley
+  ctx.quadraticCurveTo(46, -4, 68, -24);
+  ctx.arc(72, -24, 7, Math.PI, 0, false);
+  // Right wing tip
+  ctx.quadraticCurveTo(68, 8, 62, 32);
+  // Base arc
+  ctx.quadraticCurveTo(0, 38, -62, 32);
+  ctx.closePath();
+
+  // Royal rich gold gradient
+  const goldGrad = ctx.createLinearGradient(0, -50, 0, 36);
+  goldGrad.addColorStop(0.0, '#FFFBEB');
+  goldGrad.addColorStop(0.30, '#FDE047');
+  goldGrad.addColorStop(0.65, '#EAB308');
+  goldGrad.addColorStop(1.0, '#CA8A04');
+  ctx.fillStyle = goldGrad;
+  ctx.fill();
+
+  // Thick comic outline
+  ctx.strokeStyle = '#0F172A';
+  ctx.lineWidth = 5.5;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+
+  // 2. Centerpiece Faceted Diamond Gem in Avatar's Theme Color
+  ctx.beginPath();
+  ctx.moveTo(0, -22); // Top diamond point
+  ctx.lineTo(16, 2);   // Right point
+  ctx.lineTo(0, 26);   // Bottom point
+  ctx.lineTo(-16, 2);  // Left point
+  ctx.closePath();
+
+  const gemGrad = ctx.createLinearGradient(0, -22, 0, 26);
+  gemGrad.addColorStop(0.0, '#FFFFFF');
+  gemGrad.addColorStop(0.35, themeColorHex);
+  gemGrad.addColorStop(1.0, '#0F172A');
+  ctx.fillStyle = gemGrad;
+  ctx.fill();
+
+  ctx.strokeStyle = '#0F172A';
+  ctx.lineWidth = 3.5;
+  ctx.stroke();
+
+  // Gem facets
+  ctx.beginPath();
+  ctx.moveTo(-16, 2);
+  ctx.lineTo(16, 2);
+  ctx.moveTo(0, -22);
+  ctx.lineTo(0, 26);
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // 3. Radiant Golden Star on Center Peak
+  function drawStar(cx, cy, spikes, outerRadius, innerRadius) {
+    let rot = (Math.PI / 2) * 3;
+    let x = cx;
+    let y = cy;
+    let step = Math.PI / spikes;
+
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - outerRadius);
+    for (let i = 0; i < spikes; i++) {
+      x = cx + Math.cos(rot) * outerRadius;
+      y = cy + Math.sin(rot) * outerRadius;
+      ctx.lineTo(x, y);
+      rot += step;
+
+      x = cx + Math.cos(rot) * innerRadius;
+      y = cy + Math.sin(rot) * innerRadius;
+      ctx.lineTo(x, y);
+      rot += step;
+    }
+    ctx.lineTo(cx, cy - outerRadius);
+    ctx.closePath();
+
+    const starGrad = ctx.createRadialGradient(cx, cy, 2, cx, cy, outerRadius);
+    starGrad.addColorStop(0.0, '#FFFFFF');
+    starGrad.addColorStop(0.5, '#FEF08A');
+    starGrad.addColorStop(1.0, '#F59E0B');
+    ctx.fillStyle = starGrad;
+    ctx.fill();
+
+    ctx.strokeStyle = '#0F172A';
+    ctx.lineWidth = 3.5;
+    ctx.stroke();
+  }
+
+  drawStar(0, -56, 5, 15, 7.5);
+
+  // 4. Side Peak Pearl Spheres
+  [-72, 72].forEach((px) => {
+    ctx.beginPath();
+    ctx.arc(px, -24, 6.5, 0, Math.PI * 2);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fill();
+    ctx.strokeStyle = '#0F172A';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    // Specular highlight
+    ctx.beginPath();
+    ctx.arc(px - 2, -26, 2.5, 0, Math.PI * 2);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fill();
+  });
+
+  // 5. Glossy Crown Base Rim
+  ctx.beginPath();
+  ctx.moveTo(-54, 28);
+  ctx.quadraticCurveTo(0, 36, 54, 28);
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
+  ctx.lineWidth = 3;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+
+  ctx.restore();
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.needsUpdate = true;
+  return texture;
+}
+
+/**
  * AvatarManager — High-Definition 3D Avatar Station Management:
  *  - 4 Avatars with 100% Pure White Built-in 3D Eyes
- *  - Dotted lines removed from tags, compact sleek pill size
- *  - Front avatar is primarily direct front-facing
- *  - After 5 seconds of user inactivity/idle, avatar randomly & naturally moves face/wanders
+ *  - Smooth Dreamy Foggy Glow Aura & Top/Back Studio Lighting
+ *  - Cute Cartoonish Floating Crown placed cleanly above head
+ *  - Front avatar looks strictly straight forward with zero tilts
+ *  - Background avatars look around and follow cursor randomly
  *  - Open mouth smile with pink tongue on focus
  */
 export class AvatarManager {
-  constructor(scene, chambers) {
+  constructor(scene, camera, chambers) {
     this.scene = scene;
+    this.camera = camera;
     this.chambers = chambers;
     this.avatars = [];
     this.mouseGaze = { x: 0, y: 0 };
     this.lastUserInteractionTime = performance.now();
     this.isDisposed = false;
+
+    this.auraTexture = createCelestialAuraTexture();
 
     // Load pre-tinted textures preserving 100% pure white eyes
     const textureLoader = new THREE.TextureLoader();
@@ -128,6 +327,39 @@ export class AvatarManager {
       tex.flipY = false;
       tex.colorSpace = THREE.SRGBColorSpace;
     });
+
+    // Load custom tinted cartoon tilted crowns from user uploaded image
+    this.crownTextures = [
+      textureLoader.load('/crown_green.png'),
+      textureLoader.load('/crown_blue.png'),
+      textureLoader.load('/crown_pink.png'),
+      textureLoader.load('/crown_gold.png'),
+    ];
+    this.crownTextures.forEach((tex) => {
+      tex.flipY = true; // Upright orientation for 3D quad
+      tex.colorSpace = THREE.SRGBColorSpace;
+    });
+
+    // Read saved per-avatar crown configs from localStorage if available
+    const defaultConfigs = [
+      { posX: -0.56, posY: 1.69, posZ: 0.58, size: 0.78, rotZ: 0.25, rotX: 0.0, rotY: 0.0 },
+      { posX: -0.56, posY: 1.69, posZ: 0.58, size: 0.78, rotZ: 0.25, rotX: 0.0, rotY: 0.0 },
+      { posX: -0.56, posY: 1.70, posZ: 0.66, size: 0.78, rotZ: 0.14, rotX: 0.0, rotY: 0.0 },
+      { posX: -0.56, posY: 1.69, posZ: 0.44, size: 0.78, rotZ: 0.08, rotX: 0.0, rotY: 0.0 },
+    ];
+    let savedConfigs = defaultConfigs;
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('vedika_avatar_all_configs');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed) && parsed.length === 4) {
+            savedConfigs = parsed.map((item, idx) => ({ ...defaultConfigs[idx], ...(item.crown || item) }));
+          }
+        }
+      } catch (e) {}
+    }
+    this.crownConfigs = savedConfigs;
 
     this.loader = new GLTFLoader();
     this._loadMasterModel();
@@ -152,6 +384,7 @@ export class AvatarManager {
   _instantiateAvatars() {
     this.chambers.forEach((chamber, idx) => {
       const data = CHAMBERS_DATA[idx];
+      const initialWeight = idx === 0 ? 1.0 : 0.0;
       const cloneRoot = this.masterScene.clone(true);
 
       const eyeBones = [];
@@ -197,16 +430,8 @@ export class AvatarManager {
         }
       });
 
-      // Dedicated soft studio lighting for this avatar
+      // Dedicated soft studio and stage glow lighting for this avatar in its exact theme color
       const avatarGroup = new THREE.Group();
-
-      const rimLight = new THREE.PointLight(themeColor, 1.4, 12);
-      rimLight.position.set(2.5, 2.5, -2);
-      avatarGroup.add(rimLight);
-
-      const fillLight = new THREE.DirectionalLight(themeColor, 0.7);
-      fillLight.position.set(-2.5, -1.5, 2.5);
-      avatarGroup.add(fillLight);
 
       // Dynamic 2D smile face plane (mouth only) attached to head
       const faceCanvas = document.createElement('canvas');
@@ -234,7 +459,73 @@ export class AvatarManager {
       pivot.add(facePlane);
       avatarGroup.add(pivot);
 
-      // Compact 3D Speech Bubble Tag (No dotted lines, sleek size)
+      // 1. [TEMPORARILY COMMENTED OUT] Background Glow Aura planes to test direct top LightRays downlight
+      /*
+      const outerAuraGeo = new THREE.PlaneGeometry(8.6, 8.6);
+      const outerAuraMat = new THREE.MeshBasicMaterial({
+        map: this.auraTexture,
+        color: themeColor,
+        transparent: true,
+        opacity: initialWeight > 0.5 ? 0.70 : 0.04,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      });
+      const outerAuraMesh = new THREE.Mesh(outerAuraGeo, outerAuraMat);
+      outerAuraMesh.position.set(0, 0.35, -0.80);
+      avatarGroup.add(outerAuraMesh);
+
+      const innerAuraGeo = new THREE.PlaneGeometry(5.0, 5.0);
+      const innerAuraMat = new THREE.MeshBasicMaterial({
+        map: this.auraTexture,
+        color: themeColor,
+        transparent: true,
+        opacity: initialWeight > 0.5 ? 0.88 : 0.06,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      });
+      const innerAuraMesh = new THREE.Mesh(innerAuraGeo, innerAuraMat);
+      innerAuraMesh.position.set(0, 0.35, -0.65);
+      avatarGroup.add(innerAuraMesh);
+      */
+
+      // 2. Cute Cartoonish Crown (Oswald style - perched snugly on top-left curve of round head)
+      const crownTex = this.crownTextures[idx] || this.crownTextures[0];
+      const crownGeo = new THREE.PlaneGeometry(0.78, 0.78);
+      const crownMat = new THREE.MeshBasicMaterial({
+        map: crownTex,
+        transparent: true,
+        opacity: initialWeight > 0.5 ? 1.0 : 0.0,
+        depthTest: false,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      });
+      const crownMesh = new THREE.Mesh(crownGeo, crownMat);
+      crownMesh.renderOrder = 1000;
+      // Perched on the top-left curve of the head like Oswald's hat
+      crownMesh.position.set(-0.56, 1.18, 0.58);
+      crownMesh.rotation.z = 0.42;
+      crownMesh.scale.setScalar(initialWeight > 0.5 ? 1.0 : 0.001);
+      avatarGroup.add(crownMesh);
+
+      // 3. Overhead Spotlight from Top (soft 3D illumination on top of avatar)
+      const topSpotLight = new THREE.SpotLight(themeColor, initialWeight > 0.5 ? 4.5 : 0.3, 14, Math.PI / 3, 0.5);
+      topSpotLight.position.set(0, 3.8, 0.6);
+      topSpotLight.target = pivot;
+      avatarGroup.add(topSpotLight);
+
+      // 4. Back Halo Rim Light (creating radiant backlit silhouette around fur edges)
+      const backHaloLight = new THREE.PointLight(themeColor, initialWeight > 0.5 ? 3.8 : 0.5, 10, 1.2);
+      backHaloLight.position.set(0, 0.8, -1.8);
+      avatarGroup.add(backHaloLight);
+
+      // 5. Gentle Front Soft Fill
+      const frontFillLight = new THREE.DirectionalLight(themeColor, initialWeight > 0.5 ? 0.7 : 0.25);
+      frontFillLight.position.set(0, 1.2, 3.2);
+      avatarGroup.add(frontFillLight);
+
+      // Compact 3D Speech Bubble Tag (Visible for background buddies, smoothly fades out when focused)
       const tagCanvas = document.createElement('canvas');
       tagCanvas.width = 512;
       tagCanvas.height = 180;
@@ -244,26 +535,30 @@ export class AvatarManager {
       tagTexture.minFilter = THREE.LinearFilter;
       tagTexture.magFilter = THREE.LinearFilter;
 
+      const tagMat = new THREE.MeshBasicMaterial({
+        map: tagTexture,
+        transparent: true,
+        opacity: initialWeight > 0.5 ? 0.0 : 1.0,
+        depthTest: false,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      });
+
       const tagPlane = new THREE.Mesh(
-        new THREE.PlaneGeometry(2.5, 0.88),
-        new THREE.MeshBasicMaterial({
-          map: tagTexture,
-          transparent: true,
-          depthWrite: false,
-          side: THREE.DoubleSide,
-        })
+        new THREE.PlaneGeometry(2.6, 0.92),
+        tagMat
       );
-      // Positioned cleanly above avatar head
-      tagPlane.position.set(0, 1.45, 0.05);
+      tagPlane.renderOrder = 999;
+      // Positioned cleanly above avatar head and forward
+      tagPlane.position.set(0, 1.85, 0.35);
       avatarGroup.add(tagPlane);
 
       const avatarLocalY = 0.0;
       avatarGroup.position.set(0, avatarLocalY, 0.0);
       chamber.group.add(avatarGroup);
 
-      const initialWeight = idx === 0 ? 1.0 : 0.0;
       pivot.scale.setScalar(THREE.MathUtils.lerp(0.85, 1.30, initialWeight));
-      tagPlane.scale.setScalar(THREE.MathUtils.lerp(0.88, 1.15, initialWeight));
+      tagPlane.scale.setScalar(THREE.MathUtils.lerp(0.88, 1.20, initialWeight));
 
       // Initial render of tag and smile
       drawSpeechTag(tagCtx, data.name, data.themeColor, initialWeight > 0.5);
@@ -287,6 +582,16 @@ export class AvatarManager {
         avatarGroup,
         pivot,
         tagPlane,
+        tagMat,
+        crownMesh,
+        crownMat,
+        outerAuraMesh: null,
+        outerAuraMat: null,
+        innerAuraMesh: null,
+        innerAuraMat: null,
+        topSpotLight,
+        backHaloLight,
+        frontFillLight,
         baseY: avatarLocalY,
         eyeBones,
         bodyMaterials,
@@ -306,7 +611,20 @@ export class AvatarManager {
         happyWeight: initialWeight > 0.5 ? 1.0 : 0.0, vHappy: 0,
         smileCurve: initialWeight > 0.5 ? 0.85 : 0.2, vSmile: 0,
         mouthOpen: initialWeight > 0.5 ? 0.65 : 0.0, vMouth: 0,
-        frameTime: idx * 1.5,
+        frameTime: idx * 1.77,
+
+        // Autonomous Look-around & Random Cursor Following for Background Buddies
+        glanceYaw: (Math.random() - 0.5) * 0.3,
+        glancePitch: (Math.random() - 0.5) * 0.15,
+        glanceRoll: (Math.random() - 0.5) * 0.08,
+        targetGlanceYaw: (Math.random() - 0.5) * 0.35,
+        targetGlancePitch: (Math.random() - 0.5) * 0.18,
+        targetGlanceRoll: (Math.random() - 0.5) * 0.08,
+        glanceTimer: 0.8 + Math.random() * 2.0,
+        cursorFollowWeight: 0.30 + Math.random() * 0.35,
+        cursorPhaseLag: Math.random() * Math.PI * 2,
+        wanderSpeed: 0.7 + Math.random() * 0.35,
+        phaseOffset: idx * 2.13 + Math.random() * 0.6,
       });
     });
   }
@@ -323,11 +641,28 @@ export class AvatarManager {
     }
   }
 
+  setCrownConfig(avatarIndex, newConfig) {
+    if (this.crownConfigs[avatarIndex]) {
+      this.crownConfigs[avatarIndex] = { ...this.crownConfigs[avatarIndex], ...newConfig };
+    }
+    const av = this.avatars[avatarIndex];
+    if (av && av.crownMesh) {
+      const cfg = this.crownConfigs[avatarIndex];
+      av.crownMesh.position.set(cfg.posX, cfg.posY, cfg.posZ);
+      av.crownMesh.rotation.set(cfg.rotX || 0, cfg.rotY || 0, cfg.rotZ || 0);
+    }
+  }
+
+  setAllCrownConfigs(configs) {
+    if (!Array.isArray(configs)) return;
+    this.crownConfigs = configs.map((c, idx) => ({
+      ...(this.crownConfigs[idx] || {}),
+      ...(c.crown || c),
+    }));
+  }
+
   update(time, dt) {
     if (this.avatars.length === 0) return;
-
-    const idleSeconds = (performance.now() - this.lastUserInteractionTime) / 1000;
-    const isIdle = idleSeconds > 5.0; // Idle after 5 seconds of no cursor motion
 
     for (let i = 0; i < this.avatars.length; i++) {
       const av = this.avatars[i];
@@ -336,19 +671,46 @@ export class AvatarManager {
       const focusWeight = Math.max(0.0, Math.min(1.0, av.focusWeight || 0.0));
       const isFront = focusWeight > 0.5;
 
-      // ── 1. Scale: Avatar and 3D Tag scale smoothly in exact sync ──
+      // ── 1. Scale & Position of Avatar and 3D Tag (Text never hidden behind head) ──
       const targetScale = THREE.MathUtils.lerp(0.85, 1.30, focusWeight);
       av.pivot.scale.setScalar(targetScale);
 
-      const tagScale = THREE.MathUtils.lerp(0.88, 1.15, focusWeight);
+      const tagScale = THREE.MathUtils.lerp(0.88, 1.20, focusWeight);
       av.tagPlane.scale.setScalar(tagScale);
 
-      // ── 2. Clean Natural Fur Texture ──
+      // ── 2. [TEMPORARILY COMMENTED OUT] Celestial Back Glow Aura ──
+      /*
+      const pulse = isFront ? Math.sin(t * 1.8) * 0.04 : 0;
+      if (av.outerAuraMat) {
+        av.outerAuraMat.opacity = THREE.MathUtils.lerp(0.05, 0.68 + pulse, Math.pow(focusWeight, 1.3));
+      }
+      if (av.innerAuraMat) {
+        av.innerAuraMat.opacity = THREE.MathUtils.lerp(0.06, 0.88 + pulse, Math.pow(focusWeight, 1.3));
+      }
+      if (av.outerAuraMesh) {
+        av.outerAuraMesh.scale.setScalar(THREE.MathUtils.lerp(0.85, 1.35, focusWeight));
+      }
+      if (av.innerAuraMesh) {
+        av.innerAuraMesh.scale.setScalar(THREE.MathUtils.lerp(0.85, 1.25, focusWeight));
+      }
+      */
+
+      if (av.topSpotLight) {
+        av.topSpotLight.intensity = THREE.MathUtils.lerp(0.3, 4.8, Math.pow(focusWeight, 1.4));
+      }
+      if (av.backHaloLight) {
+        av.backHaloLight.intensity = THREE.MathUtils.lerp(0.5, 3.8, Math.pow(focusWeight, 1.4));
+      }
+      if (av.frontFillLight) {
+        av.frontFillLight.intensity = THREE.MathUtils.lerp(0.25, 0.70, focusWeight);
+      }
+
       av.bodyMaterials.forEach((mat) => {
         if ('emissive' in mat) {
-          mat.emissiveIntensity = THREE.MathUtils.lerp(0.005, 0.02, focusWeight);
+          mat.emissive = av.data.themeColor ? new THREE.Color(av.data.themeColor) : mat.color;
+          mat.emissiveIntensity = THREE.MathUtils.lerp(0.005, 0.20, focusWeight);
         }
-        mat.roughness = THREE.MathUtils.lerp(0.72, 0.66, focusWeight);
+        mat.roughness = THREE.MathUtils.lerp(0.72, 0.58, focusWeight);
       });
 
       // ── 3. Dynamic Smile & Open Mouth with Tongue on Focus ──
@@ -365,33 +727,95 @@ export class AvatarManager {
       const [mo, vmo] = updateSpring(av.mouthOpen, av.vMouth, targetMouth, 110, 14, dt);
       av.mouthOpen = mo; av.vMouth = vmo;
 
-      // ── 4. Front-Facing Orientation & 5s Autonomous Idle Head Movement ──
+      // ── 4. Organic Breathing Float & Floating Crown Animation ──
+      const breathFloat = Math.sin(t * 2.2) * (isFront ? 0.07 : 0.035);
+      av.pivot.position.y = av.baseY + breathFloat;
+
+      // Floating Cute Cartoonish Crown (Controlled per avatar in real-time by FineTuner)
+      if (av.crownMesh && av.crownMat) {
+        const cfg = (this.crownConfigs && this.crownConfigs[i]) || { posX: -0.56, posY: 1.18, posZ: 0.58, size: 0.78, rotZ: 0.42, rotX: 0, rotY: 0 };
+        av.crownMesh.position.x = cfg.posX;
+        av.crownMesh.position.y = cfg.posY + breathFloat * 0.5 + Math.sin(t * 2.8) * 0.02;
+        av.crownMesh.position.z = cfg.posZ;
+        av.crownMesh.rotation.x = cfg.rotX || 0;
+        av.crownMesh.rotation.y = cfg.rotY || 0;
+        av.crownMesh.rotation.z = (cfg.rotZ || 0) + Math.sin(t * 2.0) * 0.015;
+        av.crownMat.opacity = THREE.MathUtils.lerp(0.0, 1.0, Math.pow(focusWeight, 2.2));
+        av.crownMesh.scale.setScalar(THREE.MathUtils.lerp(0.001, cfg.size || 0.78, focusWeight));
+        av.crownMesh.visible = av.crownMat.opacity > 0.01;
+      }
+
+      // Position tag cleanly above the avatar's head, forward in Z (fades out when front avatar is focused)
+      const tagY = THREE.MathUtils.lerp(1.75, 2.25, focusWeight) + breathFloat * 0.5;
+      const tagZ = THREE.MathUtils.lerp(0.35, 0.95, focusWeight);
+      av.tagPlane.position.set(0, tagY, tagZ);
+
+      if (av.tagMat && av.tagPlane) {
+        av.tagMat.opacity = THREE.MathUtils.lerp(1.0, 0.0, Math.pow(focusWeight, 1.4));
+        av.tagPlane.visible = av.tagMat.opacity > 0.01;
+      }
+
+      // ── 5. Rotation Logic:
+      // Avatar coming front / at front: Strictly looking STRAIGHT FORWARD along +Z axis with ZERO head tilts
+      // Remaining background avatars: Look around organically and randomly follow/react to cursor.
       let targetYaw = 0;
       let targetPitch = 0;
       let targetRoll = 0;
 
-      if (isIdle) {
-        // After 5 seconds idle: smooth organic procedural wandering / head looking around
-        const idleCycle = t * 0.85;
-        targetYaw = Math.sin(idleCycle) * 0.28 + Math.sin(idleCycle * 0.45) * 0.12;
-        targetPitch = Math.cos(idleCycle * 0.7) * 0.10 - 0.04;
-        targetRoll = Math.sin(idleCycle * 0.5) * 0.04;
-      } else {
-        // User is active: Front avatar looks straight forward (confident front-facing)
-        if (isFront) {
-          targetYaw = this.mouseGaze.x * 0.08; // Very subtle, primarily front facing
-          targetPitch = -this.mouseGaze.y * 0.06;
-          targetRoll = (this.mouseGaze.x / 100) * 0.02;
-        } else {
-          targetYaw = 0;
-          targetPitch = 0;
-          targetRoll = 0;
+      // When an avatar is coming front (focusWeight rising), bgFactor quickly drops to 0
+      // So all wander and head tilts immediately straighten out into pure straight forward
+      const bgFactor = Math.max(0.0, 1.0 - focusWeight * 3.0);
+
+      if (bgFactor > 0.001) {
+        // Update autonomous glance timer for background avatars
+        av.glanceTimer -= dt;
+        if (av.glanceTimer <= 0) {
+          av.glanceTimer = 1.6 + Math.random() * 2.4;
+          // Random subtle glance direction (left/right, up/down, tilt)
+          av.targetGlanceYaw = (Math.random() - 0.5) * 0.45;
+          av.targetGlancePitch = (Math.random() - 0.45) * 0.25;
+          av.targetGlanceRoll = (Math.random() - 0.5) * 0.10;
         }
+
+        // Smoothly interpolate towards current random glance target
+        const glanceLerpSpeed = dt * 2.5;
+        av.glanceYaw += (av.targetGlanceYaw - av.glanceYaw) * glanceLerpSpeed;
+        av.glancePitch += (av.targetGlancePitch - av.glancePitch) * glanceLerpSpeed;
+        av.glanceRoll += (av.targetGlanceRoll - av.glanceRoll) * glanceLerpSpeed;
+
+        // Continuous organic harmonic look-around waves
+        const wanderTime = t * av.wanderSpeed + av.phaseOffset;
+        const waveYaw = Math.sin(wanderTime * 0.75) * 0.15 + Math.cos(wanderTime * 0.4) * 0.06;
+        const wavePitch = Math.sin(wanderTime * 0.6) * 0.08 - 0.02;
+        const waveRoll = Math.cos(wanderTime * 0.48) * 0.03;
+
+        // Random cursor reaction / tracking for background buddies
+        const cursorYaw = (this.mouseGaze.x * 0.28 + Math.sin(wanderTime * 0.3 + av.cursorPhaseLag) * 0.07) * av.cursorFollowWeight;
+        const cursorPitch = (-this.mouseGaze.y * 0.18 + Math.cos(wanderTime * 0.35 + av.cursorPhaseLag) * 0.04) * av.cursorFollowWeight;
+        const cursorRoll = (this.mouseGaze.x * 0.04) * av.cursorFollowWeight;
+
+        // Combine wander, autonomous glance, and random cursor tracking
+        const totalBgYaw = waveYaw + av.glanceYaw + cursorYaw;
+        const totalBgPitch = wavePitch + av.glancePitch + cursorPitch;
+        const totalBgRoll = waveRoll + av.glanceRoll + cursorRoll;
+
+        targetYaw = totalBgYaw * bgFactor;
+        targetPitch = totalBgPitch * bgFactor;
+        targetRoll = totalBgRoll * bgFactor;
+      } else {
+        // Front focused avatar: 100% straight forward along Z-axis, NO tilt, NO yaw angle, looking directly straight ahead
+        targetYaw = 0;
+        targetPitch = 0;
+        targetRoll = 0;
       }
 
-      const [rx, rvx] = updateSpring(av.rotX, av.rotVX, targetPitch, 100, 14, dt);
-      const [ry, rvy] = updateSpring(av.rotY, av.rotVY, targetYaw, 100, 14, dt);
-      const [rz, rvz] = updateSpring(av.rotZ, av.rotVZ, targetRoll, 100, 14, dt);
+      // Critically damped spring physics for responsive and silky smooth head alignment
+      const springStiffness = focusWeight > 0.05 ? 160 : 85;
+      const springDamping = focusWeight > 0.05 ? 18 : 12;
+
+      const [rx, rvx] = updateSpring(av.rotX, av.rotVX, targetPitch, springStiffness, springDamping, dt);
+      const [ry, rvy] = updateSpring(av.rotY, av.rotVY, targetYaw, springStiffness, springDamping, dt);
+      const [rz, rvz] = updateSpring(av.rotZ, av.rotVZ, targetRoll, springStiffness, springDamping, dt);
       av.rotX = rx; av.rotVX = rvx;
       av.rotY = ry; av.rotVY = rvy;
       av.rotZ = rz; av.rotVZ = rvz;
@@ -399,10 +823,6 @@ export class AvatarManager {
       av.pivot.rotation.x = av.rotX;
       av.pivot.rotation.y = av.rotY;
       av.pivot.rotation.z = -av.rotZ;
-
-      // ── 5. Organic Breathing Float ──
-      const breathFloat = Math.sin(t * 2.2) * (isFront ? 0.07 : 0.035);
-      av.pivot.position.y = av.baseY + breathFloat;
 
       // ── 6. Render Dynamic Smile (Open Mouth with Tongue on Focus) ──
       if (av.faceCtx && av.faceTexture) {

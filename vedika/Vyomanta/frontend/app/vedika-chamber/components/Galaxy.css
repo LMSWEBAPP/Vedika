@@ -1,0 +1,24 @@
+/* ═══════════════════════════════════════════════════════════════
+   React Bits Galaxy Background — Full-Page Ambient Stardust Canvas
+   Layer 0 (Behind LightRays and 3D Avatars)
+   ═══════════════════════════════════════════════════════════════ */
+
+.galaxy-background-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.galaxy-background-container canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
