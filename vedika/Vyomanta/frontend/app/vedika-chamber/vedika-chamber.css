@@ -1,0 +1,100 @@
+/* ═══════════════════════════════════════════════════════════════
+   Vedika AI 3D Chamber Experience — Isolated Page Styling
+   Dark, Cinematic, Minimal, Deep, Magical Atmosphere
+   ═══════════════════════════════════════════════════════════════ */
+
+:root {
+  --vchamber-void-bg: #010003;
+}
+
+.vchamber-container {
+  position: relative;
+  width: 100%;
+  height: calc(100vh - 64px);
+  height: calc(100dvh - 64px);
+  max-height: calc(100vh - 64px);
+  max-height: calc(100dvh - 64px);
+  background-color: var(--vchamber-void-bg);
+  overflow: hidden;
+  user-select: none;
+  box-sizing: border-box;
+}
+
+/* 3D WebGL Canvas Viewport */
+.vchamber-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  z-index: 2;
+  outline: none;
+}
+
+/* Cinematic Depth-of-Field Soft Blur on Side Chambers */
+.vchamber-dof-blur {
+  position: absolute;
+  top: 10%;
+  bottom: 12%;
+  width: 32%;
+  pointer-events: none;
+  z-index: 6;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.vchamber-dof-left {
+  left: 0;
+  mask-image: linear-gradient(to right, rgba(0, 0, 0, 0.95) 30%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, rgba(0, 0, 0, 0.95) 30%, transparent 100%);
+}
+
+.vchamber-dof-right {
+  right: 0;
+  mask-image: linear-gradient(to left, rgba(0, 0, 0, 0.95) 30%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to left, rgba(0, 0, 0, 0.95) 30%, transparent 100%);
+}
+
+/* Loading Hologram Spinner */
+.vchamber-loader-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--vchamber-void-bg);
+  z-index: 20;
+  transition: opacity 0.6s ease, visibility 0.6s ease;
+}
+
+.vchamber-loader-hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.vchamber-loader-ring {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2px solid rgba(148, 163, 184, 0.12);
+  border-top-color: #0ea5e9;
+  border-right-color: #d946ef;
+  animation: vchamberSpin 1.1s cubic-bezier(0.68, -0.55, 0.27, 1.55) infinite;
+  margin-bottom: 14px;
+}
+
+@keyframes vchamberSpin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.vchamber-loader-text {
+  font-family: 'Outfit', sans-serif;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #64748b;
+}

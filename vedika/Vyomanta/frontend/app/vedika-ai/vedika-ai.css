@@ -1,0 +1,446 @@
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700;800;900&family=Playfair+Display:ital,wght@0,600;0,700;0,800;1,600&family=Outfit:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+
+/* ═══════════════════════════════════════════════════════════════
+   Vedika AI — 3D Cosmic World (Authoritative Visual Recreation)
+   Deep space, singularity nexus, organic plasma streams, zero boxes
+   ═══════════════════════════════════════════════════════════════ */
+
+:root {
+  --vai-void-black: #020005;
+  --vai-magenta: #E879F9;
+  --vai-magenta-core: #D946EF;
+  --vai-blue: #38BDF8;
+  --vai-blue-core: #0284C7;
+  --vai-lime: #A3E635;
+  --vai-lime-core: #65A30D;
+}
+
+/* ── Deep Black Infinite Space Container (Strictly 100vh Viewport) ── */
+.vai-page {
+  position: relative;
+  width: 100%;
+  height: calc(100vh - 64px);
+  max-height: calc(100vh - 64px);
+  background-color: var(--vai-void-black);
+  color: #E2E8F0;
+  font-family: 'Outfit', 'Plus Jakarta Sans', system-ui, sans-serif;
+  box-sizing: border-box;
+  padding: 8px 24px 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* ── Deep Cosmic Background Layers ──────────────────────────────── */
+.vai-universe-bg {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 46%, rgba(147, 51, 234, 0.16) 0%, rgba(79, 70, 229, 0.06) 30%, transparent 68%),
+              radial-gradient(circle at 50% 0%, rgba(192, 38, 211, 0.2) 0%, rgba(126, 34, 206, 0.08) 38%, transparent 72%),
+              linear-gradient(to bottom, #05010C 0%, #020005 45%, #010003 100%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Atmospheric Plasma Clouds (Top Left & Top Right) */
+.vai-nebula-left {
+  position: absolute;
+  top: -100px;
+  left: -80px;
+  width: 600px;
+  height: 600px;
+  background: radial-gradient(circle, rgba(168, 85, 247, 0.32) 0%, rgba(139, 92, 246, 0.12) 42%, transparent 72%);
+  filter: blur(70px);
+  pointer-events: none;
+  z-index: 0;
+  animation: vaiNebulaDriftLeft 10s ease-in-out infinite alternate;
+}
+
+.vai-nebula-right {
+  position: absolute;
+  top: -100px;
+  right: -80px;
+  width: 620px;
+  height: 620px;
+  background: radial-gradient(circle, rgba(217, 70, 239, 0.32) 0%, rgba(147, 51, 234, 0.12) 42%, transparent 72%);
+  filter: blur(75px);
+  pointer-events: none;
+  z-index: 0;
+  animation: vaiNebulaDriftRight 11s ease-in-out infinite alternate-reverse;
+}
+
+@keyframes vaiNebulaDriftLeft {
+  0% { transform: scale(0.95) translate(0, 0) rotate(-2deg); opacity: 0.7; }
+  100% { transform: scale(1.1) translate(20px, 15px) rotate(2deg); opacity: 0.95; }
+}
+
+@keyframes vaiNebulaDriftRight {
+  0% { transform: scale(0.93) translate(0, 0) rotate(2deg); opacity: 0.7; }
+  100% { transform: scale(1.12) translate(-20px, 18px) rotate(-2deg); opacity: 0.95; }
+}
+
+/* ── Fullscreen Continuous 3D Holographic Particle Canvas ─────────── */
+.vai-particle-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* ── Top Header Typography (Regal, Floating Floating in Space) ───── */
+.vai-header {
+  position: relative;
+  z-index: 10;
+  text-align: center;
+  margin-top: 0px;
+  margin-bottom: 0px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  pointer-events: none;
+}
+
+.vai-spark-icon {
+  color: #E879F9;
+  font-size: 15px;
+  margin-bottom: 2px;
+  filter: drop-shadow(0 0 14px rgba(232, 121, 249, 1));
+  animation: vaiStarSpark 2.8s ease-in-out infinite alternate;
+}
+
+@keyframes vaiStarSpark {
+  0% { transform: scale(0.85); opacity: 0.75; filter: drop-shadow(0 0 8px rgba(232, 121, 249, 0.7)); }
+  100% { transform: scale(1.3); opacity: 1; filter: drop-shadow(0 0 20px rgba(232, 121, 249, 1)); }
+}
+
+.vai-title {
+  margin: 0;
+  font-family: 'Cinzel', 'Playfair Display', serif;
+  font-size: clamp(32px, 3.6vw, 52px);
+  font-weight: 700;
+  line-height: 1.0;
+  letter-spacing: 0.04em;
+  color: #FFFFFF;
+  text-shadow: 0 0 35px rgba(255, 255, 255, 0.45), 0 0 60px rgba(168, 85, 247, 0.35);
+  text-align: center;
+}
+
+.vai-title-ai {
+  display: block;
+  font-family: 'Cinzel', 'Playfair Display', serif;
+  font-size: clamp(28px, 3.1vw, 44px);
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  background: linear-gradient(135deg, #FFFFFF 0%, #F5D0FE 30%, #C084FC 70%, #818CF8 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 30px rgba(192, 132, 252, 0.85));
+  text-align: center;
+}
+
+.vai-subtitle {
+  margin: 4px 0 0 0;
+  font-size: 13px;
+  font-weight: 400;
+  color: #CBD5E1;
+  letter-spacing: 0.03em;
+  text-align: center;
+  opacity: 0.75;
+  text-shadow: 0 0 12px rgba(147, 51, 234, 0.4);
+}
+
+/* ── Central Singularity / Convergence Nexus Stage ──────────────── */
+.vai-hologram-stage {
+  position: relative;
+  width: 100%;
+  max-width: 900px;
+  height: 90px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 5;
+  pointer-events: none;
+  margin: 0 auto;
+}
+
+/* Perspective Horizon Ellipses (Simulating Reflective Dark Cosmic Floor) */
+.vai-nexus-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid rgba(192, 132, 252, 0.4);
+  box-shadow: 0 0 24px rgba(192, 132, 252, 0.25), inset 0 0 16px rgba(192, 132, 252, 0.15);
+  transform: rotateX(75deg);
+}
+
+.vai-ring-1 {
+  width: 260px;
+  height: 260px;
+  animation: vaiRingPulse 3.5s ease-in-out infinite alternate;
+}
+
+.vai-ring-2 {
+  width: 420px;
+  height: 420px;
+  border-color: rgba(147, 51, 234, 0.25);
+  animation: vaiRingPulse 4.5s ease-in-out infinite alternate-reverse;
+}
+
+.vai-ring-3 {
+  width: 620px;
+  height: 620px;
+  border-color: rgba(99, 102, 241, 0.16);
+  border-style: dashed;
+}
+
+@keyframes vaiRingPulse {
+  0% { transform: rotateX(75deg) scale(0.94); opacity: 0.65; }
+  100% { transform: rotateX(75deg) scale(1.06); opacity: 1; }
+}
+
+/* Singularity Intense Blinding Core */
+.vai-singularity-core {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #FFFFFF;
+  box-shadow: 0 0 25px 10px #FFFFFF,
+              0 0 55px 24px rgba(232, 121, 249, 0.95),
+              0 0 100px 45px rgba(168, 85, 247, 0.85),
+              0 0 160px 70px rgba(99, 102, 241, 0.5);
+  animation: vaiCorePulse 2s ease-in-out infinite alternate;
+}
+
+@keyframes vaiCorePulse {
+  0% { transform: scale(0.85); filter: brightness(1); }
+  100% { transform: scale(1.25); filter: brightness(1.45); }
+}
+
+/* Anamorphic Horizontal Horizon Flare */
+.vai-horizon-beam {
+  position: absolute;
+  width: 580px;
+  height: 2.5px;
+  background: linear-gradient(90deg, transparent 0%, rgba(217, 70, 239, 0.9) 30%, #FFFFFF 50%, rgba(56, 189, 248, 0.9) 70%, transparent 100%);
+  filter: drop-shadow(0 0 16px rgba(232, 121, 249, 1));
+  opacity: 0.92;
+}
+
+/* ── Bottom 3 AI Entities (Physical 3D Placement, Zero Boxes) ───── */
+.vai-cards-container {
+  position: relative;
+  z-index: 10;
+  width: 100%;
+  max-width: 1240px;
+  margin: 0 auto;
+}
+
+.vai-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 36px;
+  align-items: flex-end;
+  width: 100%;
+}
+
+/* Entity Container (Completely Seamless, Zero Box Background) */
+.vai-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
+  padding: 0;
+  margin: 0;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.vai-card:hover {
+  transform: translateY(-6px);
+}
+
+/* 3D Mascot Avatar Wrapper with Floor Reflection Light Caustics */
+.vai-avatar-wrapper {
+  position: relative;
+  width: 150px;
+  height: 150px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 6px;
+}
+
+/* Reflective Floor Light Pool Beneath Each Mascot */
+.vai-floor-glow {
+  position: absolute;
+  bottom: 2px;
+  width: 120px;
+  height: 30px;
+  border-radius: 50%;
+  filter: blur(16px);
+  pointer-events: none;
+  z-index: 0;
+  transition: all 0.3s ease;
+}
+
+.vai-floor-ask {
+  background: radial-gradient(circle, rgba(232, 121, 249, 0.95) 0%, rgba(217, 70, 239, 0.45) 55%, transparent 100%);
+}
+
+.vai-floor-code {
+  background: radial-gradient(circle, rgba(56, 189, 248, 0.95) 0%, rgba(37, 99, 235, 0.45) 55%, transparent 100%);
+}
+
+.vai-floor-viva {
+  background: radial-gradient(circle, rgba(163, 230, 53, 0.95) 0%, rgba(234, 179, 8, 0.45) 55%, transparent 100%);
+}
+
+.vai-card:hover .vai-floor-glow {
+  transform: scale(1.35);
+  filter: blur(20px);
+}
+
+/* Glowing Plasma Emitter Spark on Head */
+.vai-antenna-spark {
+  position: absolute;
+  top: 4px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #FFFFFF;
+  pointer-events: none;
+  z-index: 6;
+  animation: vaiSparkPulse 2s ease-in-out infinite alternate;
+}
+
+.vai-antenna-ask {
+  box-shadow: 0 0 16px 6px #E879F9, 0 0 35px 12px rgba(217, 70, 239, 0.9);
+}
+
+.vai-antenna-code {
+  box-shadow: 0 0 16px 6px #38BDF8, 0 0 35px 12px rgba(56, 189, 248, 0.9);
+}
+
+.vai-antenna-viva {
+  box-shadow: 0 0 16px 6px #A3E635, 0 0 35px 12px rgba(163, 230, 53, 0.9);
+}
+
+@keyframes vaiSparkPulse {
+  0% { transform: scale(0.75); opacity: 0.8; }
+  100% { transform: scale(1.35); opacity: 1; }
+}
+
+/* ── Atmospheric Typography Beneath Characters ───────────────────── */
+.vai-card-title {
+  font-family: 'Cinzel', 'Playfair Display', serif;
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  margin: 0 0 4px 0;
+  text-align: center;
+  transition: all 0.25s ease;
+}
+
+.vai-title-ask {
+  color: #F5D0FE;
+  text-shadow: 0 0 20px rgba(232, 121, 249, 0.7);
+}
+
+.vai-title-code {
+  color: #E0F2FE;
+  text-shadow: 0 0 20px rgba(56, 189, 248, 0.7);
+}
+
+.vai-title-viva {
+  color: #FEF9C3;
+  text-shadow: 0 0 20px rgba(234, 179, 8, 0.7);
+}
+
+.vai-card-desc {
+  font-size: 12.5px;
+  line-height: 1.48;
+  color: #94A3B8;
+  margin: 0 0 10px 0;
+  max-width: 300px;
+  text-align: center;
+  opacity: 0.9;
+}
+
+/* ── Glowing Action Text Link ───────────────────────────────────── */
+.vai-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13.5px;
+  font-weight: 600;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.vai-btn-ask {
+  color: #F0ABFC;
+}
+
+.vai-btn-ask:hover {
+  color: #FFFFFF;
+  text-shadow: 0 0 16px #E879F9;
+}
+
+.vai-btn-code {
+  color: #7DD3FC;
+}
+
+.vai-btn-code:hover {
+  color: #FFFFFF;
+  text-shadow: 0 0 16px #38BDF8;
+}
+
+.vai-btn-viva {
+  color: #FDE047;
+}
+
+.vai-btn-viva:hover {
+  color: #FFFFFF;
+  text-shadow: 0 0 16px #A3E635;
+}
+
+.vai-arrow-icon {
+  transition: transform 0.2s ease;
+}
+
+.vai-card:hover .vai-arrow-icon {
+  transform: translateX(4px);
+}
+
+/* ── Responsive ─────────────────────────────────────────────────── */
+@media (max-width: 960px) {
+  .vai-page {
+    height: auto;
+    max-height: none;
+    overflow-y: auto;
+  }
+  .vai-cards-grid {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+  .vai-hologram-stage {
+    display: none;
+  }
+}
