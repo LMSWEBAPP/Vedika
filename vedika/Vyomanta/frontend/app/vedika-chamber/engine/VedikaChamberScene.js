@@ -60,10 +60,10 @@ export class VedikaChamberScene {
 
     const { width, height, pixelRatio } = this._getCanvasSize();
 
-    // Perspective Camera tuned for flat, undistorted horizontal carousel framing
-    this.camera = new THREE.PerspectiveCamera(24, width / height, 0.1, 100);
-    this.camera.position.set(0, 0.45, 22.5);
-    this.camera.lookAt(0, 0.45, 0);
+    // Perspective Camera elevated to give a clear, premium view of the solid 3D pedestals
+    this.camera = new THREE.PerspectiveCamera(25, width / height, 0.1, 100);
+    this.camera.position.set(0, 1.35, 21.8);
+    this.camera.lookAt(0, -0.10, 0);
 
     // WebGL Renderer with Alpha support for background light layers
     this.renderer = new THREE.WebGLRenderer({
@@ -86,16 +86,21 @@ export class VedikaChamberScene {
 
   _initLighting() {
     // Soft balanced ambient base
-    const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 1.25);
     this.scene.add(ambientLight);
 
     // Global Key Light (Soft and clean)
-    const globalKeyLight = new THREE.DirectionalLight(0xffffff, 1.4);
-    globalKeyLight.position.set(2, 7, 7);
+    const globalKeyLight = new THREE.DirectionalLight(0xffffff, 1.5);
+    globalKeyLight.position.set(2, 8, 8);
     this.scene.add(globalKeyLight);
 
+    // Top Stage Downlight: Casts crisp specular highlights on solid metallic disc surfaces
+    const topStageLight = new THREE.DirectionalLight(0xffffff, 0.85);
+    topStageLight.position.set(0, 10, 3);
+    this.scene.add(topStageLight);
+
     // Subtle mood rim backlight
-    const moodLight = new THREE.PointLight(0xa855f7, 0.8, 20);
+    const moodLight = new THREE.PointLight(0x818cf8, 0.9, 25);
     moodLight.position.set(0, 4, -4);
     this.scene.add(moodLight);
   }

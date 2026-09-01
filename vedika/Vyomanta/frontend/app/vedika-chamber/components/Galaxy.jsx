@@ -14,6 +14,7 @@ const vertexShader = `
   uniform float uTime;
   uniform float uStarSpeed;
   uniform vec2 uResolution;
+  uniform float uBaseSize;
 
   varying float vTwinkle;
 
@@ -30,17 +31,17 @@ const vertexShader = `
     if (pos.y > 1.05) pos.y -= 2.1;
     if (pos.y < -1.05) pos.y += 2.1;
 
-    // 90% steady normal stardust, 10% dynamic shimmering twinklers
+    // 85% steady normal stardust, 15% dynamic shimmering twinklers
     if (aIsTwinkler > 0.5) {
-      vTwinkle = 0.25 + 0.75 * pow(0.5 + 0.5 * sin(uTime * 2.4 * aSpeed + aSeed * 28.3), 3.0);
+      vTwinkle = 0.35 + 0.65 * pow(0.5 + 0.5 * sin(uTime * 2.6 * aSpeed + aSeed * 28.3), 2.5);
     } else {
-      vTwinkle = 0.85; // Normal steady stardust
+      vTwinkle = 0.90; // Normal steady stardust
     }
 
     gl_Position = vec4(pos, 0.0, 1.0);
 
-    float twinkleScale = aIsTwinkler > 0.5 ? (vTwinkle * 1.35) : 1.0;
-    gl_PointSize = aSize * twinkleScale * (uResolution.y / 900.0);
+    float twinkleScale = aIsTwinkler > 0.5 ? (vTwinkle * 1.45) : 1.0;
+    gl_PointSize = aSize * uBaseSize * twinkleScale * (uResolution.y / 900.0);
   }
 `;
 
@@ -52,24 +53,25 @@ const fragmentShader = `
   varying float vTwinkle;
 
   void main() {
-    // Soft anti-aliased circular particle with delicate radial glow
+    // Soft anti-aliased circular particle with crisp luminous core and radiant radial glow
     vec2 center = gl_PointCoord - vec2(0.5);
     float dist = length(center);
     
     if (dist > 0.5) discard;
 
     float glow = 1.0 - smoothstep(0.0, 0.5, dist);
-    float core = 1.0 - smoothstep(0.0, 0.15, dist);
+    float core = 1.0 - smoothstep(0.0, 0.22, dist);
     
-    float alpha = (glow * 0.65 + core * 0.50) * vTwinkle * uGlowIntensity;
-    gl_FragColor = vec4(uStarColor, alpha * 0.85);
+    float alpha = (glow * 0.50 + core * 0.70) * vTwinkle * uGlowIntensity;
+    gl_FragColor = vec4(uStarColor, alpha * 0.90);
   }
 `;
 
 export default function Galaxy({
   starSpeed = 0.5,
   glowIntensity = 0.90,
-  particleCount = 900,
+  particleCount = 1000,
+  baseSize = 1.6,
   className = '',
 }) {
   const containerRef = useRef(null);
@@ -110,13 +112,24 @@ export default function Galaxy({
         positions[i * 2 + 0] = Math.random() * 2.0 - 1.0; // Full screen width X [-1, 1]
         positions[i * 2 + 1] = Math.random() * 2.0 - 1.0; // Full screen height Y [-1, 1]
 
-        // Tiny, delicate stardust micro-dots
-        sizes[i] = Math.random() * 2.2 + 1.0;
+        // Tiered particle sizes: clear visible stars with rare bright accent jewels
+        const rand = Math.random();
+        if (rand < 0.70) {
+          // 70% standard crisp stars (2.8 - 4.5px base)
+          sizes[i] = Math.random() * 1.8 + 2.8;
+        } else if (rand < 0.92) {
+          // 22% medium bright stars (4.5 - 6.5px base)
+          sizes[i] = Math.random() * 2.0 + 4.5;
+        } else {
+          // 8% brilliant accent stars (6.5 - 8.5px base)
+          sizes[i] = Math.random() * 2.0 + 6.5;
+        }
+
         speeds[i] = Math.random() * 0.7 + 0.6;
         seeds[i] = Math.random();
 
-        // Exactly 10% randomly shimmer, 90% stay steady normal
-        isTwinklers[i] = Math.random() < 0.10 ? 1.0 : 0.0;
+        // 15% randomly shimmer, 85% stay steady
+        isTwinklers[i] = Math.random() < 0.15 ? 1.0 : 0.0;
       }
 
       const geometry = new Geometry(gl, {
@@ -131,7 +144,8 @@ export default function Galaxy({
         uTime: { value: 0 },
         uStarSpeed: { value: starSpeed },
         uGlowIntensity: { value: glowIntensity },
-        uStarColor: { value: [0.89, 0.92, 0.98] }, // Single unified clean star color
+        uBaseSize: { value: baseSize },
+        uStarColor: { value: [0.90, 0.93, 0.99] }, // Single unified clean luminous star color
         uResolution: { value: [window.innerWidth, window.innerHeight] },
       };
 
@@ -190,7 +204,7 @@ export default function Galaxy({
         } catch (e) {}
       }
     };
-  }, [starSpeed, glowIntensity, particleCount]);
+  }, [starSpeed, glowIntensity, particleCount, baseSize]);
 
   return (
     <div

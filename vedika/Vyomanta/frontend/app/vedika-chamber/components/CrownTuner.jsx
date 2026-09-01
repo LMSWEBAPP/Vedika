@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import './CrownTuner.css';
 
 export const DEFAULT_AVATAR_CONFIGS = [
-  // 0: Ask Vedika (Emerald Green)
+  // 0: Ask Vedika (Deep Pine Teal #29756e)
   {
     crown: {
       posX: -0.56,
@@ -16,18 +16,18 @@ export const DEFAULT_AVATAR_CONFIGS = [
       rotY: 0,
     },
     light: {
-      lightX: 19.9,
+      lightX: 18.5,
       lightSpread: 0.9,
       rayLength: 4.2,
       raysSpeed: 0.75,
     },
     text: {
-      textLeft: 19.9,
+      textLeft: 18.5,
       textBottom: 74,
       textSize: 1.15,
     },
   },
-  // 1: Code with Vedika (Sky Blue)
+  // 1: Code with Vedika (Indigo Purple #34187b)
   {
     crown: {
       posX: -0.56,
@@ -39,18 +39,18 @@ export const DEFAULT_AVATAR_CONFIGS = [
       rotY: 0,
     },
     light: {
-      lightX: 40.4,
+      lightX: 39.5,
       lightSpread: 0.9,
       rayLength: 4.2,
       raysSpeed: 0.75,
     },
     text: {
-      textLeft: 40.4,
+      textLeft: 39.5,
       textBottom: 74,
       textSize: 1.15,
     },
   },
-  // 2: Code Puzzles (Magenta Pink)
+  // 2: Code Puzzles (Royal Sky Blue #1b4e83)
   {
     crown: {
       posX: -0.56,
@@ -62,18 +62,18 @@ export const DEFAULT_AVATAR_CONFIGS = [
       rotY: 0,
     },
     light: {
-      lightX: 59.5,
+      lightX: 60.5,
       lightSpread: 0.9,
       rayLength: 4.2,
       raysSpeed: 0.75,
     },
     text: {
-      textLeft: 59.6,
+      textLeft: 60.5,
       textBottom: 75,
       textSize: 1.15,
     },
   },
-  // 3: Viva and Interview (Warm Gold)
+  // 3: Viva and Interview (Deep Ruby Berry #761845)
   {
     crown: {
       posX: -0.56,
@@ -85,13 +85,13 @@ export const DEFAULT_AVATAR_CONFIGS = [
       rotY: 0,
     },
     light: {
-      lightX: 80.0,
+      lightX: 81.5,
       lightSpread: 0.9,
       rayLength: 4.2,
       raysSpeed: 0.75,
     },
     text: {
-      textLeft: 80.1,
+      textLeft: 81.5,
       textBottom: 74,
       textSize: 1.15,
     },

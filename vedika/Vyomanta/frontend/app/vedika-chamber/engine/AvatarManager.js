@@ -428,9 +428,7 @@ export class AvatarManager {
           bodyMaterials.push(child.material);
           child.material.needsUpdate = true;
         }
-      });
-
-      // Dedicated soft studio and stage glow lighting for this avatar in its exact theme color
+      });      // Dedicated soft studio and stage glow lighting for this avatar in its exact theme color
       const avatarGroup = new THREE.Group();
 
       // Dynamic 2D smile face plane (mouth only) attached to head
@@ -458,6 +456,87 @@ export class AvatarManager {
       pivot.add(cloneRoot);
       pivot.add(facePlane);
       avatarGroup.add(pivot);
+
+      // ── Inverted Mirrored 3D Avatar Reflection below Pedestal Disk ──
+      const reflectionRoot = this.masterScene.clone(true);
+      const reflectionMaterials = [];
+
+      reflectionRoot.position.x -= center.x;
+      reflectionRoot.position.y -= center.y;
+      reflectionRoot.position.z -= center.z;
+      if (maxDim > 0) {
+        reflectionRoot.scale.setScalar(baseScale / maxDim);
+      }
+
+      const initialReflectionOpacity = initialWeight > 0.5 ? 0.20 : 0.09;
+
+      reflectionRoot.traverse((child) => {
+        if (child.isMesh && child.material) {
+          const refMat = new THREE.MeshBasicMaterial({
+            map: this.textures[idx] || null,
+            color: new THREE.Color('#FFFFFF'),
+            transparent: true,
+            opacity: initialReflectionOpacity,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+          });
+
+          // Soft vertical gradient shader falloff fading into the dark glossy floor
+          refMat.onBeforeCompile = (shader) => {
+            shader.vertexShader = `
+              varying vec3 vReflWorldPos;
+              ${shader.vertexShader}
+            `.replace(
+              '#include <worldpos_vertex>',
+              `#include <worldpos_vertex>
+               vReflWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;`
+            );
+
+            shader.fragmentShader = `
+              varying vec3 vReflWorldPos;
+              ${shader.fragmentShader}
+            `.replace(
+              '#include <dithering_fragment>',
+              `#include <dithering_fragment>
+               // Soft gradient fade from disc plane down into the floor
+               float floorFade = smoothstep(-2.85, -1.22, vReflWorldPos.y);
+               gl_FragColor.a *= floorFade * floorFade;
+               // Subtle floor tinting
+               gl_FragColor.rgb *= (0.60 + 0.40 * floorFade);
+              `
+            );
+            refMat.userData.shader = shader;
+          };
+
+          child.material = refMat;
+          reflectionMaterials.push(refMat);
+        }
+      });
+
+      // Mirrored face expression plane for reflection
+      const reflectionFacePlane = new THREE.Mesh(
+        new THREE.PlaneGeometry(2.3, 2.3),
+        new THREE.MeshBasicMaterial({
+          map: faceTexture,
+          transparent: true,
+          opacity: initialReflectionOpacity,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+        })
+      );
+      reflectionFacePlane.position.set(0, -0.08, 1.18);
+      reflectionMaterials.push(reflectionFacePlane.material);
+
+      const reflectionPivot = new THREE.Group();
+      reflectionPivot.add(reflectionRoot);
+      reflectionPivot.add(reflectionFacePlane);
+      reflectionPivot.scale.set(
+        THREE.MathUtils.lerp(0.85, 1.30, initialWeight),
+        -THREE.MathUtils.lerp(0.85, 1.30, initialWeight),
+        THREE.MathUtils.lerp(0.85, 1.30, initialWeight)
+      );
+      reflectionPivot.position.set(0, -2.40, 0);
+      avatarGroup.add(reflectionPivot);
 
       // 1. [TEMPORARILY COMMENTED OUT] Background Glow Aura planes to test direct top LightRays downlight
       /*
@@ -581,6 +660,8 @@ export class AvatarManager {
         chamber,
         avatarGroup,
         pivot,
+        reflectionPivot,
+        reflectionMaterials,
         tagPlane,
         tagMat,
         crownMesh,
@@ -618,7 +699,7 @@ export class AvatarManager {
         glancePitch: (Math.random() - 0.5) * 0.15,
         glanceRoll: (Math.random() - 0.5) * 0.08,
         targetGlanceYaw: (Math.random() - 0.5) * 0.35,
-        targetGlancePitch: (Math.random() - 0.5) * 0.18,
+        targetGlancePitch: (Math.random() - 0.45) * 0.18,
         targetGlanceRoll: (Math.random() - 0.5) * 0.08,
         glanceTimer: 0.8 + Math.random() * 2.0,
         cursorFollowWeight: 0.30 + Math.random() * 0.35,
@@ -671,9 +752,14 @@ export class AvatarManager {
       const focusWeight = Math.max(0.0, Math.min(1.0, av.focusWeight || 0.0));
       const isFront = focusWeight > 0.5;
 
-      // ── 1. Scale & Position of Avatar and 3D Tag (Text never hidden behind head) ──
+      // ── 1. Scale & Position of Avatar, Reflection, and 3D Tag ──
       const targetScale = THREE.MathUtils.lerp(0.85, 1.30, focusWeight);
       av.pivot.scale.setScalar(targetScale);
+
+      // Proportionate inverted reflection scaling
+      if (av.reflectionPivot) {
+        av.reflectionPivot.scale.set(targetScale, -targetScale, targetScale);
+      }
 
       const tagScale = THREE.MathUtils.lerp(0.88, 1.20, focusWeight);
       av.tagPlane.scale.setScalar(tagScale);
@@ -727,9 +813,22 @@ export class AvatarManager {
       const [mo, vmo] = updateSpring(av.mouthOpen, av.vMouth, targetMouth, 110, 14, dt);
       av.mouthOpen = mo; av.vMouth = vmo;
 
-      // ── 4. Organic Breathing Float & Floating Crown Animation ──
+      // ── 4. Organic Breathing Float & Synchronized Floor Reflection ──
       const breathFloat = Math.sin(t * 2.2) * (isFront ? 0.07 : 0.035);
       av.pivot.position.y = av.baseY + breathFloat;
+
+      // Inverted mirrored reflection Y position (mirrors distance from the pedestal disk surface)
+      if (av.reflectionPivot) {
+        av.reflectionPivot.position.y = -2.40 - breathFloat;
+      }
+
+      // Smooth reflection opacity modulation based on focus state (light and delicate)
+      const reflectionOpacity = THREE.MathUtils.lerp(0.09, 0.22, Math.pow(focusWeight, 1.2));
+      if (av.reflectionMaterials) {
+        av.reflectionMaterials.forEach((mat) => {
+          mat.opacity = reflectionOpacity;
+        });
+      }
 
       // Floating Cute Cartoonish Crown (Controlled per avatar in real-time by FineTuner)
       if (av.crownMesh && av.crownMat) {
@@ -823,6 +922,13 @@ export class AvatarManager {
       av.pivot.rotation.x = av.rotX;
       av.pivot.rotation.y = av.rotY;
       av.pivot.rotation.z = -av.rotZ;
+
+      // Synchronize floor reflection head pose
+      if (av.reflectionPivot) {
+        av.reflectionPivot.rotation.x = -av.rotX;
+        av.reflectionPivot.rotation.y = av.rotY;
+        av.reflectionPivot.rotation.z = av.rotZ;
+      }
 
       // ── 6. Render Dynamic Smile (Open Mouth with Tongue on Focus) ──
       if (av.faceCtx && av.faceTexture) {

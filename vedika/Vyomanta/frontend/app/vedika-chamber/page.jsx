@@ -5,7 +5,7 @@ import { VedikaChamberScene } from './engine/VedikaChamberScene';
 import { CHAMBERS_DATA } from './engine/ChamberGeometry';
 import ChamberOverlay from './components/ChamberOverlay';
 import LightRays from './components/LightRays';
-import Galaxy from './components/Galaxy';
+import BackgroundLines from './components/BackgroundLines';
 import CrownTuner, { DEFAULT_AVATAR_CONFIGS } from './components/CrownTuner';
 import './vedika-chamber.css';
 
@@ -105,13 +105,8 @@ export default function VedikaChamberPage() {
 
   return (
     <main className="vchamber-container">
-      {/* 0. React Bits Galaxy Ambient Cosmic Particle Background (Layer 0) */}
-      <Galaxy
-        starSpeed={0.35}
-        density={1.1}
-        glowIntensity={0.85}
-        particleCount={1400}
-      />
+      {/* 0. CodePen Animated Vertical Dropping Light Lines Background */}
+      <BackgroundLines />
 
       {/* 1. React Bits Celestial Volumetric Light Rays (Layer 1 - Behind Avatars) */}
       {isRaysEnabled && (
