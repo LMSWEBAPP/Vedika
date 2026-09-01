@@ -16,13 +16,13 @@ export const DEFAULT_AVATAR_CONFIGS = [
       rotY: 0,
     },
     light: {
-      lightX: 18.5,
+      lightX: 19.6,
       lightSpread: 0.9,
       rayLength: 4.2,
       raysSpeed: 0.75,
     },
     text: {
-      textLeft: 18.5,
+      textLeft: 19.9,
       textBottom: 74,
       textSize: 1.15,
     },
@@ -39,13 +39,13 @@ export const DEFAULT_AVATAR_CONFIGS = [
       rotY: 0,
     },
     light: {
-      lightX: 39.5,
+      lightX: 39.9,
       lightSpread: 0.9,
       rayLength: 4.2,
       raysSpeed: 0.75,
     },
     text: {
-      textLeft: 39.5,
+      textLeft: 40.4,
       textBottom: 74,
       textSize: 1.15,
     },
@@ -62,13 +62,13 @@ export const DEFAULT_AVATAR_CONFIGS = [
       rotY: 0,
     },
     light: {
-      lightX: 60.5,
+      lightX: 58.9,
       lightSpread: 0.9,
       rayLength: 4.2,
       raysSpeed: 0.75,
     },
     text: {
-      textLeft: 60.5,
+      textLeft: 59.6,
       textBottom: 75,
       textSize: 1.15,
     },
@@ -85,13 +85,13 @@ export const DEFAULT_AVATAR_CONFIGS = [
       rotY: 0,
     },
     light: {
-      lightX: 81.5,
+      lightX: 78.2,
       lightSpread: 0.9,
       rayLength: 4.2,
       raysSpeed: 0.75,
     },
     text: {
-      textLeft: 81.5,
+      textLeft: 80.1,
       textBottom: 74,
       textSize: 1.15,
     },

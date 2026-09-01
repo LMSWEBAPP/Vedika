@@ -9,92 +9,7 @@ import {
 import { T, getCourseDetails } from '@/lib/lms-data';
 import { getCourses, getStudentEnrollments, getCourseSyllabus, saveProgressToRedis, getProgressFromRedis } from '@/lib/frappe';
 import { useMediaQuery, isMobileMQ, isTabletMQ } from '@/lib/useMediaQuery';
-
-// 60FPS Canvas Video Wave Text Difference Blend Component
-function WaveBlendCanvas({ isMobile }) {
-  const videoRef = useRef(null);
-  const canvasRef = useRef(null);
-
-  useEffect(() => {
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    if (!video || !canvas) return;
-
-    let animId;
-    const ctx = canvas.getContext('2d');
-
-    const draw = () => {
-      if (video.readyState >= 2) {
-        const w = canvas.width;
-        const h = canvas.height;
-
-        ctx.clearRect(0, 0, w, h);
-
-        // 1. Draw video rotated 180 degrees (matching wave direction)
-        ctx.save();
-        ctx.translate(w / 2, h / 2);
-        ctx.rotate(Math.PI);
-        ctx.drawImage(video, -w / 2, -h / 2, w, h);
-        ctx.restore();
-
-        // 2. Draw text with difference blend mode
-        ctx.globalCompositeOperation = 'difference';
-        ctx.fillStyle = '#efefef';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-
-        const mainFontSize = isMobile ? 52 : 92;
-        ctx.font = `900 ${mainFontSize}px "Outfit", "Montserrat", sans-serif`;
-        
-        ctx.fillText('Where Learning', w / 2, h * 0.36);
-        ctx.fillText('Flows Into Mastery', w / 2, h * 0.53);
-
-        const subFontSize = isMobile ? 18 : 22;
-        ctx.font = `700 ${subFontSize}px "Outfit", "Montserrat", sans-serif`;
-        ctx.fillText('Master Python, explore interactive 3D STEM labs, and practice real-time AI viva examinations.', w / 2, h * 0.72);
-
-        // Reset blend mode
-        ctx.globalCompositeOperation = 'source-over';
-      }
-      animId = requestAnimationFrame(draw);
-    };
-
-    draw();
-
-    return () => {
-      if (animId) cancelAnimationFrame(animId);
-    };
-  }, [isMobile]);
-
-  return (
-    <div style={{ position: 'relative', width: '100%', height: '100%', borderBottomRightRadius: '15vw', overflow: 'hidden' }}>
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        loop
-        muted
-        style={{ display: 'none' }}
-      >
-        <source src="/videos/tactus-waves-hero-sm.mp4" type="video/mp4" />
-        <source src="/videos/beach-waves.mp4" type="video/mp4" />
-        <source src="/videos/oceans.mp4" type="video/mp4" />
-      </video>
-      <canvas
-        ref={canvasRef}
-        width={1400}
-        height={650}
-        style={{
-          width: '100%',
-          height: '100%',
-          objectFit: 'cover',
-          borderBottomRightRadius: '15vw',
-          display: 'block'
-        }}
-      />
-    </div>
-  );
-}
+import VedikaHeroZajno from '@/components/VedikaHeroZajno';
 
 export default function Dashboard() {
   const router = useRouter();
@@ -129,29 +44,18 @@ export default function Dashboard() {
     { id: 'skill_check', label: 'Complete Daily Skill Check', completed: false }
   ]);
 
-  // Scroll parallax and custom cursor state
+  // Scroll parallax state
   const [scrollY, setScrollY] = useState(0);
-  const [cursorPos, setCursorPos] = useState({ x: -100, y: -100, visible: false });
 
   useEffect(() => {
     const handleScroll = () => {
       setScrollY(window.scrollY);
     };
-    const handleMouseMove = (e) => {
-      setCursorPos({ x: e.clientX, y: e.clientY, visible: true });
-    };
-    const handleMouseLeave = () => {
-      setCursorPos(prev => ({ ...prev, visible: false }));
-    };
 
     window.addEventListener('scroll', handleScroll, { passive: true });
-    window.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseleave', handleMouseLeave);
 
     return () => {
       window.removeEventListener('scroll', handleScroll);
-      window.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseleave', handleMouseLeave);
     };
   }, []);
 
@@ -406,77 +310,8 @@ export default function Dashboard() {
       fontFamily: 'var(--font-outfit), sans-serif'
     }}>
       
-      {/* Custom Mix-Blend-Mode Cursor */}
-      {cursorPos.visible && !isMobile && (
-        <div style={{
-          position: 'fixed',
-          top: cursorPos.y,
-          left: cursorPos.x,
-          width: 32,
-          height: 32,
-          borderRadius: '50%',
-          backgroundColor: '#00BCD4',
-          mixBlendMode: 'difference',
-          pointerEvents: 'none',
-          zIndex: 9999,
-          transform: 'translate(-50%, -50%)',
-          transition: 'transform 0.1s ease, opacity 0.2s ease',
-          boxShadow: '0 0 16px #00BCD4'
-        }} />
-      )}
-
-      {/* Hero Section with 60FPS Video Wave Text Difference Blend Canvas */}
-      <section style={{
-        position: 'relative',
-        width: '100%',
-        height: isMobile ? '520px' : '650px',
-        backgroundColor: '#050508',
-        borderBottomRightRadius: '15vw',
-        overflow: 'hidden',
-        marginBottom: 56,
-        boxShadow: '0 20px 50px rgba(0, 0, 0, 0.8)'
-      }}>
-        <WaveBlendCanvas isMobile={isMobile} />
-
-        {/* Scroll Down Button Overlay */}
-        <div style={{
-          position: 'absolute',
-          bottom: 40,
-          left: 0,
-          width: '100%',
-          display: 'flex',
-          justifyContent: 'center',
-          zIndex: 10
-        }}>
-          <button
-            onClick={() => {
-              window.scrollTo({
-                top: isMobile ? 500 : 620,
-                behavior: 'smooth'
-              });
-            }}
-            style={{
-              background: 'rgba(255, 255, 255, 0.15)',
-              border: '1px solid rgba(255, 255, 255, 0.3)',
-              borderRadius: 9999,
-              color: '#FFFFFF',
-              padding: '12px 28px',
-              fontSize: 14,
-              fontWeight: 700,
-              cursor: 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 8,
-              boxShadow: '0 6px 20px rgba(0, 0, 0, 0.5)',
-              backdropFilter: 'blur(12px)',
-              WebkitBackdropFilter: 'blur(12px)',
-              transition: 'all 0.2s ease'
-            }}
-          >
-            Scroll to Dashboard ↓
-          </button>
-        </div>
-      </section>
+      {/* Hero Section with Zajno Typography Reveal & Single 3D Avatar Landing */}
+      <VedikaHeroZajno />
 
       {/* Main Dashboard Content Area */}
       <div style={{ padding: `0 ${rPad}px` }}>
