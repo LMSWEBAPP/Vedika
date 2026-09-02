@@ -19,63 +19,71 @@ const IDLE_STATES = [
 ];
 
 /**
- * 4 Lab Station Configurations with Custom 3D Glowing Badges:
+ * 4 Lab Station Configurations matching Home Page Squad:
+ * 1. Physics Lab: Emerald (#2dd4bf / /avatar_green.webp)
+ * 2. Chemistry Lab: Blue (#38bdf8 / /avatar_blue.webp)
+ * 3. Biology Lab: Pink (#f472b6 / /avatar_pink.webp)
+ * 4. Math Lab: Gold (#facc15 / /avatar_gold.webp)
  */
 const LAB_STATIONS = [
   {
     id: 'physics',
     charId: 'mowgli',
-    name: 'Mowgli',
+    name: 'Emerald',
     style: 'Pixar (Boy)',
     title: 'Physics Lab',
     desc: 'Explore motion, energy and the laws of nature.',
     url: '/vedika-labs/physics',
-    glowColor: '#34D399',
-    modelColor: '#FFFFFF',
+    glowColor: '#2dd4bf',
+    modelColor: '#2dd4bf',
+    texture: '/avatar_green.webp',
     accentClass: 'physics',
-    greetingText: '"Hi, this is Mowgli, welcome to my physics lab"',
+    greetingText: '"Hi, this is Emerald, welcome to my physics lab"',
     badgeImg: '/badges/physics_badge.png',
   },
   {
     id: 'chemistry',
     charId: 'belle',
-    name: 'Belle',
+    name: 'Blue',
     style: 'Ghibli (Girl)',
     title: 'Chemistry Lab',
     desc: 'Experiment with reactions, elements and compounds.',
     url: '/vedika-labs/chemistry',
-    glowColor: '#38BDF8',
-    modelColor: '#38BDF8',
+    glowColor: '#38bdf8',
+    modelColor: '#38bdf8',
+    texture: '/avatar_blue.webp',
     accentClass: 'chemistry',
-    greetingText: '"Hi, this is Belle, welcome to my chemistry lab"',
+    greetingText: '"Hi, this is Blue, welcome to my chemistry lab"',
     badgeImg: '/badges/chemistry_badge.png',
   },
   {
     id: 'biology',
     charId: 'moana',
-    name: 'Moana',
+    name: 'Pink',
     style: 'Pixar (Girl)',
     title: 'Biology Lab',
     desc: 'Discover life sciences through interactive 3D models.',
     url: '/vedika-labs/biology',
-    glowColor: '#D85590',
-    modelColor: '#D85590',
+    glowColor: '#f472b6',
+    modelColor: '#f472b6',
+    texture: '/avatar_pink.webp',
     accentClass: 'biology',
-    greetingText: '"Hi, this is Moana, welcome to my biology lab"',
+    greetingText: '"Hi, this is Pink, welcome to my biology lab"',
     badgeImg: '/badges/biology_badge.png',
   },
   {
     id: 'math',
     charId: 'bagheera',
-    name: 'Bagheera',
+    name: 'Gold',
     style: 'Pixar (Boy)',
     title: 'Math Lab',
     desc: 'Visualize equations and solve real-world problems.',
     url: '/vedika-labs/math',
-    glowColor: '#F9E79F',
-    modelColor: '#F9E79F',
+    glowColor: '#facc15',
+    modelColor: '#facc15',
+    texture: '/avatar_gold.webp',
     accentClass: 'math',
-    greetingText: '"Hi, this is Bagheera, welcome to my math lab"',
+    greetingText: '"Hi, this is Gold, welcome to my math lab"',
     badgeImg: '/badges/math_badge.png',
   },
 ];
@@ -149,19 +157,19 @@ export default function VedikaLabsHub() {
     return () => Object.values(timers).forEach(clearTimeout);
   }, [hoveredLab, isIntroBouncing, speakingAvatar]);
 
-  // Hover Interaction & Voice Trigger (Starts voice and animates the corresponding avatar)
+  // Hover Interaction & Voice Trigger
   const handleLabHover = (station) => {
     if (isIntroBouncing) return;
     setHoveredLab(station.id);
 
-    // Trigger this avatar's unique greeting
+    // Trigger greeting
     playAvatarGreeting(
       station.charId,
       () => setSpeakingAvatar(station.charId),
       () => setSpeakingAvatar(null)
     );
 
-    // Update expressions: hovered avatar is happy, others look towards it
+    // Update expressions
     const hoveredIndex = LAB_STATIONS.findIndex((l) => l.id === station.id);
     setAvatarExprs((prev) => {
       const next = { ...prev };
@@ -198,43 +206,40 @@ export default function VedikaLabsHub() {
     if (isIntroBouncing || typeof window === 'undefined') return { x: 0, y: 0 };
     return {
       x: ((pageMouse.x - window.innerWidth / 2) / window.innerWidth) * 45,
-      y: ((pageMouse.y - window.innerHeight / 3) / window.innerHeight) * 45,
+      y: ((pageMouse.y - window.innerHeight / 2) / window.innerHeight) * 35,
     };
   };
 
   return (
     <div className="vl-page">
-      {/* ── Top Hero Split (Left: Title & Text, Right: 3D Stage) ─── */}
+      {/* ── Top Hero Split Section ─────────────────────────────────── */}
       <div className="vl-hero-split">
-        {/* Left: Typography */}
+        {/* Left Side: Headline & Quick Actions */}
         <div className="vl-hero-left">
           <h1 className="vl-hero-title">
-            Vedika 3D<br />
-            <span className="vl-hero-title-gradient">
-              Science Simulator Labs
-            </span>
+            Vedika <span className="vl-hero-title-gradient">Virtual Labs</span>
           </h1>
           <p className="vl-hero-desc">
-            Step into immersive 3D labs and explore concepts through simulation, experimentation and discovery.
+            Explore interactive 3D simulations guided by dedicated AI Lab Tutors. Experiment freely in safe virtual laboratory environments.
           </p>
 
-          {/* Voice Studio Button */}
           <button
             type="button"
             className="vl-voice-trigger"
             onClick={() => setShowVoiceStudio(true)}
-            title="Open Character Voices"
+            title="Open Voice Studio"
           >
-            <Sparkles size={13} color="#34D399" />
-            <span>Voice Studio</span>
+            <Sparkles size={13} />
+            <span>AI Voice Studio</span>
           </button>
         </div>
 
-        {/* Right: Seamless 3D Lab Stage (NO Border, Avatars Aligned to Pedestals) */}
+        {/* Right Side: 3D Stage with Hovering Avatars */}
         <div className="vl-stage-wrapper">
+          {/* Seamless Vignette (Zero Box Border) */}
           <div className="vl-stage-vignette" />
 
-          {/* 1. Mowgli (Physics) — Above Newton's Cradle (Green Pedestal) */}
+          {/* 1. Emerald (Physics) — Above Newton's Cradle (Green Pedestal) */}
           <div
             className="vl-pedestal-avatar vl-avatar-physics"
             onClick={() => router.push('/vedika-labs/physics')}
@@ -243,8 +248,9 @@ export default function VedikaLabsHub() {
           >
             <ThreeDAvatar
               expression={avatarExprs.physics || 'happy'}
-              glowColor="#34D399"
-              modelColor="#FFFFFF"
+              glowColor="#2dd4bf"
+              modelColor="#2dd4bf"
+              textureUrl="/avatar_green.webp"
               size={92}
               mouseOffset={getOffset()}
               isSpeaking={speakingAvatar === 'mowgli'}
@@ -252,7 +258,7 @@ export default function VedikaLabsHub() {
             />
           </div>
 
-          {/* 2. Belle (Chemistry) — Above Chemical Flask (Blue Pedestal) */}
+          {/* 2. Blue (Chemistry) — Above Chemical Flask (Blue Pedestal) */}
           <div
             className="vl-pedestal-avatar vl-avatar-chemistry"
             onClick={() => router.push('/vedika-labs/chemistry')}
@@ -261,8 +267,9 @@ export default function VedikaLabsHub() {
           >
             <ThreeDAvatar
               expression={avatarExprs.chemistry || 'happy'}
-              glowColor="#38BDF8"
-              modelColor="#38BDF8"
+              glowColor="#38bdf8"
+              modelColor="#38bdf8"
+              textureUrl="/avatar_blue.webp"
               size={92}
               mouseOffset={getOffset()}
               isSpeaking={speakingAvatar === 'belle'}
@@ -270,7 +277,7 @@ export default function VedikaLabsHub() {
             />
           </div>
 
-          {/* 3. Moana (Biology) — Above Molecule Model (Pink Pedestal) */}
+          {/* 3. Pink (Biology) — Above Molecule Model (Pink Pedestal) */}
           <div
             className="vl-pedestal-avatar vl-avatar-biology"
             onClick={() => router.push('/vedika-labs/biology')}
@@ -279,8 +286,9 @@ export default function VedikaLabsHub() {
           >
             <ThreeDAvatar
               expression={avatarExprs.biology || 'happy'}
-              glowColor="#D85590"
-              modelColor="#D85590"
+              glowColor="#f472b6"
+              modelColor="#f472b6"
+              textureUrl="/avatar_pink.webp"
               size={92}
               mouseOffset={getOffset()}
               isSpeaking={speakingAvatar === 'moana'}
@@ -288,7 +296,7 @@ export default function VedikaLabsHub() {
             />
           </div>
 
-          {/* 4. Bagheera (Math) — Above Geometric Cone (Yellow Pedestal) */}
+          {/* 4. Gold (Math) — Above Geometric Cone (Yellow Pedestal) */}
           <div
             className="vl-pedestal-avatar vl-avatar-math"
             onClick={() => router.push('/vedika-labs/math')}
@@ -297,8 +305,9 @@ export default function VedikaLabsHub() {
           >
             <ThreeDAvatar
               expression={avatarExprs.math || 'happy'}
-              glowColor="#F9E79F"
-              modelColor="#F9E79F"
+              glowColor="#facc15"
+              modelColor="#facc15"
+              textureUrl="/avatar_gold.webp"
               size={92}
               mouseOffset={getOffset()}
               isSpeaking={speakingAvatar === 'bagheera'}
@@ -319,7 +328,7 @@ export default function VedikaLabsHub() {
         >
           <path
             d="M 50,30 C 250,6 450,54 650,25 C 850,6 980,36 1030,30"
-            stroke="rgba(56, 189, 248, 0.2)"
+            stroke="rgba(45, 212, 191, 0.25)"
             strokeWidth="1.5"
             strokeDasharray="4 6"
           />
@@ -380,65 +389,57 @@ export default function VedikaLabsHub() {
                 type="button"
                 className="vl-modal-close-btn"
                 onClick={() => setShowVoiceStudio(false)}
+                title="Close"
               >
-                <X size={20} />
+                <X size={18} />
               </button>
             </div>
 
             <div className="vl-modal-list">
-              {LAB_STATIONS.map((station) => {
-                const isCurrent = speakingAvatar === station.charId;
-                return (
-                  <div
-                    key={station.charId}
-                    className="vl-modal-row"
-                    style={{
-                      border: `1.5px solid ${isCurrent ? station.glowColor : 'rgba(255, 255, 255, 0.08)'}`,
-                    }}
-                  >
-                    <div className="vl-modal-char-info">
-                      <div
-                        className="vl-modal-char-dot"
-                        style={{ background: station.glowColor }}
-                      />
-                      <div>
-                        <div className="vl-modal-char-name">
-                          {station.name} — <span style={{ color: station.glowColor, fontWeight: 500 }}>{station.style}</span>
-                        </div>
-                        <div className="vl-modal-char-line">{station.greetingText}</div>
-                      </div>
-                    </div>
-                    <div className="vl-modal-actions">
-                      <button
-                        type="button"
-                        className="vl-modal-play-btn"
-                        onClick={() => {
-                          playAvatarGreeting(
-                            station.charId,
-                            () => setSpeakingAvatar(station.charId),
-                            () => setSpeakingAvatar(null)
-                          );
-                        }}
-                        style={{
-                          background: isCurrent ? station.glowColor : 'rgba(255, 255, 255, 0.08)',
-                          color: isCurrent ? '#0F172A' : '#E2E8F0',
-                        }}
-                      >
-                        <Play size={11} fill={isCurrent ? '#0F172A' : '#E2E8F0'} />
-                        <span>Play</span>
-                      </button>
-                      <a
-                        href={`/audio/final/${station.charId}.wav`}
-                        download={`${station.charId}.wav`}
-                        className="vl-modal-download-btn"
-                        title={`Download ${station.name} WAV`}
-                      >
-                        <Download size={13} />
-                      </a>
+              {LAB_STATIONS.map((station) => (
+                <div
+                  key={station.id}
+                  className="vl-modal-row"
+                  style={{
+                    border: `1px solid ${station.glowColor}30`,
+                  }}
+                >
+                  <div className="vl-modal-char-info">
+                    <div
+                      className="vl-modal-char-dot"
+                      style={{ background: station.glowColor }}
+                    />
+                    <div>
+                      <div className="vl-modal-char-name">{station.name}</div>
+                      <div className="vl-modal-char-line">{station.greetingText}</div>
                     </div>
                   </div>
-                );
-              })}
+
+                  <div className="vl-modal-actions">
+                    <button
+                      type="button"
+                      className="vl-modal-play-btn"
+                      style={{
+                        background: station.glowColor,
+                        color: '#050811',
+                      }}
+                      onClick={() => playAvatarGreeting(station.charId)}
+                    >
+                      <Play size={11} fill="#050811" />
+                      <span>Play</span>
+                    </button>
+
+                    <a
+                      href={`/audio/avatars/${station.charId}_welcome.mp3`}
+                      download={`${station.charId}_welcome.mp3`}
+                      className="vl-modal-download-btn"
+                      title="Download MP3"
+                    >
+                      <Download size={13} />
+                    </a>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>

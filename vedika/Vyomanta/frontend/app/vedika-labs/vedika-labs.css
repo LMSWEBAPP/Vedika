@@ -4,14 +4,15 @@
    Vedika Labs Hub — vedika-labs.css
    Split Hero + Transparent 3D Glowing Orb Lab Navigation
    Zero Scroll, No Image Border, Seamless Dark Integration
+   Colors synchronized to Home Page Avatar Squad
    ═══════════════════════════════════════════════════════════════ */
 
 :root {
   --vl-bg-dark: #050811;
-  --vl-physics-color: #34D399;
-  --vl-chem-color: #38BDF8;
-  --vl-bio-color: #D85590;
-  --vl-math-color: #F9E79F;
+  --vl-physics-color: #2dd4bf;
+  --vl-chem-color: #38bdf8;
+  --vl-bio-color: #f472b6;
+  --vl-math-color: #facc15;
 }
 
 /* ── Main Page Container (Zero-Scroll Viewport Fitted) ──────────── */
@@ -63,7 +64,7 @@
 }
 
 .vl-hero-title-gradient {
-  background: linear-gradient(135deg, #A7F3D0 0%, #34D399 35%, #38BDF8 100%);
+  background: linear-gradient(135deg, #2dd4bf 0%, #38bdf8 50%, #f472b6 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -82,7 +83,7 @@
 .vl-voice-trigger {
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.12);
-  color: #34D399;
+  color: #2dd4bf;
   border-radius: 20px;
   padding: 5px 14px;
   font-size: 12px;
@@ -98,7 +99,7 @@
 
 .vl-voice-trigger:hover {
   background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(52, 211, 153, 0.4);
+  border-color: rgba(45, 212, 191, 0.4);
   color: #FFFFFF;
 }
 
@@ -141,7 +142,7 @@
   transition: filter 0.3s ease;
 }
 
-/* 1. Mowgli (Physics) — Above Newton's Cradle (Green Pedestal) */
+/* 1. Emerald (Physics) — Above Newton's Cradle (Green Pedestal) */
 .vl-avatar-physics {
   left: 24.5%;
   top: 10%;
@@ -149,7 +150,7 @@
   animation: vlFloatPhysics 4.2s ease-in-out infinite alternate;
 }
 
-/* 2. Belle (Chemistry) — Above Chemical Flask (Blue Pedestal) */
+/* 2. Blue (Chemistry) — Above Chemical Flask (Blue Pedestal) */
 .vl-avatar-chemistry {
   left: 41.2%;
   top: -5%;
@@ -157,43 +158,48 @@
   animation: vlFloatChem 3.8s ease-in-out infinite alternate;
 }
 
-/* 3. Moana (Biology) — Above Molecule Model (Pink Pedestal) */
+/* 3. Pink (Biology) — Above Molecule Model (Pink Pedestal) */
 .vl-avatar-biology {
-  left: 57.5%;
-  top: 8%;
+  left: 58.8%;
+  top: -5%;
   transform: translateX(-50%);
-  animation: vlFloatBio 4.6s ease-in-out infinite alternate;
+  animation: vlFloatBio 4.4s ease-in-out infinite alternate;
 }
 
-/* 4. Bagheera (Math) — Above Geometric Cone (Yellow Pedestal) */
+/* 4. Gold (Math) — Above Geometric Cone (Yellow Pedestal) */
 .vl-avatar-math {
-  left: 74.2%;
-  top: -1%;
+  left: 75.5%;
+  top: 10%;
   transform: translateX(-50%);
   animation: vlFloatMath 4.0s ease-in-out infinite alternate;
 }
 
+/* Subtle Organic Breathing Floats with Distinct Phases */
 @keyframes vlFloatPhysics {
-  0% { transform: translateX(-50%) translateY(0px) rotate(-1deg); }
-  100% { transform: translateX(-50%) translateY(-10px) rotate(2deg); }
+  0% { transform: translateX(-50%) translateY(0px) rotate(0deg); }
+  100% { transform: translateX(-50%) translateY(-10px) rotate(-1deg); }
 }
 
 @keyframes vlFloatChem {
-  0% { transform: translateX(-50%) translateY(0px) rotate(1deg); }
-  100% { transform: translateX(-50%) translateY(-12px) rotate(-2deg); }
+  0% { transform: translateX(-50%) translateY(0px) rotate(0deg); }
+  100% { transform: translateX(-50%) translateY(-12px) rotate(1.2deg); }
 }
 
 @keyframes vlFloatBio {
-  0% { transform: translateX(-50%) translateY(0px) rotate(-2deg); }
-  100% { transform: translateX(-50%) translateY(-10px) rotate(1deg); }
+  0% { transform: translateX(-50%) translateY(0px) rotate(0deg); }
+  100% { transform: translateX(-50%) translateY(-11px) rotate(-1.2deg); }
 }
 
 @keyframes vlFloatMath {
-  0% { transform: translateX(-50%) translateY(0px) rotate(2deg); }
-  100% { transform: translateX(-50%) translateY(-11px) rotate(-1deg); }
+  0% { transform: translateX(-50%) translateY(0px) rotate(0deg); }
+  100% { transform: translateX(-50%) translateY(-9px) rotate(1deg); }
 }
 
-/* ── Bottom Lab Stations Navigation Row (Transparent, No Box) ───── */
+.vl-pedestal-avatar:hover {
+  filter: drop-shadow(0 0 20px rgba(45, 212, 191, 0.65));
+}
+
+/* ── Bottom Lab Stations Navigation Row (Transparent, No Box) ─── */
 .vl-labs-container {
   position: relative;
   width: 100%;
@@ -276,7 +282,7 @@
 }
 
 .vl-station-card:hover .vl-badge-physics .vl-station-badge-img {
-  filter: drop-shadow(0 0 16px rgba(52, 211, 153, 0.95));
+  filter: drop-shadow(0 0 16px rgba(45, 212, 191, 0.95));
 }
 
 .vl-station-card:hover .vl-badge-chemistry .vl-station-badge-img {
@@ -284,11 +290,11 @@
 }
 
 .vl-station-card:hover .vl-badge-biology .vl-station-badge-img {
-  filter: drop-shadow(0 0 16px rgba(216, 85, 144, 0.95));
+  filter: drop-shadow(0 0 16px rgba(244, 114, 182, 0.95));
 }
 
 .vl-station-card:hover .vl-badge-math .vl-station-badge-img {
-  filter: drop-shadow(0 0 16px rgba(249, 231, 159, 0.95));
+  filter: drop-shadow(0 0 16px rgba(250, 204, 21, 0.95));
 }
 
 /* Lab Title */
@@ -300,10 +306,10 @@
   transition: color 0.2s ease;
 }
 
-.vl-title-physics { color: #34D399; }
-.vl-title-chemistry { color: #38BDF8; }
-.vl-title-biology { color: #D85590; }
-.vl-title-math { color: #F9E79F; }
+.vl-title-physics { color: #2dd4bf; }
+.vl-title-chemistry { color: #38bdf8; }
+.vl-title-biology { color: #f472b6; }
+.vl-title-math { color: #facc15; }
 
 /* Lab Description */
 .vl-station-desc {

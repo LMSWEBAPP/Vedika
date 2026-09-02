@@ -8,11 +8,11 @@ import './ThreeDPhysicsAvatar.css';
 /**
  * ThreeDAvatar — Ultra-Optimized 3D Avatar (Zero Loading Flash)
  *
- * Avatars:
- *  1. Mowgli   — Physics Lab   (Boy)
- *  2. Belle    — Chemistry Lab (Girl)
- *  3. Moana    — Biology Lab   (Girl)
- *  4. Bagheera — Math Lab      (Boy)
+ * Avatars matching Home Page Squad:
+ *  1. Emerald (Mowgli)   — Physics Lab   (#2dd4bf / avatar_green.webp)
+ *  2. Blue (Belle)       — Chemistry Lab (#38bdf8 / avatar_blue.webp)
+ *  3. Pink (Moana)       — Biology Lab   (#f472b6 / avatar_pink.webp)
+ *  4. Gold (Bagheera)    — Math Lab      (#facc15 / avatar_gold.webp)
  */
 
 const DB_NAME = 'Vedika3DModelCache';
@@ -129,8 +129,9 @@ function updateSpring(val, vel, target, stiffness, damping, dt) {
 
 export default function ThreeDAvatar({
   expression = 'idle',
-  glowColor = '#34D399',
+  glowColor = '#2dd4bf',
   modelColor = '#FFFFFF',
+  textureUrl = null,
   size = 250,
   mouseOffset = { x: 0, y: 0 },
   isSpeaking = false,
@@ -147,6 +148,7 @@ export default function ThreeDAvatar({
     currentExpr: expression,
     glowColor,
     modelColor,
+    textureUrl,
     targetMouse: mouseOffset,
     mouse: { x: 0, y: 0 },
     mouseVel: { x: 0, y: 0 },
@@ -174,9 +176,10 @@ export default function ThreeDAvatar({
     s.currentExpr = expression;
     s.glowColor = glowColor;
     s.modelColor = modelColor;
+    s.textureUrl = textureUrl;
     s.targetMouse = mouseOffset;
     s.isSpeaking = isSpeaking;
-  }, [expression, glowColor, modelColor, mouseOffset, isSpeaking]);
+  }, [expression, glowColor, modelColor, textureUrl, mouseOffset, isSpeaking]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -204,7 +207,7 @@ export default function ThreeDAvatar({
     }
 
     // ── 2. Studio Lighting Rig ──
-    const themeColor = new THREE.Color(glowColor || '#34D399');
+    const themeColor = new THREE.Color(glowColor || '#2dd4bf');
 
     const ambientLight = new THREE.AmbientLight(0xFFFFFF, 1.6);
     scene.add(ambientLight);
@@ -266,14 +269,25 @@ export default function ThreeDAvatar({
           root.scale.setScalar(scaleFactor);
         }
 
+        let texMap = null;
+        if (textureUrl) {
+          const loader = new THREE.TextureLoader();
+          texMap = loader.load(textureUrl);
+          texMap.flipY = false;
+          texMap.colorSpace = THREE.SRGBColorSpace;
+        }
+
         root.traverse((child) => {
           if (child.isMesh && child.material) {
             child.material = child.material.clone();
-            if (modelColor && modelColor !== '#FFFFFF') {
+            if (texMap) {
+              child.material.map = texMap;
+              child.material.color = new THREE.Color(0xffffff);
+            } else if (modelColor && modelColor !== '#FFFFFF') {
               child.material.color = new THREE.Color(modelColor);
             }
-            child.material.roughness = 0.65;
-            child.material.metalness = 0.05;
+            child.material.roughness = 0.45;
+            child.material.metalness = 0.08;
             child.material.needsUpdate = true;
           }
         });
@@ -320,67 +334,65 @@ export default function ThreeDAvatar({
       s.sadWeight   = sw; s.vSad   = svw;
       s.angryWeight = aw; s.vAngry = avw;
 
-      let targetSmile = 0.4;
-      if (isHappy) targetSmile = 1.0;
-      else if (isSad) targetSmile = -0.65;
-      else if (isAngry) targetSmile = -0.15;
-      else if (s.currentExpr === 'drowsy') targetSmile = 0.2;
-
-      const [sc, vsc] = updateSpring(s.smileCurve, s.vSmile, targetSmile, 120, 14, dt);
-      s.smileCurve = sc; s.vSmile = vsc;
-
-      // Dynamic Speaking Mouth Movement
-      if (s.isSpeaking) {
-        s.mouthOpen = Math.abs(Math.sin(t * 13)) * 0.75 + Math.sin(t * 7) * 0.25;
-      } else {
-        s.mouthOpen = Math.max(0, s.mouthOpen - dt * 4);
-      }
-
-      // 3D Model Head Follow
+      // Subtle breathing float & talking bounce
       if (modelRoot) {
-        let targetYaw = (s.mouse.x / 55) * 0.45;
-        let targetPitch = (s.mouse.y / 55) * 0.35;
-        let targetRoll = (s.mouse.x / 55) * 0.08;
+        const floatOffset = Math.sin(t * 2.2) * 0.04;
+        const talkOffset  = s.isSpeaking ? Math.abs(Math.sin(t * 14.0)) * 0.08 : 0;
+        modelRoot.position.y = floatOffset + talkOffset;
 
-        if (s.currentExpr === 'side_eye_left') {
-          targetYaw = -0.55; targetPitch = 0.05;
-        } else if (s.currentExpr === 'side_eye_right') {
-          targetYaw = 0.55; targetPitch = 0.05;
-        } else if (s.currentExpr === 'thinking') {
-          targetYaw = 0.35; targetPitch = -0.30; targetRoll = 0.15;
-        } else if (isSad) {
-          targetPitch = 0.18; targetRoll = -0.06;
-        } else if (isAngry) {
-          targetPitch = -0.15;
-        }
+        // Target Euler rotations
+        let targetRotX = (s.mouse.y / 100) * 0.45;
+        let targetRotY = (s.mouse.x / 100) * 0.65;
+        let targetRotZ = 0;
 
-        // Speaking head nod
-        if (s.isSpeaking) {
-          targetPitch += Math.sin(t * 6) * 0.06;
-        }
+        if (s.currentExpr === 'side_eye_right') targetRotY += 0.35;
+        if (s.currentExpr === 'side_eye_left')  targetRotY -= 0.35;
+        if (s.currentExpr === 'thinking') { targetRotZ = -0.15; targetRotX -= 0.12; }
 
-        const [rx, rvx] = updateSpring(s.rotX, s.rotVX, targetPitch, 120, 15, dt);
-        const [ry, rvy] = updateSpring(s.rotY, s.rotVY, targetYaw, 120, 15, dt);
-        const [rz, rvz] = updateSpring(s.rotZ, s.rotVZ, targetRoll, 120, 15, dt);
+        const [rx, rvx] = updateSpring(s.rotX, s.rotVX, targetRotX, 100, 14, dt);
+        const [ry, rvy] = updateSpring(s.rotY, s.rotVY, targetRotY, 100, 14, dt);
+        const [rz, rvz] = updateSpring(s.rotZ, s.rotVZ, targetRotZ, 100, 14, dt);
         s.rotX = rx; s.rotVX = rvx;
         s.rotY = ry; s.rotVY = rvy;
         s.rotZ = rz; s.rotVZ = rvz;
 
         modelRoot.rotation.x = s.rotX;
         modelRoot.rotation.y = s.rotY;
-        modelRoot.rotation.z = -s.rotZ;
-
-        // Organic Breathing Float
-        const breathFloat = Math.sin(t * 2.2) * 0.06;
-        modelRoot.position.y = breathFloat;
-
-        const breathScale = 1 + Math.sin(t * 2.2) * 0.015;
-        modelRoot.scale.set(breathScale, 1 / breathScale, breathScale);
+        modelRoot.rotation.z = s.rotZ;
       }
 
-      // Render 2D Dynamic Smile / Speaking Mouth on Face Texture
+      // Draw dynamic 2D face elements onto canvas texture
       faceCtx.clearRect(0, 0, 512, 512);
-      drawSmileLine(faceCtx, 256, 335, s.smileCurve, s.happyWeight, s.sadWeight, s.angryWeight, s.mouthOpen);
+
+      // Speaking mouth open oscillation
+      let targetMouth = 0;
+      if (s.isSpeaking) {
+        targetMouth = (Math.sin(t * 18.0) * 0.5 + 0.5) * 28;
+      }
+      s.mouthOpen += (targetMouth - s.mouthOpen) * 0.35;
+
+      // Draw subtle mouth on face plane
+      faceCtx.save();
+      faceCtx.translate(256, 305);
+      faceCtx.beginPath();
+      faceCtx.lineWidth = 9;
+      faceCtx.strokeStyle = 'rgba(20, 24, 35, 0.75)';
+      faceCtx.lineCap = 'round';
+
+      if (s.mouthOpen > 2) {
+        faceCtx.fillStyle = 'rgba(20, 24, 35, 0.85)';
+        faceCtx.beginPath();
+        faceCtx.ellipse(0, 0, 24, s.mouthOpen, 0, 0, Math.PI * 2);
+        faceCtx.fill();
+      } else {
+        const smile = (s.happyWeight - s.sadWeight) * 22;
+        faceCtx.beginPath();
+        faceCtx.moveTo(-28, -smile * 0.3);
+        faceCtx.quadraticCurveTo(0, smile + 6, 28, -smile * 0.3);
+        faceCtx.stroke();
+      }
+      faceCtx.restore();
+
       faceTexture.needsUpdate = true;
 
       renderer.render(scene, camera);
@@ -391,79 +403,23 @@ export default function ThreeDAvatar({
 
     return () => {
       isDisposed = true;
-      cancelAnimationFrame(animId);
+      if (animId) cancelAnimationFrame(animId);
       renderer.dispose();
-      scene.clear();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [size, glowColor, modelColor]);
+  }, [glowColor, modelColor, textureUrl, size]);
 
   return (
     <div
       ref={containerRef}
-      className={`threed-avatar-container ${className}`}
-      style={{
-        width: `${size}px`,
-        height: `${size}px`,
-      }}
+      className={`relative inline-block select-none ${className}`}
+      style={{ width: size, height: size }}
       onClick={onClick}
     >
       <canvas
         ref={canvasRef}
-        className="threed-avatar-canvas"
-        style={{ width: `${size}px`, height: `${size}px` }}
+        className="w-full h-full block cursor-pointer"
+        style={{ width: size, height: size }}
       />
     </div>
   );
-}
-
-/**
- * Draw Cute Small Smile Line or Speaking Mouth
- */
-function drawSmileLine(ctx, mx, my, curve, happyW, sadW, angryW, mouthOpen = 0) {
-  ctx.save();
-  ctx.translate(mx, my);
-
-  const w = 26 + happyW * 14 - sadW * 4;
-  const curveY = curve * 14;
-
-  ctx.strokeStyle = '#122B1E';
-  ctx.lineWidth = 3.6;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-
-  if (mouthOpen > 0.06) {
-    // Talking open mouth shape (cute rounded talk shape)
-    const openH = mouthOpen * 16;
-    ctx.fillStyle = '#122B1E';
-    ctx.beginPath();
-    ctx.moveTo(-w / 2, -curveY * 0.25);
-    ctx.quadraticCurveTo(0, curveY * 0.35 + openH, w / 2, -curveY * 0.25);
-    ctx.quadraticCurveTo(0, -curveY * 0.25 - openH * 0.35, -w / 2, -curveY * 0.25);
-    ctx.fill();
-    ctx.stroke();
-
-    // Cute pink tongue
-    ctx.fillStyle = '#FF758F';
-    ctx.beginPath();
-    ctx.ellipse(0, (curveY * 0.35 + openH) * 0.55, w * 0.28, openH * 0.35, 0, 0, Math.PI * 2);
-    ctx.fill();
-  } else {
-    // Cute smile line
-    ctx.beginPath();
-    ctx.moveTo(-w / 2, -curveY * 0.3);
-    ctx.quadraticCurveTo(0, curveY, w / 2, -curveY * 0.3);
-    ctx.stroke();
-
-    if (happyW > 0.25) {
-      ctx.globalAlpha = happyW;
-      ctx.fillStyle = '#122B1E';
-      ctx.beginPath();
-      ctx.arc(-w / 2, -curveY * 0.3 - 1, 2.0, 0, Math.PI * 2);
-      ctx.arc(w / 2, -curveY * 0.3 - 1, 2.0, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-
-  ctx.restore();
 }
