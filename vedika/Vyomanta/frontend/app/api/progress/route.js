@@ -18,7 +18,7 @@ export async function GET(request) {
   const r = getRedis();
 
   if (!r) {
-    return NextResponse.json({ error: 'Redis not configured' }, { status: 500 });
+    return NextResponse.json({ completed: {}, allProgress: {} });
   }
 
   try {

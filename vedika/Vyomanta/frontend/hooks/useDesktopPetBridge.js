@@ -15,11 +15,10 @@ export function useDesktopPetBridge() {
   const connectBridge = useCallback(() => {
     if (typeof window === 'undefined') return;
 
-    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
     const isExplicitlyEnabled = localStorage.getItem('enable_desktop_pet_bridge') === 'true';
 
-    // On remote deployments (e.g. Vercel), do not attempt local WS connection unless explicitly enabled
-    if (!isLocalhost && !isExplicitlyEnabled) {
+    // Only attempt local WS connection when explicitly enabled via debug/settings
+    if (!isExplicitlyEnabled) {
       return;
     }
 
