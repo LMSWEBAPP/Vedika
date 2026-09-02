@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
 import gsap from 'gsap';
-import { ChevronDown, Sparkles } from 'lucide-react';
+import { ChevronDown, Sparkles, Wand2, Rocket, Magnet, RotateCcw } from 'lucide-react';
 import './VedikaHeroZajno.css';
 
 // Module-level cached GLTF geometry and textures
@@ -46,10 +46,6 @@ export function playPopAnimation(buddy, options = {}) {
   buddy.scale = { x: 0, y: 0, z: 0 };
   buddy.isFreePhysics = false;
 
-  // ═══════════════════════════════════════════════════════════════
-  // 1. Unbroken Continuous 3D Trajectory (No stops or mid-way pauses!)
-  // ═══════════════════════════════════════════════════════════════
-
   // Single forward Z push from depth to front camera apex
   tl.to(buddy.pos, {
     z: 2.3,
@@ -82,10 +78,6 @@ export function playPopAnimation(buddy, options = {}) {
     duration: 0.40,
     ease: 'sine.in',
   }, startDelay + 0.68);
-
-  // ═══════════════════════════════════════════════════════════════
-  // 2. Continuous Organic Shape Evolution (Squeeze -> Pop -> Round)
-  // ═══════════════════════════════════════════════════════════════
 
   // Step A: Emerges from 0 into squeezed oval while in the void slot
   tl.to(buddy.scale, {
@@ -124,10 +116,6 @@ export function playPopAnimation(buddy, options = {}) {
     duration: 0.26,
     ease: 'elastic.out(1.15, 0.48)',
   }, popMoment + 0.18);
-
-  // ═══════════════════════════════════════════════════════════════
-  // 3. Floor Impact Cushions & Harmonic Settle
-  // ═══════════════════════════════════════════════════════════════
 
   // Floor impact 1 cushion
   tl.to(buddy.scale, {
@@ -189,14 +177,16 @@ export default function VedikaHeroZajno() {
   const slitVoidRef = useRef(null);
   const slitAuraRef = useRef(null);
 
-  // Discrete Steps:
-  // 0: Initial load (words centered, void closed, avatars hidden)
-  // 1: Scroll 1 -> Void opens + Emerald squeezes out & pops to home (-3.15, -1.65)
-  // 2: Scroll 2 -> Blue & Pink squeeze out & pop to home (-1.05 & 1.05)
-  // 3: Scroll 3 -> Gold squeezes out & pops to home (3.15) + words reunite & void closes
+  // Discrete Steps (0 to 3)
   const [scrollStep, setScrollStep] = useState(0);
   const scrollStepRef = useRef(0);
   const isAnimatingRef = useRef(false);
+
+  // Playground Modes
+  const [zeroGravity, setZeroGravity] = useState(false);
+  const [magnetMode, setMagnetMode] = useState(false);
+  const zeroGravityRef = useRef(false);
+  const magnetModeRef = useRef(false);
 
   // Three.js References
   const sceneRef = useRef(null);
@@ -225,6 +215,7 @@ export default function VedikaHeroZajno() {
       lookMode: i % 2 === 0 ? 'cursor' : 'random',
       randomLookOffset: { x: 0, y: 0 },
       nextLookChange: 0,
+      floatPhase: Math.random() * Math.PI * 2,
     }))
   );
 
@@ -232,6 +223,7 @@ export default function VedikaHeroZajno() {
   const engineRef = useRef({
     hasIntroduced: false,
     mouseNdc: { x: 0, y: 0 },
+    mouseWorld: new THREE.Vector3(0, 0, 0),
     isHoveringHorizon: false,
     baseScale: 0.72,
     radius: 0.65,
@@ -239,16 +231,16 @@ export default function VedikaHeroZajno() {
     bounds: { minX: -7.2, maxX: 7.2, minY: -3.6, maxY: 3.8, minZ: -2.5, maxZ: 3.2 },
     draggedIndex: -1,
     dragStart: { x: 0, y: 0 },
+    dragStartTime: 0,
     pointerHistory: [],
     particles: [],
   });
 
-  // Stardust Particle Spark Burst Trigger (Synchronized to Breakthrough)
-  const triggerStardustBurst = useCallback((x, y, z, colorHex) => {
+  // Stardust Particle Spark Burst Trigger
+  const triggerStardustBurst = useCallback((x, y, z, colorHex, count = 18) => {
     const scene = sceneRef.current;
     if (!scene) return;
 
-    const count = 18;
     const color = new THREE.Color(colorHex);
 
     for (let i = 0; i < count; i++) {
@@ -259,12 +251,12 @@ export default function VedikaHeroZajno() {
         opacity: 0.95,
       });
       const pMesh = new THREE.Mesh(pGeo, pMat);
-      pMesh.position.set(x + (Math.random() - 0.5) * 0.35, y + (Math.random() - 0.5) * 0.25, z + 0.1);
+      pMesh.position.set(x + (Math.random() - 0.5) * 0.45, y + (Math.random() - 0.5) * 0.35, z + 0.1);
 
-      const speed = 0.04 + Math.random() * 0.06;
+      const speed = 0.04 + Math.random() * 0.08;
       const angle = Math.random() * Math.PI * 2;
       const vx = Math.cos(angle) * speed;
-      const vy = Math.sin(angle) * speed + 0.02;
+      const vy = Math.sin(angle) * speed + 0.025;
       const vz = (Math.random() - 0.5) * speed * 1.5;
 
       scene.add(pMesh);
@@ -272,7 +264,7 @@ export default function VedikaHeroZajno() {
         mesh: pMesh,
         vx, vy, vz,
         life: 1.0,
-        decay: 0.022 + Math.random() * 0.016,
+        decay: 0.020 + Math.random() * 0.016,
       });
     }
   }, []);
@@ -353,14 +345,13 @@ export default function VedikaHeroZajno() {
       const fourFrames = 0.42;
 
       const entryTl = gsap.timeline({
-        delay: 0.25, // Small delay so user clearly sees the entrance on page load
+        delay: 0.25,
         onComplete: () => {
           engineRef.current.hasIntroduced = true;
           updateTextColliders();
         }
       });
 
-      // Zajno Staggered Staggering fromTo
       entryTl
         .fromTo(veSpan, { x: '220%' }, { x: '0%', duration: fiftyFrames, ease: 'power3.out' }, 0)
         .fromTo(kaSpan, { x: '200%' }, { x: '0%', duration: fiftyFrames, ease: 'power3.out' }, twoFrames)
@@ -399,17 +390,14 @@ export default function VedikaHeroZajno() {
       }
     });
 
-    // 1. Part words, open soft blended void & cosmic energy aura
     mainTl.to(row1, { y: partY1, duration: 0.55, ease: 'power2.out' }, 0);
     mainTl.to(row2, { y: partY2, duration: 0.55, ease: 'power2.out' }, 0);
     mainTl.to(slitVoid, { scaleY: 1, opacity: 1, duration: 0.50, ease: 'power2.out' }, 0.05);
     mainTl.to(slitAura, { opacity: 0.85, scale: 1, duration: 0.60, ease: 'power2.out' }, 0.10);
     mainTl.to(titleCont, { y: -70, duration: 0.75, ease: 'power2.inOut' }, 0);
 
-    // 2. Exact void slit world Y coordinate
     const voidY = getVoidSlitWorldY();
 
-    // 3. Emerald: 1 continuous unbroken trajectory from depth to pop to landing!
     const b0 = buddyPhysicsRef.current[0];
     const emeraldTl = playPopAnimation(b0, {
       origin: { x: 0, y: voidY, z: -0.30 },
@@ -499,7 +487,6 @@ export default function VedikaHeroZajno() {
     });
     mainTl.add(goldTl, 0);
 
-    // Words smoothly reunite in the center & void dissolves after Gold clears slit
     mainTl.to(slitAura, { opacity: 0, scale: 0.7, duration: 0.35, ease: 'power2.in' }, 1.10);
     mainTl.to(slitVoid, { scaleY: 0, opacity: 0, duration: 0.40, ease: 'power2.in' }, 1.15);
     mainTl.to(titleCont, { y: -90, duration: 0.85, ease: 'power2.inOut' }, 1.20);
@@ -515,6 +502,209 @@ export default function VedikaHeroZajno() {
     else if (current === 1) executeStep2();
     else if (current === 2) executeStep3();
   }, [executeStep1, executeStep2, executeStep3]);
+
+  // ═══════════════════════════════════════════════════════════════
+  // 2. Playground Action Functions (Smooth & Delightful)
+  // ═══════════════════════════════════════════════════════════════
+
+  // A. Wave Leap: Rhythmic sequential high bounce across squad
+  const triggerWaveBounce = useCallback(() => {
+    buddyPhysicsRef.current.forEach((b, idx) => {
+      b.isFreePhysics = false;
+      const tl = gsap.timeline({ delay: idx * 0.12 });
+      const base = engineRef.current.baseScale;
+
+      // Jump apex
+      tl.to(b.pos, {
+        y: 0.65,
+        duration: 0.38,
+        ease: 'power2.out',
+      });
+      tl.to(b.scale, {
+        x: base * 0.90,
+        y: base * 1.18,
+        z: base * 1.10,
+        duration: 0.20,
+        ease: 'power1.out',
+      }, 0);
+
+      // Spin rotation
+      tl.to(b.rot, {
+        y: b.rot.y + Math.PI * 2,
+        duration: 0.75,
+        ease: 'power1.inOut',
+      }, 0);
+
+      // Floor Drop
+      tl.to(b.pos, {
+        y: -1.65,
+        duration: 0.36,
+        ease: 'sine.in',
+      }, 0.38);
+
+      // Stardust on peak
+      tl.call(() => {
+        triggerStardustBurst(b.pos.x, 0.65, 0.2, BUDDIES[idx].color, 12);
+      }, null, 0.35);
+
+      // Floor Cushion
+      tl.to(b.scale, {
+        x: base * 1.16,
+        y: base * 0.82,
+        z: base * 1.16,
+        duration: 0.08,
+        ease: 'power2.out',
+      }, 0.72);
+
+      tl.to(b.scale, {
+        x: base,
+        y: base,
+        z: base,
+        duration: 0.25,
+        ease: 'elastic.out(1.2, 0.45)',
+      }, 0.80);
+    });
+  }, [triggerStardustBurst]);
+
+  // B. Zero Gravity Toggle: Float weightlessly into space
+  const toggleZeroGravity = useCallback(() => {
+    const nextVal = !zeroGravityRef.current;
+    zeroGravityRef.current = nextVal;
+    setZeroGravity(nextVal);
+
+    if (nextVal) {
+      magnetModeRef.current = false;
+      setMagnetMode(false);
+      buddyPhysicsRef.current.forEach((b, idx) => {
+        b.isFreePhysics = true;
+        b.idleTime = 0;
+        b.vel = {
+          vx: (Math.random() - 0.5) * 0.08,
+          vy: 0.06 + Math.random() * 0.06,
+          vz: (Math.random() - 0.5) * 0.04,
+        };
+      });
+    } else {
+      // Settle back to floor
+      buddyPhysicsRef.current.forEach((b) => {
+        b.isFreePhysics = true;
+        b.idleTime = 2.0; // trigger immediate return home
+      });
+    }
+  }, []);
+
+  // C. Magnet Mode: Follow user cursor
+  const toggleMagnetMode = useCallback(() => {
+    const nextVal = !magnetModeRef.current;
+    magnetModeRef.current = nextVal;
+    setMagnetMode(nextVal);
+
+    if (nextVal) {
+      zeroGravityRef.current = false;
+      setZeroGravity(false);
+      buddyPhysicsRef.current.forEach((b) => {
+        b.isFreePhysics = true;
+        b.idleTime = 0;
+      });
+    } else {
+      buddyPhysicsRef.current.forEach((b) => {
+        b.isFreePhysics = true;
+        b.idleTime = 2.0;
+      });
+    }
+  }, []);
+
+  // D. Stardust Shower: Fireworks particle fountain
+  const triggerStardustShower = useCallback(() => {
+    BUDDIES.forEach((b, i) => {
+      setTimeout(() => {
+        triggerStardustBurst(b.targetX, -1.2, 0.5, b.color, 24);
+      }, i * 90);
+    });
+  }, [triggerStardustBurst]);
+
+  // E. Reset Squad: Smooth return to origin
+  const resetSquad = useCallback(() => {
+    zeroGravityRef.current = false;
+    magnetModeRef.current = false;
+    setZeroGravity(false);
+    setMagnetMode(false);
+
+    buddyPhysicsRef.current.forEach((b) => {
+      b.isFreePhysics = false;
+      gsap.to(b.pos, {
+        x: b.targetX,
+        y: -1.65,
+        z: 0,
+        duration: 0.65,
+        ease: 'power2.out',
+      });
+      gsap.to(b.scale, {
+        x: engineRef.current.baseScale,
+        y: engineRef.current.baseScale,
+        z: engineRef.current.baseScale,
+        duration: 0.45,
+        ease: 'elastic.out(1.15, 0.45)',
+      });
+      gsap.to(b.rot, {
+        x: 0,
+        y: 0,
+        z: 0,
+        duration: 0.45,
+        ease: 'power2.out',
+      });
+      b.vel = { vx: 0, vy: 0, vz: 0 };
+    });
+  }, []);
+
+  // Individual Avatar Click Hop
+  const triggerSingleAvatarHop = useCallback((idx) => {
+    const b = buddyPhysicsRef.current[idx];
+    if (!b) return;
+
+    b.isFreePhysics = false;
+    const base = engineRef.current.baseScale;
+    const tl = gsap.timeline();
+
+    triggerStardustBurst(b.pos.x, b.pos.y + 0.3, b.pos.z + 0.2, BUDDIES[idx].color, 16);
+
+    tl.to(b.pos, {
+      y: b.pos.y + 1.1,
+      duration: 0.32,
+      ease: 'power2.out',
+    });
+    tl.to(b.scale, {
+      x: base * 0.88,
+      y: base * 1.22,
+      z: base * 1.12,
+      duration: 0.18,
+      ease: 'power1.out',
+    }, 0);
+    tl.to(b.rot, {
+      y: b.rot.y + Math.PI * 2,
+      duration: 0.60,
+      ease: 'power1.inOut',
+    }, 0);
+    tl.to(b.pos, {
+      y: -1.65,
+      duration: 0.32,
+      ease: 'sine.in',
+    }, 0.32);
+    tl.to(b.scale, {
+      x: base * 1.16,
+      y: base * 0.84,
+      z: base * 1.16,
+      duration: 0.08,
+      ease: 'power2.out',
+    }, 0.62);
+    tl.to(b.scale, {
+      x: base,
+      y: base,
+      z: base,
+      duration: 0.22,
+      ease: 'elastic.out(1.2, 0.45)',
+    }, 0.70);
+  }, [triggerStardustBurst]);
 
   // ═══════════════════════════════════════════════════════════════
   // 4. Input & Page Scroll Interception (Locked while animating & until Step 3)
@@ -684,7 +874,7 @@ export default function VedikaHeroZajno() {
       const group = new THREE.Group();
       group.add(mesh);
       group.position.set(buddy.targetX, -1.65, 0);
-      group.scale.set(0, 0, 0); // Initially hidden on load
+      group.scale.set(0, 0, 0);
       group.userData = { buddyIndex: idx, buddyId: buddy.id };
 
       scene.add(group);
@@ -750,8 +940,18 @@ export default function VedikaHeroZajno() {
       if (!canvasEl) return;
       const rect = canvasEl.getBoundingClientRect();
       if (rect.width > 0 && rect.height > 0) {
-        engineRef.current.mouseNdc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-        engineRef.current.mouseNdc.y = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
+        const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        const ndcY = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
+        engineRef.current.mouseNdc.x = ndcX;
+        engineRef.current.mouseNdc.y = ndcY;
+
+        if (camera) {
+          const vec = new THREE.Vector3(ndcX, ndcY, 0.5);
+          vec.unproject(camera);
+          vec.sub(camera.position).normalize();
+          const distance = -camera.position.z / vec.z;
+          engineRef.current.mouseWorld = camera.position.clone().add(vec.multiplyScalar(distance));
+        }
       }
     };
     window.addEventListener('mousemove', handleWindowMouseMove, { passive: true });
@@ -769,14 +969,14 @@ export default function VedikaHeroZajno() {
       const base = engine.baseScale;
       const shadows = shadowMeshesRef.current;
 
-      // ── Animate Dynamic Stardust Sparkles ──
+      // Animate Dynamic Stardust Sparkles
       if (engine.particles.length > 0) {
         for (let i = engine.particles.length - 1; i >= 0; i--) {
           const p = engine.particles[i];
           p.mesh.position.x += p.vx;
           p.mesh.position.y += p.vy;
           p.mesh.position.z += p.vz;
-          p.vy -= 0.0008; // subtle gravity
+          p.vy -= 0.0008;
           p.vx *= 0.98;
           p.vz *= 0.98;
           p.life -= p.decay;
@@ -804,7 +1004,7 @@ export default function VedikaHeroZajno() {
           return;
         }
 
-        // ── Dragging & Interactive Physics Mode ──
+        // ── Dragging Mode ──
         if (b.isDragging) {
           b.idleTime = 0;
           b.isFreePhysics = true;
@@ -819,6 +1019,59 @@ export default function VedikaHeroZajno() {
           return;
         }
 
+        // ── Magnet Mode Physics (Flock around cursor) ──
+        if (magnetModeRef.current && !b.isDragging) {
+          const mw = engine.mouseWorld;
+          const angle = (idx / 4) * Math.PI * 2 + time * 1.8;
+          const targetX = mw.x + Math.cos(angle) * 1.5;
+          const targetY = mw.y + Math.sin(angle) * 1.2;
+
+          b.pos.x += (targetX - b.pos.x) * 0.08;
+          b.pos.y += (targetY - b.pos.y) * 0.08;
+          b.pos.z += (0.4 - b.pos.z) * 0.08;
+
+          group.position.set(b.pos.x, b.pos.y, b.pos.z);
+          group.scale.set(base, base, base);
+          group.rotation.y = THREE.MathUtils.clamp((mw.x - b.pos.x) * 0.25, -0.45, 0.45);
+
+          if (shadow) {
+            const h = Math.max(0, b.pos.y - (-1.65));
+            shadow.position.x = b.pos.x;
+            shadow.position.z = b.pos.z;
+            shadow.scale.set(Math.max(0.2, 1.2 - h * 0.25), Math.max(0.2, 1.2 - h * 0.25), 1);
+            shadow.material.opacity = Math.max(0.05, 0.55 - h * 0.15);
+          }
+          return;
+        }
+
+        // ── Zero Gravity Mode Physics (Weightless space float) ──
+        if (zeroGravityRef.current && !b.isDragging) {
+          b.floatPhase += 0.02;
+          b.pos.x += Math.sin(b.floatPhase + idx) * 0.012;
+          b.pos.y += Math.cos(b.floatPhase * 0.8 + idx) * 0.015;
+          b.pos.z += Math.sin(b.floatPhase * 0.5) * 0.008;
+
+          // Soft bounds clamp
+          const bounds = engine.bounds;
+          b.pos.x = THREE.MathUtils.clamp(b.pos.x, bounds.minX + 0.8, bounds.maxX - 0.8);
+          b.pos.y = THREE.MathUtils.clamp(b.pos.y, -1.5, bounds.maxY - 0.8);
+
+          group.position.set(b.pos.x, b.pos.y, b.pos.z);
+          group.scale.set(base, base, base);
+          group.rotation.x = Math.sin(b.floatPhase * 0.5) * 0.2;
+          group.rotation.y = Math.cos(b.floatPhase * 0.6) * 0.25;
+
+          if (shadow) {
+            const h = Math.max(0, b.pos.y - (-1.65));
+            shadow.position.x = b.pos.x;
+            shadow.position.z = b.pos.z;
+            shadow.scale.set(Math.max(0.1, 1.2 - h * 0.3), Math.max(0.1, 1.2 - h * 0.3), 1);
+            shadow.material.opacity = Math.max(0.04, 0.55 - h * 0.20);
+          }
+          return;
+        }
+
+        // ── Free Interactive Physics Mode (Throw / Toss / Collisions) ──
         if (b.isFreePhysics) {
           b.idleTime += 0.016;
 
@@ -832,7 +1085,7 @@ export default function VedikaHeroZajno() {
           b.pos.y += b.vel.vy;
           b.pos.z += b.vel.vz;
 
-          // Floor Bouncing (Fluid Restitution)
+          // Floor Bouncing
           if (b.pos.y <= -1.65) {
             b.pos.y = -1.65;
             b.vel.vy = Math.abs(b.vel.vy) * 0.74;
@@ -929,7 +1182,6 @@ export default function VedikaHeroZajno() {
             restY += Math.sin(time * 2.2 + idx * 0.8) * 0.03;
           }
 
-          // Lerp position toward resting spot
           if (!isAnimatingRef.current) {
             b.pos.x += (b.targetX - b.pos.x) * 0.12;
             b.pos.y += (restY - b.pos.y) * 0.12;
@@ -939,7 +1191,7 @@ export default function VedikaHeroZajno() {
           group.position.set(b.pos.x, b.pos.y, b.pos.z);
           group.scale.set(b.scale.x, b.scale.y, b.scale.z);
 
-          // ── Independent Gaze: Cursor Following vs Autonomous Random Looking ──
+          // Gaze
           if (b.lookMode === 'cursor') {
             const mouseX = engine.mouseNdc ? engine.mouseNdc.x : 0;
             const mouseY = engine.mouseNdc ? engine.mouseNdc.y : 0;
@@ -1031,6 +1283,7 @@ export default function VedikaHeroZajno() {
       b.vel = { vx: 0, vy: 0, vz: 0 };
 
       engineRef.current.dragStart = { x: e.clientX, y: e.clientY };
+      engineRef.current.dragStartTime = performance.now();
       engineRef.current.pointerHistory = [{ x: e.clientX, y: e.clientY, t: performance.now() }];
 
       window.addEventListener('pointermove', handlePointerMove);
@@ -1073,7 +1326,13 @@ export default function VedikaHeroZajno() {
         b.idleTime = 0;
 
         const hist = engineRef.current.pointerHistory;
-        if (hist.length >= 2) {
+        const clickDuration = performance.now() - engineRef.current.dragStartTime;
+        const dragDist = Math.hypot(e.clientX - engineRef.current.dragStart.x, e.clientY - engineRef.current.dragStart.y);
+
+        // Click / Tap Joy Hop trigger
+        if (clickDuration < 260 && dragDist < 8) {
+          triggerSingleAvatarHop(idx);
+        } else if (hist.length >= 2) {
           const first = hist[0];
           const last = hist[hist.length - 1];
           const dt = Math.max(10, last.t - first.t) / 1000;
@@ -1219,13 +1478,17 @@ export default function VedikaHeroZajno() {
           className="zajno-planet-horizon"
           onClick={(e) => {
             e.stopPropagation();
-            if (!isAnimatingRef.current) advanceStep();
+            if (scrollStepRef.current >= 3) {
+              triggerStardustShower();
+            } else if (!isAnimatingRef.current) {
+              advanceStep();
+            }
           }}
           title="Planet Horizon"
         />
       </div>
 
-      {/* Interactive Step Guide Button / Hint */}
+      {/* Interactive Step Guide Button / Hint (Scroll Step 0 to 2) */}
       <div 
         className={`zajno-scroll-hint ${scrollStep >= 3 ? 'hidden' : ''}`}
         onClick={(e) => {
@@ -1241,6 +1504,69 @@ export default function VedikaHeroZajno() {
           {scrollStep === 2 && <>Scroll to release <strong>Gold</strong></>}
         </span>
         <ChevronDown size={14} className="animate-bounce text-teal-400" />
+      </div>
+
+      {/* ── Interactive Playground Controls Dock (Appears when Squad Lands) ── */}
+      <div 
+        className={`zajno-playground-dock ${scrollStep >= 3 ? 'visible' : ''}`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <span className="zajno-dock-hint">🎮 Play with Squad:</span>
+
+        {/* Wave Leap Button */}
+        <button
+          type="button"
+          className="zajno-dock-btn"
+          onClick={triggerWaveBounce}
+          title="Trigger synchronized wave leap"
+        >
+          <Wand2 size={13} className="text-teal-400" />
+          <span>Wave Leap</span>
+        </button>
+
+        {/* Zero Gravity Button */}
+        <button
+          type="button"
+          className={`zajno-dock-btn ${zeroGravity ? 'active' : ''}`}
+          onClick={toggleZeroGravity}
+          title="Toggle zero gravity floating"
+        >
+          <Rocket size={13} className="text-purple-400" />
+          <span>Zero Gravity</span>
+        </button>
+
+        {/* Magnet Follow Button */}
+        <button
+          type="button"
+          className={`zajno-dock-btn ${magnetMode ? 'active' : ''}`}
+          onClick={toggleMagnetMode}
+          title="Make avatars follow your cursor"
+        >
+          <Magnet size={13} className="text-sky-400" />
+          <span>Magnet Orbit</span>
+        </button>
+
+        {/* Stardust Fireworks Button */}
+        <button
+          type="button"
+          className="zajno-dock-btn"
+          onClick={triggerStardustShower}
+          title="Launch stardust fireworks"
+        >
+          <Sparkles size={13} className="text-amber-400" />
+          <span>Stardust Burst</span>
+        </button>
+
+        {/* Reset Home Button */}
+        <button
+          type="button"
+          className="zajno-dock-btn"
+          onClick={resetSquad}
+          title="Reset avatars to home resting spots"
+        >
+          <RotateCcw size={13} className="text-slate-300" />
+          <span>Reset</span>
+        </button>
       </div>
     </section>
   );

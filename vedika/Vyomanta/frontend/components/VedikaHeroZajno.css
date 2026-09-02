@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════════
    Vedika Cosmic 3D Interactive Hero & Planet Horizon Hideout
-   Exact Zajno Syllable Mask Typography Animation
+   Exact Zajno Syllable Mask Typography Animation + Playground Controls
    ═══════════════════════════════════════════════════════════════ */
 
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@600;700;800;900&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap');
@@ -310,4 +310,109 @@
   opacity: 0;
   pointer-events: none;
   transform: translateX(-50%) translateY(12px);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Interactive Avatar Playground Controls Dock (TOP RIGHT PLACEMENT)
+   ═══════════════════════════════════════════════════════════════ */
+
+.zajno-playground-dock {
+  position: absolute;
+  top: 24px;
+  right: 28px;
+  left: auto;
+  bottom: auto;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: rgba(10, 14, 24, 0.82);
+  border: 1px solid rgba(45, 212, 191, 0.30);
+  border-radius: 9999px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.75), 0 0 24px rgba(45, 212, 191, 0.18);
+  pointer-events: auto;
+  opacity: 0;
+  transform: translateY(-12px);
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.zajno-playground-dock.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.zajno-dock-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  color: #e2e8f0;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.22s ease;
+  white-space: nowrap;
+}
+
+.zajno-dock-btn:hover {
+  background: rgba(45, 212, 191, 0.18);
+  border-color: rgba(45, 212, 191, 0.55);
+  color: #ffffff;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 14px rgba(45, 212, 191, 0.25);
+}
+
+.zajno-dock-btn.active {
+  background: linear-gradient(135deg, rgba(45, 212, 191, 0.35) 0%, rgba(56, 189, 248, 0.35) 100%);
+  border-color: #2dd4bf;
+  color: #ffffff;
+  box-shadow: 0 0 16px rgba(45, 212, 191, 0.45);
+}
+
+.zajno-dock-hint {
+  font-size: 0.70rem;
+  color: #94a3b8;
+  padding-right: 6px;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 600;
+}
+
+@media (max-width: 1024px) {
+  .zajno-playground-dock {
+    top: 16px;
+    right: 16px;
+    gap: 4px;
+    padding: 5px 10px;
+  }
+  .zajno-dock-btn {
+    padding: 5px 10px;
+    font-size: 0.72rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .zajno-playground-dock {
+    top: 12px;
+    right: 12px;
+    gap: 3px;
+    padding: 4px 8px;
+    flex-wrap: wrap;
+    max-width: calc(100vw - 24px);
+    justify-content: flex-end;
+  }
+  .zajno-dock-btn {
+    padding: 4px 8px;
+    font-size: 0.68rem;
+    gap: 3px;
+  }
+  .zajno-dock-hint {
+    display: none;
+  }
 }
