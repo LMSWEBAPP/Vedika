@@ -273,7 +273,7 @@ export default function CourseOutlinePage() {
             id: `les_${Date.now()}`,
             title: lessonModal.title,
             dur: lessonModal.dur,
-            vid: lessonModal.vid || 'rfscVS0vtbw',
+            vid: lessonModal.vid || '',
             overview: lessonModal.overview,
             pts: points.length > 0 ? points : ['Key concept introduction.'],
             quizQuestions: lessonModal.quizQuestions,
@@ -772,13 +772,13 @@ export default function CourseOutlinePage() {
 
                 {/* Video ID */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 14 }}>
-                  <label htmlFor="lessonVid" style={{ color: T.text, fontSize: 12, fontWeight: 500 }}>YouTube Video ID (or URL suffix)</label>
+                  <label htmlFor="lessonVid" style={{ color: T.text, fontSize: 12, fontWeight: 500 }}>YouTube Video URL or ID</label>
                   <input
                     id="lessonVid"
                     type="text"
                     value={lessonModal.vid}
                     onChange={(e) => setLessonModal(prev => ({ ...prev, vid: e.target.value }))}
-                    placeholder="e.g. rfscVS0vtbw"
+                    placeholder="e.g. https://www.youtube.com/watch?v=... or Video ID"
                     style={{
                       width: '100%', background: T.s2, border: `1px solid ${T.border}`, borderRadius: 8,
                       padding: '8px 12px', color: T.text, fontSize: 13, fontFamily: 'inherit', outline: 'none'

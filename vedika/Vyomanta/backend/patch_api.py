@@ -15,20 +15,20 @@ def main():
         'get_google_auth_url', 'test_google_auth_traceback', 'get_api_file', 
         'execute_py', 'get_courses_optimized', 'get_course_syllabus_optimized',
         'sign_jwt', 'get_jwt', 'retrieve_secure_chunks_internal', 
-        'invalidate_permission_cache', 'get_lms_students_optimized'
+        'invalidate_permission_cache', 'get_lms_students_optimized',
+        'save_course_lesson_custom', 'save_course_chapter_custom'
     ]
-    for func_name in custom_funcs:
-        if func_name in content:
-            print(f"Found existing {func_name}. Stripping old definition...")
-            content = content.split('def ' + func_name)[0]
-            content = content.rstrip()
-            if content.endswith('@frappe.whitelist(allow_guest=True)'):
-                content = content[:-len('@frappe.whitelist(allow_guest=True)')]
-            elif content.endswith('@frappe.whitelist()'):
-                content = content[:-len('@frappe.whitelist()')]
-            content = content.rstrip()
+    marker = "# --- BEGIN ANTI-GRAVITY CUSTOM ENDPOINTS ---"
+    if marker in content:
+        content = content.split(marker)[0].rstrip()
+    else:
+        for func in custom_funcs:
+            if ("def " + func) in content:
+                idx = content.find("def " + func)
+                content = content[:idx].rstrip()
+                break
 
-    patch_code = """
+    patch_code = "\n\n" + marker + "\n" + """
 
 @frappe.whitelist(allow_guest=True)
 def get_google_auth_url(redirect_to: str = None):
@@ -204,7 +204,7 @@ def get_course_syllabus_optimized(course_id: str):
             if lesson_names:
                 lessons_list = frappe.get_all("Course Lesson", 
                                              filters={"name": ["in", lesson_names]},
-                                             fields=["name", "title", "duration", "youtube", "body", "instructor_notes"])
+                                             fields=["name", "title", "youtube", "body", "instructor_notes"])
                 lessons_by_name = {l["name"]: l for l in lessons_list}
                 
             for ch in chapters:
@@ -242,8 +242,8 @@ def get_course_syllabus_optimized(course_id: str):
                         lessons.append({
                             "id": lDoc["name"],
                             "title": lDoc["title"],
-                            "dur": lDoc.get("duration") or "10 min",
-                            "vid": lDoc.get("youtube") or "rfscVS0vtbw",
+                            "dur": "10 min",
+                            "vid": lDoc.get("youtube") or "",
                             "overview": lDoc.get("body") or "",
                             "pts": pts,
                             "quizQuestions": quiz_questions,
@@ -288,6 +288,119 @@ def get_course_syllabus_optimized(course_id: str):
             "error": str(e),
             "traceback": traceback.format_exc()
         }
+
+@frappe.whitelist(allow_guest=True)
+def save_course_lesson_custom(lesson_id: str, title: str = None, chapter_id: str = None, youtube: str = None, body: str = None, instructor_notes: str = None, user_email: str = None):
+    import frappe
+    try:
+        user = frappe.session.user
+        if user == "Guest" and user_email:
+            user = str(user_email).strip().lower()
+
+        is_admin = False
+        if user in ["Administrator", "admin@lms.com"]:
+            is_admin = True
+        else:
+            roles = frappe.get_roles(user)
+            if any(r in roles for r in ["System Manager", "Course Creator", "Instructor", "Administrator"]):
+                is_admin = True
+
+        if not is_admin:
+            frappe.throw("Permission Denied: Only Admin (admin@lms.com) or Instructors can edit lessons.", frappe.PermissionError)
+
+        frappe.set_user("Administrator")
+
+        ch_link = chapter_id if (chapter_id and not chapter_id.startswith("ch_")) else ""
+
+        if lesson_id and not lesson_id.startswith("les_") and frappe.db.exists("Course Lesson", lesson_id):
+            doc = frappe.get_doc("Course Lesson", lesson_id)
+            if title: doc.title = title
+            if ch_link: doc.chapter = ch_link
+            if youtube is not None: doc.youtube = youtube
+            if body is not None: doc.body = body
+            if instructor_notes is not None: doc.instructor_notes = instructor_notes
+            doc.save(ignore_permissions=True)
+        else:
+            doc = frappe.get_doc({
+                "doctype": "Course Lesson",
+                "title": title or "New Lesson",
+                "chapter": ch_link,
+                "youtube": youtube or "",
+                "body": body or "",
+                "instructor_notes": instructor_notes or ""
+            })
+            doc.insert(ignore_permissions=True)
+        frappe.db.commit()
+        return {"status": "success", "name": doc.name, "youtube": doc.youtube}
+    except Exception as e:
+        frappe.log_error(f"save_course_lesson_custom error: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
+@frappe.whitelist(allow_guest=True)
+def save_course_chapter_custom(chapter_id: str, title: str = None, course: str = None, lessons: list = None, user_email: str = None):
+    import frappe
+    import json
+    try:
+        user = frappe.session.user
+        if user == "Guest" and user_email:
+            user = str(user_email).strip().lower()
+
+        is_admin = False
+        if user in ["Administrator", "admin@lms.com"]:
+            is_admin = True
+        else:
+            roles = frappe.get_roles(user)
+            if any(r in roles for r in ["System Manager", "Course Creator", "Instructor", "Administrator"]):
+                is_admin = True
+
+        if not is_admin:
+            frappe.throw("Permission Denied: Only Admin (admin@lms.com) or Instructors can edit chapters.", frappe.PermissionError)
+
+        frappe.set_user("Administrator")
+
+        if isinstance(lessons, str):
+            try:
+                lessons = json.loads(lessons)
+            except Exception:
+                pass
+
+        if chapter_id and not chapter_id.startswith("ch_") and frappe.db.exists("Course Chapter", chapter_id):
+            doc = frappe.get_doc("Course Chapter", chapter_id)
+            if title: doc.title = title
+            if course: doc.course = course
+            if lessons is not None and isinstance(lessons, list):
+                doc.lessons = []
+                for l in lessons:
+                    l_id = l.get("lesson") if isinstance(l, dict) else str(l)
+                    if frappe.db.exists("Course Lesson", l_id):
+                        doc.append("lessons", {"lesson": l_id})
+            doc.save(ignore_permissions=True)
+        else:
+            doc = frappe.get_doc({
+                "doctype": "Course Chapter",
+                "title": title or "New Chapter",
+                "course": course or ""
+            })
+            if lessons and isinstance(lessons, list):
+                for l in lessons:
+                    l_id = l.get("lesson") if isinstance(l, dict) else str(l)
+                    if frappe.db.exists("Course Lesson", l_id):
+                        doc.append("lessons", {"lesson": l_id})
+            doc.insert(ignore_permissions=True)
+
+        # Automatically link chapter in LMS Course chapters child table if course is provided
+        if course and frappe.db.exists("LMS Course", course):
+            course_doc = frappe.get_doc("LMS Course", course)
+            existing_ch_names = [ch.chapter for ch in (course_doc.chapters or []) if ch.chapter]
+            if doc.name not in existing_ch_names:
+                course_doc.append("chapters", {"chapter": doc.name})
+                course_doc.save(ignore_permissions=True)
+
+        frappe.db.commit()
+        return {"status": "success", "name": doc.name, "modified_by": doc.modified_by}
+    except Exception as e:
+        frappe.log_error(f"save_course_chapter_custom error: {str(e)}")
+        return {"status": "error", "message": str(e)}
 
 def sign_jwt(payload, secret_key):
     import hmac

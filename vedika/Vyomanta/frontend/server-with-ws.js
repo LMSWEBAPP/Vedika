@@ -156,6 +156,27 @@ nextApp.prepare().then(() => {
           console.warn('[WS] History param parse error:', e);
         }
       }
+    } else if (mode === 'video_tutor' || mode === 'ask_vedika_video') {
+      const videoTitle = searchParams.get('videoTitle') || 'Lesson Video';
+      const timestampSec = parseInt(searchParams.get('timestamp') || '0', 10);
+      const transcriptSnippet = searchParams.get('transcriptSnippet') || '';
+
+      const mins = Math.floor((timestampSec % 3600) / 60);
+      const secs = timestampSec % 60;
+      const formattedTime = `${mins}:${secs.toString().padStart(2, '0')}`;
+
+      systemInstruction =
+        `You are Vedika, an intelligent, ultra-friendly, and patient AI study tutor having a live voice conversation with a student about their YouTube video lesson: "${videoTitle}".\n` +
+        `Current Video State: The video is paused at timestamp ${formattedTime} (${timestampSec} seconds).\n` +
+        `Focus Mode: Your primary focus is explaining what is being taught at timestamp ${formattedTime}. However, if the student asks about the entire video lesson "${videoTitle}" or any other concept in this video, answer those questions helpfully as well!\n` +
+        (transcriptSnippet ? `\nVERIFIED SPOKEN CAPTIONS AROUND THIS MOMENT (${formattedTime}):\n${transcriptSnippet.slice(0, 1500)}\n` : '') +
+        `\nSTRICT RULES FOR LIVE VOICE TUTORING:\n` +
+        `1. SPEAK NATURALLY AND CONCISELY (EXACTLY 1 TO 3 SHORT SENTENCES MAXIMUM). Do not deliver long lectures or read dense code out loud.\n` +
+        `2. STRICT TOPIC BOUNDARY: Answer questions ONLY about this video lesson ("${videoTitle}"). Do NOT answer questions about unrelated topics like movies, politics, sports, or general non-lesson trivia.\n` +
+        `3. OUT-OF-SCOPE REJECTION: If the student asks any question outside this video or topic, politely decline and redirect them in voice:\n` +
+        `   "I am your study partner for this video lesson on ${videoTitle}! Let's focus on what is taught here. Ask me anything about what's happening at ${formattedTime} or in this video!"\n` +
+        `4. ZERO HALLUCINATION: Base your explanations strictly on verified facts in the video. Do not invent non-existent concepts.\n` +
+        `5. GREET IMMEDIATELY: Greet the student warmly in 1 short sentence: "Hi! I'm Vedika. I'm watching ${videoTitle} with you at ${formattedTime}. What would you like me to explain?"`;
     } else {
       // ─────────────────────────────────────────────────────────────
       // EXISTING VOICE TUTOR PERSONA (100% UNTOUCHED)
@@ -253,17 +274,29 @@ nextApp.prepare().then(() => {
         ? (isReconnect ? 'Reconnected to AI Examiner! Resuming examination...' : 'AI Examiner is ready! Oral viva examination starting..., say hello!')
         : mode === 'interview'
         ? (isReconnect ? 'Reconnected to Technical Interviewer! Resuming interview...' : 'Technical Interviewer is ready! Technical interview starting...')
+        : (mode === 'video_tutor' || mode === 'ask_vedika_video')
+        ? 'Vedika AI Pet is ready! Ask your video questions.'
         : 'Tutor is ready! Ask your academic questions.';
 
       clientWs.send(JSON.stringify({ type: 'status', message: readyMessage }));
 
-      // Send initial kickoff prompt for viva/interview so Gemini immediately begins speaking Question 1
-      if (mode === 'viva' || mode === 'interview') {
+      // Send initial kickoff prompt for viva/interview/video_tutor so Gemini immediately begins speaking out loud
+      if (mode === 'viva' || mode === 'interview' || mode === 'video_tutor' || mode === 'ask_vedika_video') {
         try {
-          const targetTopic = topic || experimentName || (mode === 'viva' ? 'Academic Lab Experiment' : (programmingLanguage || 'Technical Stack'));
-          const kickoffText = isReconnect
-            ? `The candidate has reconnected. Briefly say "Welcome back! Let's continue your examination." and proceed directly with the next question turn.`
-            : `Start the oral examination now. Greet the candidate with "Welcome to your ${difficulty} level oral examination on ${targetTopic}. Let's begin!" DYNAMIC SUB-TOPIC DIVERSIFICATION: Dynamically identify 5 core sub-topic pillars within "${targetTopic}" for ${level} level. Select ONE specific sub-topic pillar and immediately ask Question 1 of 5 out loud in English on that chosen sub-domain. Do NOT default to generic textbook definitions (e.g. for Python, do NOT default to mutable/immutable).`;
+          let kickoffText = '';
+          if (mode === 'video_tutor' || mode === 'ask_vedika_video') {
+            const videoTitle = searchParams.get('videoTitle') || 'Lesson Video';
+            const timestampSec = parseInt(searchParams.get('timestamp') || '0', 10);
+            const mins = Math.floor((timestampSec % 3600) / 60);
+            const secs = timestampSec % 60;
+            const formattedTime = `${mins}:${secs.toString().padStart(2, '0')}`;
+            kickoffText = `Start the live voice tutoring session now. Greet the student warmly out loud in 1 short friendly sentence: "Hi! I'm Vedika. I'm watching ${videoTitle} with you at ${formattedTime}. What would you like me to explain?"`;
+          } else {
+            const targetTopic = topic || experimentName || (mode === 'viva' ? 'Academic Lab Experiment' : (programmingLanguage || 'Technical Stack'));
+            kickoffText = isReconnect
+              ? `The candidate has reconnected. Briefly say "Welcome back! Let's continue your examination." and proceed directly with the next question turn.`
+              : `Start the oral examination now. Greet the candidate with "Welcome to your ${difficulty} level oral examination on ${targetTopic}. Let's begin!" DYNAMIC SUB-TOPIC DIVERSIFICATION: Dynamically identify 5 core sub-topic pillars within "${targetTopic}" for ${level} level. Select ONE specific sub-topic pillar and immediately ask Question 1 of 5 out loud in English on that chosen sub-domain. Do NOT default to generic textbook definitions (e.g. for Python, do NOT default to mutable/immutable).`;
+          }
 
           geminiSession.send({
             clientContent: {

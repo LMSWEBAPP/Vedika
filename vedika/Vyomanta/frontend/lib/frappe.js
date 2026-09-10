@@ -55,13 +55,14 @@ export function invalidateSyllabusCache(courseId) {
     if (typeof window !== 'undefined') {
       localStorage.removeItem(`cached_syllabus_${courseId}`);
       localStorage.removeItem(`cached_syllabus_timestamp_${courseId}`);
+      localStorage.removeItem(`admin_course_details_${courseId}`);
     }
   } else {
     clientCache.syllabus = {};
     if (typeof window !== 'undefined') {
       // Clear all cached syllabuses from localStorage
       Object.keys(localStorage).forEach(key => {
-        if (key.startsWith('cached_syllabus_')) {
+        if (key.startsWith('cached_syllabus_') || key.startsWith('admin_course_details_')) {
           localStorage.removeItem(key);
         }
       });
@@ -138,7 +139,10 @@ export async function frappeGet(method, params = {}) {
     Object.entries(mergedParams).forEach(([k, v]) => url.searchParams.set(k, v));
     const res = await fetch(url.toString(), {
       credentials: "include",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-User-Email": getActiveUserId()
+      },
     });
     return handleResponse(res, false);
   });
@@ -162,7 +166,10 @@ export async function frappePost(method, body = {}) {
   const res = await fetch(url.toString(), {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "X-User-Email": getActiveUserId()
+    },
     body: JSON.stringify(body),
   });
   return handleResponse(res, false);
@@ -189,7 +196,10 @@ export async function frappeRestGet(resource, params = {}) {
     Object.entries(mergedParams).forEach(([k, v]) => url.searchParams.set(k, v));
     const res = await fetch(url.toString(), {
       credentials: "include",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-User-Email": getActiveUserId()
+      },
     });
     return handleResponse(res, true);
   });
@@ -215,7 +225,10 @@ export async function frappeRestPost(resource, body = {}) {
   const res = await fetch(url.toString(), {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "X-User-Email": getActiveUserId()
+    },
     body: JSON.stringify(body),
   });
   return handleResponse(res, true);
@@ -242,7 +255,10 @@ export async function frappeRestPut(resource, name, body = {}) {
   const res = await fetch(url.toString(), {
     method: "PUT",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "X-User-Email": getActiveUserId()
+    },
     body: JSON.stringify(body),
   });
   return handleResponse(res, true);
@@ -776,28 +792,52 @@ export async function getCourseSyllabus(courseId, options = {}) {
             const chDoc = await frappeRestGet(`Course Chapter/${ref.chapter}`);
             const lessonRefs = chDoc.lessons || [];
 
-            // Return lesson skeletons instead of making parallel REST calls to prevent database locks.
-            // These skeletons are lazy-loaded when the student is on the active lesson page.
-            const lessons = (lessonRefs || []).map((lRef) => {
-              const cleanTitle = lRef.lesson
-                .replace(/^(lesson-|l-)/i, '')
-                .split(/[-_]/)
-                .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-                .join(' ');
-                
-              return {
-                id: lRef.lesson,
-                title: cleanTitle,
-                dur: "10 min",
-                vid: "",
-                overview: "Lesson details are loading...",
-                pts: [],
-                quizQuestions: [],
-                codingExercise: { hasExercise: false },
-                pdf: "",
-                lazyLoad: true
-              };
-            });
+            const lessons = await Promise.all((lessonRefs || []).map(async (lRef) => {
+              try {
+                const lDoc = await frappeRestGet(`Course Lesson/${lRef.lesson}`);
+                let pts = [];
+                let quizQuestions = [];
+                let codingExercise = { hasExercise: false };
+                let pdf = "";
+                if (lDoc.instructor_notes) {
+                  try {
+                    const meta = JSON.parse(lDoc.instructor_notes);
+                    if (Array.isArray(meta.pts)) pts = meta.pts;
+                    if (Array.isArray(meta.quizQuestions)) quizQuestions = meta.quizQuestions;
+                    if (meta.codingExercise) codingExercise = meta.codingExercise;
+                    if (meta.pdf) pdf = meta.pdf;
+                  } catch (e) {}
+                }
+                return {
+                  id: lDoc.name,
+                  title: lDoc.title || lRef.lesson,
+                  dur: "10 min",
+                  vid: lDoc.youtube || "",
+                  overview: lDoc.body || "",
+                  pts,
+                  quizQuestions,
+                  codingExercise,
+                  pdf
+                };
+              } catch (e) {
+                const cleanTitle = lRef.lesson
+                  .replace(/^(lesson-|l-)/i, '')
+                  .split(/[-_]/)
+                  .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                  .join(' ');
+                return {
+                  id: lRef.lesson,
+                  title: cleanTitle,
+                  dur: "10 min",
+                  vid: "",
+                  overview: "",
+                  pts: [],
+                  quizQuestions: [],
+                  codingExercise: { hasExercise: false },
+                  pdf: ""
+                };
+              }
+            }));
 
             return {
               id: chDoc.name,
@@ -850,7 +890,7 @@ export async function getCourseSyllabus(courseId, options = {}) {
                 id: `${courseId}_l1`,
                 title: "What is this course?",
                 dur: "5 min",
-                vid: "rfscVS0vtbw",
+                vid: "",
                 overview: "Welcome to the course. Here is a brief explanation of what we will cover.",
                 pts: ["Course overview", "Course requirements"],
                 quizQuestions: [],
@@ -891,6 +931,23 @@ export async function getCourseSyllabus(courseId, options = {}) {
   return syllabus;
 }
 
+function cleanYoutubeVid(input) {
+  if (!input || typeof input !== 'string') return '';
+  const str = input.trim();
+  if (!str) return '';
+  if (/^[a-zA-Z0-9_-]{11}$/.test(str)) return str;
+  const match = str.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?.*v=|shorts\/|live\/))([a-zA-Z0-9_-]{11})/);
+  if (match && match[1]) return match[1];
+  try {
+    const urlObj = new URL(str.startsWith('http') ? str : `https://${str}`);
+    const vParam = urlObj.searchParams.get('v');
+    if (vParam && /^[a-zA-Z0-9_-]{11}$/.test(vParam)) return vParam;
+  } catch (e) {}
+  const tokenMatch = str.match(/([a-zA-Z0-9_-]{11})/);
+  if (tokenMatch && tokenMatch[1]) return tokenMatch[1];
+  return str;
+}
+
 /**
  * Save course syllabus outline to Frappe DocTypes or Local Storage
  */
@@ -912,44 +969,14 @@ export async function saveCourseSyllabus(courseId, syllabus) {
 
       const newChapters = new Set();
       const newLessons = new Set();
-      syllabus.modules.forEach(m => {
-        if (!m.id.startsWith("ch_")) {
-          newChapters.add(m.id);
-        }
-        if (m.lessons) {
-          m.lessons.forEach(l => {
-            if (!l.id.startsWith("les_")) {
-              newLessons.add(l.id);
-            }
-          });
-        }
-      });
-
       const chaptersList = [];
 
-      // 1. Iterate over chapters and save them
       for (const chapter of syllabus.modules) {
-        let chapterId = chapter.id;
-
-        if (chapter.id.startsWith("ch_")) {
-          const chDoc = await frappeRestPost("Course Chapter", {
-            title: sanitizeTitle(chapter.title),
-            course: courseId
-          });
-          chapterId = chDoc.name;
-        } else {
-          await frappeRestPut("Course Chapter", chapter.id, {
-            title: sanitizeTitle(chapter.title)
-          });
-        }
-        chaptersList.push(chapterId);
-
-        // 2. Iterate over lessons in the chapter and save them
         const lessonsList = [];
-        for (const lesson of chapter.lessons) {
-          let lessonId = lesson.id;
-          
-          // Serialize pts, quizQuestions, and codingExercise to instructor_notes to persist in DB
+
+        // 1. Save all lessons in the chapter first to obtain real DB IDs
+        for (const lesson of chapter.lessons || []) {
+          const cleanVid = cleanYoutubeVid(lesson.vid);
           const notesStr = JSON.stringify({
             pts: lesson.pts || ["Key concept introduction."],
             quizQuestions: lesson.quizQuestions || [],
@@ -964,61 +991,67 @@ export async function saveCourseSyllabus(courseId, syllabus) {
             pdf: lesson.pdf || ""
           });
 
-          if (lesson.id.startsWith("les_")) {
-            const lDoc = await frappeRestPost("Course Lesson", {
-              title: sanitizeTitle(lesson.title),
-              chapter: chapterId,
-              course: courseId,
-              youtube: lesson.vid,
-              body: lesson.overview,
-              instructor_notes: notesStr
-            });
-            lessonId = lDoc.name;
+          const lRes = await frappePost("lms.lms.api.save_course_lesson_custom", {
+            lesson_id: lesson.id,
+            title: sanitizeTitle(lesson.title),
+            chapter_id: chapter.id,
+            youtube: cleanVid,
+            body: lesson.overview,
+            instructor_notes: notesStr,
+            user_email: getActiveUserId()
+          });
+
+          if (lRes && lRes.status === "success" && lRes.name) {
+            lessonsList.push(lRes.name);
+            newLessons.add(lRes.name);
           } else {
-            await frappeRestPut("Course Lesson", lesson.id, {
-              title: sanitizeTitle(lesson.title),
-              youtube: lesson.vid,
-              body: lesson.overview,
-              instructor_notes: notesStr
-            });
+            console.error("Failed to save lesson:", lRes);
+            throw new Error((lRes && lRes.message) || `Failed to save lesson "${lesson.title}"`);
           }
-          lessonsList.push(lessonId);
         }
 
-        // 3. Update the lessons child table in this chapter
-        await frappeRestPut("Course Chapter", chapterId, {
-          lessons: lessonsList.map(lId => ({ lesson: lId }))
+        // 2. Save the chapter with verified real lesson IDs
+        const chRes = await frappePost("lms.lms.api.save_course_chapter_custom", {
+          chapter_id: chapter.id,
+          title: sanitizeTitle(chapter.title),
+          course: courseId,
+          lessons: lessonsList.map(lId => ({ lesson: lId })),
+          user_email: getActiveUserId()
         });
-      }
 
-      // 4. Update the chapters child table in the course document
-      await frappeRestPut("LMS Course", courseId, {
-        chapters: chaptersList.map(chId => ({ chapter: chId }))
-      });
-
-      // 5. Delete removed lessons (now safely unlinked from chapter child tables)
-      for (const oldLesId of oldLessons) {
-        if (!newLessons.has(oldLesId)) {
-          await frappeRestDelete("Course Lesson", oldLesId).catch(err => {
-            console.warn(`Failed to delete orphaned lesson ${oldLesId} on save:`, err);
-          });
+        if (chRes && chRes.status === "success" && chRes.name) {
+          chaptersList.push(chRes.name);
+          newChapters.add(chRes.name);
+        } else {
+          console.error("Failed to save chapter:", chRes);
+          throw new Error((chRes && chRes.message) || `Failed to save chapter "${chapter.title}"`);
         }
       }
 
-      // 6. Delete removed chapters (now safely unlinked from course child tables)
+      // 3. Delete removed lessons & chapters
+      for (const oldLesId of oldLessons) {
+        if (!newLessons.has(oldLesId) && !oldLesId.startsWith("les_")) {
+          await frappeRestDelete("Course Lesson", oldLesId).catch(() => {});
+        }
+      }
+
       for (const oldChId of oldChapters) {
-        if (!newChapters.has(oldChId)) {
-          await frappeRestDelete("Course Chapter", oldChId).catch(err => {
-            console.warn(`Failed to delete orphaned chapter ${oldChId} on save:`, err);
-          });
+        if (!newChapters.has(oldChId) && !oldChId.startsWith("ch_")) {
+          await frappeRestDelete("Course Chapter", oldChId).catch(() => {});
         }
       }
 
       invalidateCoursesCache();
       invalidateSyllabusCache(courseId);
+
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem(`admin_course_details_${courseId}`);
+      }
+
       return getCourseSyllabus(courseId, { forceRefresh: true });
     } catch (e) {
-      console.error("Failed to sync course syllabus outline with Frappe REST server.", e);
+      console.error("Failed to sync course syllabus outline with Frappe server.", e);
+      throw e;
     }
   }
 

@@ -3,8 +3,8 @@ const nextConfig = {
   async headers() {
     return [
       {
-        // Apply COOP/COEP to all routes so SharedArrayBuffer is available
-        source: '/(.*)',
+        // Apply COOP/COEP only to labs/playground routes requiring SharedArrayBuffer
+        source: '/vedika-labs/:path*',
         headers: [
           { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
           { key: 'Cross-Origin-Embedder-Policy', value: 'require-corp' },

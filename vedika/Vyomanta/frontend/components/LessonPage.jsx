@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Brain, CheckCircle, ChevronRight, Clock,
   Loader2, RotateCcw, ArrowLeft, Send,
-  FileText, Award, AlertCircle, ThumbsUp, HelpCircle, Terminal
+  FileText, Award, AlertCircle, ThumbsUp, HelpCircle, Terminal,
+  BookOpen, Sparkles, Mic, Volume2, StopCircle, Globe
 } from 'lucide-react';
 import { T, COURSE, geminiCall, buildQuizPrompt, parseQuizOutput, getCourseDetails } from '@/lib/lms-data';
 import { useMediaQuery, isMobileMQ } from '@/lib/useMediaQuery';
@@ -15,7 +16,19 @@ import {
   getAssignments, submitAssignmentResponse, getAssignmentSubmissions
 } from '@/lib/frappe';
 import PDFViewerModal from './PDFViewerModal';
-const Playground = dynamic(() => import('./Playground'), { ssr: false });
+import VideoPlayerWithAI from './VideoPlayerWithAI';
+import VideoAIExplainerCard from './VideoAIExplainerCard';
+import PetAvatar from './PetAvatar';
+function formatTimestamp(seconds) {
+  const total = Math.floor(seconds || 0);
+  const hrs = Math.floor(total / 3600);
+  const mins = Math.floor((total % 3600) / 60);
+  const secs = total % 60;
+  if (hrs > 0) {
+    return `${hrs}:${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+  }
+  return `${mins}:${secs.toString().padStart(2, "0")}`;
+}
 
 export default function LessonPage({ lesson, completed = {}, onComplete }) {
   const router  = useRouter();
@@ -23,6 +36,334 @@ export default function LessonPage({ lesson, completed = {}, onComplete }) {
   const [isPlaygroundOpen, setIsPlaygroundOpen] = useState(false);
   const [isPdfViewerOpen, setIsPdfViewerOpen] = useState(false);
   const [selectedPdfResource, setSelectedPdfResource] = useState(null);
+
+  // Video AI Explainer ("Ask Vedika") states
+  const [videoSeekTime, setVideoSeekTime] = useState(null);
+  const [videoCurrentTime, setVideoCurrentTime] = useState(0);
+  const [aiExplainerData, setAiExplainerData] = useState(null);
+  const [explainerLoading, setExplainerLoading] = useState(false);
+  const [isExplainerOpen, setIsExplainerOpen] = useState(false);
+  const [activeCompanionTab, setActiveCompanionTab] = useState('current'); // 'current' | 'ask_vedika' | 'chat'
+  const [chatQuestion, setChatQuestion] = useState('');
+  const [chatHistory, setChatHistory] = useState([]);
+  const [chatLoading, setChatLoading] = useState(false);
+
+  // Vedika Voice Pet Avatar states
+  const [voiceStatus, setVoiceStatus] = useState('disconnected'); // 'disconnected' | 'connecting' | 'connected' | 'error'
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [isThinking, setIsThinking] = useState(false);
+  const [voiceErrorMessage, setVoiceErrorMessage] = useState('');
+
+  const mediaStreamRef = useRef(null);
+  const audioCtxRef = useRef(null);
+  const outAudioCtxRef = useRef(null);
+  const wsRef = useRef(null);
+  const processorRef = useRef(null);
+  const audioQueueRef = useRef([]);
+  const nextPlayTimeRef = useRef(0);
+
+  const stopAllAudioChunks = () => {
+    if (audioQueueRef.current && audioQueueRef.current.length > 0) {
+      audioQueueRef.current.forEach(src => {
+        try { src.stop(); } catch (e) {}
+      });
+      audioQueueRef.current = [];
+    }
+    nextPlayTimeRef.current = 0;
+    setIsSpeaking(false);
+  };
+
+  const playLiveAudioChunk = (base64Pcm) => {
+    if (!base64Pcm) return;
+    try {
+      const binary = atob(base64Pcm);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      const pcmData = new Int16Array(bytes.buffer);
+      
+      const float32Data = new Float32Array(pcmData.length);
+      for (let i = 0; i < pcmData.length; i++) float32Data[i] = pcmData[i] / 32768.0;
+
+      let audioCtx = outAudioCtxRef.current;
+      if (!audioCtx || audioCtx.state === 'closed') {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+        outAudioCtxRef.current = audioCtx;
+      }
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+
+      const buffer = audioCtx.createBuffer(1, float32Data.length, 24000);
+      buffer.getChannelData(0).set(float32Data);
+
+      const source = audioCtx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(audioCtx.destination);
+
+      source.onended = () => {
+        const idx = audioQueueRef.current.indexOf(source);
+        if (idx !== -1) audioQueueRef.current.splice(idx, 1);
+        if (audioQueueRef.current.length === 0) {
+          setIsSpeaking(false);
+        }
+      };
+
+      audioQueueRef.current.push(source);
+      setIsSpeaking(true);
+
+      const now = audioCtx.currentTime;
+      if (nextPlayTimeRef.current < now) {
+        nextPlayTimeRef.current = now + 0.05;
+      }
+      source.start(nextPlayTimeRef.current);
+      nextPlayTimeRef.current += buffer.duration;
+    } catch (e) {
+      console.error('PCM playback error:', e);
+    }
+  };
+
+  const stopVedikaVoiceSession = () => {
+    if (processorRef.current) {
+      try { processorRef.current.disconnect(); } catch (e) {}
+      processorRef.current = null;
+    }
+    if (mediaStreamRef.current) {
+      try { mediaStreamRef.current.getTracks().forEach(t => t.stop()); } catch (e) {}
+      mediaStreamRef.current = null;
+    }
+    if (wsRef.current) {
+      try { wsRef.current.close(); } catch (e) {}
+      wsRef.current = null;
+    }
+    stopAllAudioChunks();
+    setVoiceStatus('disconnected');
+    setIsSpeaking(false);
+    setIsListening(false);
+    setIsThinking(false);
+  };
+
+  const startVedikaVoiceSession = async () => {
+    if (voiceStatus === 'connecting' || voiceStatus === 'connected') return;
+
+    setVoiceStatus('connecting');
+    setVoiceErrorMessage('');
+    setIsThinking(true);
+
+    try {
+      // Unlock AudioContext inside the user gesture!
+      let outCtx = outAudioCtxRef.current;
+      if (!outCtx || outCtx.state === 'closed') {
+        outCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+        outAudioCtxRef.current = outCtx;
+      }
+      if (outCtx.state === 'suspended') {
+        await outCtx.resume();
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
+
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+      audioCtxRef.current = audioCtx;
+
+      const primaryWsHost = process.env.NEXT_PUBLIC_WS_URL || (
+        window.location.hostname === 'localhost'
+          ? 'ws://localhost:5001'
+          : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`
+      );
+      const fallbackWsHost = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`;
+
+      const currentSecs = Math.max(0, Math.floor(videoCurrentTime || aiExplainerData?.seconds || 0));
+      const cleanVid = extractYoutubeId(lesson?.vid) || '';
+      const snippetText = aiExplainerData?.transcriptSnippet || '';
+      const voiceSid = 'vedika-video-' + Date.now().toString(36);
+
+      const wsUrl = `${primaryWsHost}/api/ws?mode=video_tutor&videoTitle=${encodeURIComponent(lesson?.title || 'Lesson')}&timestamp=${currentSecs}&videoId=${cleanVid}&transcriptSnippet=${encodeURIComponent(snippetText.slice(0, 1000))}&sessionId=${voiceSid}`;
+
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      const setupAudioProcessor = () => {
+        const source = audioCtx.createMediaStreamSource(stream);
+        const processor = audioCtx.createScriptProcessor(4096, 1, 1);
+        processorRef.current = processor;
+        
+        const silentGain = audioCtx.createGain();
+        silentGain.gain.value = 0;
+        source.connect(processor);
+        processor.connect(silentGain);
+        silentGain.connect(audioCtx.destination);
+
+        processor.onaudioprocess = (e) => {
+          if (ws.readyState !== WebSocket.OPEN || isSpeaking) return;
+          const float32Data = e.inputBuffer.getChannelData(0);
+          
+          let sum = 0;
+          for (let i = 0; i < float32Data.length; i++) {
+            sum += float32Data[i] * float32Data[i];
+          }
+          const rms = Math.sqrt(sum / float32Data.length);
+          if (rms > 0.02) {
+            setIsListening(true);
+          } else {
+            setIsListening(false);
+          }
+
+          const pcmBuffer = new ArrayBuffer(float32Data.length * 2);
+          const dataView = new DataView(pcmBuffer);
+          let offset = 0;
+          for (let i = 0; i < float32Data.length; i++, offset += 2) {
+            let s = Math.max(-1, Math.min(1, float32Data[i]));
+            dataView.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+          }
+
+          let binary = '';
+          const bytes = new Uint8Array(pcmBuffer);
+          for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+          ws.send(JSON.stringify({ type: 'audio', data: btoa(binary) }));
+        };
+      };
+
+      ws.onopen = () => {
+        setVoiceStatus('connected');
+        setIsThinking(false);
+        setupAudioProcessor();
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          if (message.type === 'audio') {
+            setIsThinking(false);
+            setIsListening(false);
+            playLiveAudioChunk(message.data);
+          } else if (message.type === 'interrupted') {
+            stopAllAudioChunks();
+            setIsSpeaking(false);
+          } else if (message.type === 'error') {
+            console.warn('[VedikaVoice] WS message error:', message.message);
+          }
+        } catch (e) {
+          console.error('[VedikaVoice] WS parse error:', e);
+        }
+      };
+
+      ws.onerror = () => {
+        if (primaryWsHost !== fallbackWsHost && wsRef.current === ws) {
+          console.warn('[VedikaVoice] Connecting to fallback port 3000...');
+          const fallbackUrl = `${fallbackWsHost}/api/ws?mode=video_tutor&videoTitle=${encodeURIComponent(lesson?.title || 'Lesson')}&timestamp=${currentSecs}&videoId=${cleanVid}&sessionId=${voiceSid}`;
+          const fallbackWs = new WebSocket(fallbackUrl);
+          wsRef.current = fallbackWs;
+
+          fallbackWs.onopen = () => {
+            setVoiceStatus('connected');
+            setIsThinking(false);
+            setupAudioProcessor();
+          };
+
+          fallbackWs.onmessage = ws.onmessage;
+          fallbackWs.onerror = () => {
+            setVoiceStatus('error');
+            setVoiceErrorMessage('Could not connect to Vedika Voice server.');
+            stopVedikaVoiceSession();
+          };
+          fallbackWs.onclose = () => {
+            setVoiceStatus('disconnected');
+            setIsSpeaking(false);
+            setIsListening(false);
+            setIsThinking(false);
+          };
+        } else {
+          setVoiceStatus('error');
+          setVoiceErrorMessage('Could not connect to Vedika Voice server.');
+          stopVedikaVoiceSession();
+        }
+      };
+
+      ws.onclose = () => {
+        setVoiceStatus('disconnected');
+        setIsSpeaking(false);
+        setIsListening(false);
+        setIsThinking(false);
+      };
+
+    } catch (err) {
+      console.error('Failed to get mic access:', err);
+      setVoiceStatus('error');
+      setVoiceErrorMessage('Microphone access denied. Please allow mic access to talk with Vedika.');
+      setIsThinking(false);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      stopVedikaVoiceSession();
+    };
+  }, []);
+
+  const handleExplainVideoAtTime = async (seconds, optionalQuestion = '') => {
+    const cleanId = extractYoutubeId(lesson?.vid);
+    if (!cleanId) return;
+
+    setExplainerLoading(true);
+    setIsExplainerOpen(true);
+    try {
+      const res = await fetch('/api/youtube/explain', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          videoId: cleanId,
+          timestamp: seconds,
+          title: lesson.title,
+          userQuestion: optionalQuestion
+        })
+      });
+      const data = await res.json();
+      if (data && !data.error) {
+        setAiExplainerData(data);
+      } else {
+        setAiExplainerData({
+          timestamp: formatTimestamp(seconds),
+          seconds: seconds,
+          summary: `At this moment, core concepts in "${lesson.title}" are being demonstrated.`,
+          coreExplanation: lesson.overview || "In this lesson moment, key concepts and demonstrations are presented.",
+          keyTakeaways: lesson.pts || ["Key concept introduction."]
+        });
+      }
+    } catch (e) {
+      console.error("Failed to explain timestamp:", e);
+    } finally {
+      setExplainerLoading(false);
+    }
+  };
+
+  const handleAskQuestion = async (qText) => {
+    if (!qText || !qText.trim() || chatLoading) return;
+    const q = qText.trim();
+    setChatQuestion('');
+    setActiveCompanionTab('chat');
+    setChatHistory(prev => [...prev, { role: 'user', text: q }]);
+    setChatLoading(true);
+    try {
+      const res = await fetch('/api/youtube/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          videoId: extractYoutubeId(lesson.vid),
+          timestamp: aiExplainerData?.seconds || 0,
+          title: lesson.title,
+          question: q,
+          history: chatHistory
+        })
+      });
+      const data = await res.json();
+      const ans = data?.answer || "I evaluated the video and provided an explanation above.";
+      setChatHistory(prev => [...prev, { role: 'assistant', text: ans }]);
+    } catch (err) {
+      setChatHistory(prev => [...prev, { role: 'assistant', text: "Sorry, I could not answer that question right now." }]);
+    } finally {
+      setChatLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (lesson?.codingExercise?.hasExercise) {
@@ -318,26 +659,501 @@ export default function LessonPage({ lesson, completed = {}, onComplete }) {
         </div>
       </div>
 
-      {/* Video */}
-      <div style={{ borderRadius: 14, overflow: 'hidden', border: `1px solid ${T.border}`, marginBottom: 22 }}>
-        <iframe
-          width="100%" height={isMobile ? 200 : 400}
-          src={getYoutubeEmbedUrl(lesson.vid)}
-          title={lesson.title} frameBorder="0"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-          allowFullScreen style={{ display: 'block' }}
-        />
-      </div>
+      {/* Video & AI Companion Side-by-Side Split Layout (Matching Screenshot 1) */}
+      {extractYoutubeId(lesson?.vid) ? (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1.25fr) minmax(0, 1fr)',
+          gap: 20,
+          marginBottom: 28,
+          alignItems: 'start',
+          width: '100%'
+        }}>
+          {/* Left Column (Video Player with Controls) */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <VideoPlayerWithAI
+              videoId={extractYoutubeId(lesson.vid)}
+              onTimeUpdate={(secs, isPaused) => {
+                setVideoCurrentTime(secs);
+                if (isPaused && activeCompanionTab === 'current') {
+                  handleExplainVideoAtTime(secs);
+                }
+              }}
+              onExplainRequested={(secs) => {
+                setActiveCompanionTab('current');
+                handleExplainVideoAtTime(secs);
+              }}
+              seekTime={videoSeekTime}
+              onSeekComplete={() => setVideoSeekTime(null)}
+            />
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 12, color: T.muted, padding: '0 4px' }}>
+              <span style={{ fontWeight: 600, color: T.text }}>{lesson.title}</span>
+              <span style={{ fontSize: 11, background: `${T.accent}15`, color: T.accent, padding: '2px 10px', borderRadius: 20, border: `1px solid ${T.accent}30` }}>YouTube Lesson</span>
+            </div>
+          </div>
+
+          {/* Right Column: Ask Vedika AI Companion Panel (Theme Adaptive) */}
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            borderRadius: 16,
+            border: `1px solid ${T.border}`,
+            background: T.s1,
+            padding: 16,
+            color: T.text,
+            boxShadow: '0 8px 24px -4px rgba(0, 0, 0, 0.08)',
+            gap: 14,
+            maxHeight: isMobile ? 'auto' : 520,
+            overflowY: 'auto'
+          }}>
+            {/* Top Tab Bar */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: 4,
+              background: T.s2,
+              borderRadius: 12,
+              border: `1px solid ${T.border}`
+            }}>
+              <button
+                type="button"
+                onClick={() => setActiveCompanionTab('current')}
+                style={{
+                  flex: 1,
+                  padding: '6px 10px',
+                  borderRadius: 8,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  transition: 'all 0.15s',
+                  cursor: 'pointer',
+                  border: 'none',
+                  background: activeCompanionTab === 'current' ? T.accent : 'transparent',
+                  color: activeCompanionTab === 'current' ? '#FFFFFF' : T.muted,
+                  boxShadow: activeCompanionTab === 'current' ? `0 2px 6px ${T.accent}40` : 'none'
+                }}
+              >
+                <BookOpen size={14} />
+                Current Moment
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveCompanionTab('ask_vedika')}
+                style={{
+                  flex: 1,
+                  padding: '6px 10px',
+                  borderRadius: 8,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  transition: 'all 0.15s',
+                  cursor: 'pointer',
+                  border: 'none',
+                  background: (activeCompanionTab === 'ask_vedika' || activeCompanionTab === 'roadmap') ? T.accent : 'transparent',
+                  color: (activeCompanionTab === 'ask_vedika' || activeCompanionTab === 'roadmap') ? '#FFFFFF' : T.muted,
+                  boxShadow: (activeCompanionTab === 'ask_vedika' || activeCompanionTab === 'roadmap') ? `0 2px 6px ${T.accent}40` : 'none'
+                }}
+              >
+                <Sparkles size={14} style={{ color: (activeCompanionTab === 'ask_vedika' || activeCompanionTab === 'roadmap') ? '#FCD34D' : T.muted }} />
+                Ask Vedika
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveCompanionTab('chat')}
+                style={{
+                  flex: 1,
+                  padding: '6px 10px',
+                  borderRadius: 8,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  transition: 'all 0.15s',
+                  cursor: 'pointer',
+                  border: 'none',
+                  background: activeCompanionTab === 'chat' ? T.accent : 'transparent',
+                  color: activeCompanionTab === 'chat' ? '#FFFFFF' : T.muted,
+                  boxShadow: activeCompanionTab === 'chat' ? `0 2px 6px ${T.accent}40` : 'none'
+                }}
+              >
+                <Brain size={14} />
+                Q&A Chat
+              </button>
+            </div>
+
+            {/* Tab 1 Content: Current Moment */}
+            {activeCompanionTab === 'current' && (
+              <div>
+                {explainerLoading ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '48px 0', gap: 12, textAlign: 'center' }}>
+                    <Loader2 size={28} style={{ color: T.accent }} className="animate-spin" />
+                    <p style={{ fontSize: 12, color: T.text, fontWeight: 500, margin: 0 }}>Vedika AI is analyzing what is being taught at this moment...</p>
+                  </div>
+                ) : aiExplainerData ? (
+                  <VideoAIExplainerCard
+                    explanation={aiExplainerData}
+                    onSeek={(secs) => setVideoSeekTime(secs)}
+                    onAskFollowUp={(q) => handleAskQuestion(q)}
+                  />
+                ) : (
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justify: 'center',
+                    padding: '36px 16px',
+                    borderRadius: 12,
+                    background: T.s2,
+                    border: `1px solid ${T.border}`,
+                    textAlign: 'center',
+                    gap: 12
+                  }}>
+                    <div style={{
+                      height: 40,
+                      width: 40,
+                      borderRadius: '50%',
+                      background: `${T.accent}18`,
+                      border: `1px solid ${T.accent}35`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: T.accent
+                    }}>
+                      <Sparkles size={20} />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <h4 style={{ fontSize: 12.5, fontWeight: 600, color: T.text, margin: 0 }}>Interactive Video AI Tutor</h4>
+                      <p style={{ fontSize: 11, color: T.muted, maxWidth: 280, lineHeight: 1.5, margin: 0 }}>
+                        Pause the video at any moment or click <strong style={{ color: T.amber || '#D97706', fontFamily: 'monospace' }}>Explain At MM:SS</strong> to get an instant breakdown!
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleExplainVideoAtTime(0)}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        borderRadius: 10,
+                        background: T.accent,
+                        padding: '6px 14px',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        color: '#FFFFFF',
+                        border: 'none',
+                        cursor: 'pointer',
+                        boxShadow: `0 4px 6px -1px ${T.accent}40`
+                      }}
+                    >
+                      <Sparkles size={14} style={{ color: '#FCD34D' }} />
+                      Explain Current Moment
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Tab 2 Content: Ask Vedika Interactive Voice Pet Mascot */}
+            {(activeCompanionTab === 'ask_vedika' || activeCompanionTab === 'roadmap') && (
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justify: 'center',
+                gap: 12,
+                padding: '8px 0'
+              }}>
+                {/* Non-clickable Video Paused Status Pill (Beside Mascot) */}
+                <div style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '4px 14px',
+                  borderRadius: 20,
+                  fontSize: 11,
+                  fontWeight: 600,
+                  background: `${T.amber || '#F59E0B'}15`,
+                  color: T.amber || '#D97706',
+                  border: `1px solid ${(T.amber || '#F59E0B')}30`,
+                  boxShadow: '0 2px 6px rgba(0, 0, 0, 0.04)'
+                }}>
+                  <span style={{
+                    height: 6,
+                    width: 6,
+                    borderRadius: '50%',
+                    background: T.amber || '#F59E0B',
+                    display: 'inline-block'
+                  }} />
+                  <span>Paused at {formatTimestamp(videoCurrentTime)}</span>
+                </div>
+
+                {/* Center Animated Mascot Container */}
+                <div style={{
+                  position: 'relative',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: 4
+                }}>
+                  <div style={{
+                    position: 'absolute',
+                    width: 165,
+                    height: 165,
+                    borderRadius: '50%',
+                    background: isSpeaking ? `${T.accent}40` : isListening ? '#10B98140' : `${T.accent}15`,
+                    filter: 'blur(16px)',
+                    transition: 'all 0.3s'
+                  }} />
+
+                  <PetAvatar
+                    size={155}
+                    isSpeaking={isSpeaking}
+                    isListening={isListening}
+                    isThinking={isThinking}
+                  />
+                </div>
+
+                {/* Voice Status Badge & Description */}
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 4,
+                  textAlign: 'center'
+                }}>
+                  <div style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '4px 12px',
+                    borderRadius: 20,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    background: voiceStatus === 'connected'
+                      ? (isSpeaking ? `${T.accent}20` : `${T.amber || '#D97706'}20`)
+                      : T.s2,
+                    color: voiceStatus === 'connected' ? T.text : T.muted,
+                    border: `1px solid ${T.border}`
+                  }}>
+                    {voiceStatus === 'connecting' && <Loader2 size={12} className="animate-spin" style={{ color: T.accent }} />}
+                    {voiceStatus === 'connected' && isSpeaking && <Volume2 size={12} style={{ color: T.accent }} />}
+                    {voiceStatus === 'connected' && isListening && <Mic size={12} style={{ color: '#10B981' }} />}
+                    <span>
+                      {voiceStatus === 'disconnected' && 'Vedika AI Pet Mascot'}
+                      {voiceStatus === 'connecting' && 'Connecting to Vedika Voice AI...'}
+                      {voiceStatus === 'connected' && isSpeaking && 'Vedika is answering in voice...'}
+                      {voiceStatus === 'connected' && isListening && 'Vedika is listening... Speak!'}
+                      {voiceStatus === 'connected' && !isSpeaking && !isListening && 'Vedika is ready to talk!'}
+                      {voiceStatus === 'error' && 'Connection Error'}
+                    </span>
+                  </div>
+
+                  {voiceErrorMessage && (
+                    <p style={{ fontSize: 11, color: '#EF4444', margin: '4px 0 0' }}>{voiceErrorMessage}</p>
+                  )}
+
+                  <p style={{ fontSize: 11, color: T.muted, maxWidth: 270, lineHeight: 1.4, margin: 0 }}>
+                    {voiceStatus === 'disconnected'
+                      ? 'Click "Ask Vedika" to start a live voice conversation about this moment or the entire video lesson!'
+                      : 'Speak your question out loud! Vedika listens and answers in real-time voice.'}
+                  </p>
+                </div>
+
+                {/* Voice Control Buttons (NO TEXT CHAT BOX) */}
+                <div style={{ width: '100%', display: 'flex', justifyContent: 'center' }}>
+                  {voiceStatus === 'disconnected' || voiceStatus === 'error' ? (
+                    <button
+                      type="button"
+                      onClick={startVedikaVoiceSession}
+                      style={{
+                        width: '100%',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 8,
+                        borderRadius: 12,
+                        background: T.accent,
+                        padding: '10px 16px',
+                        fontSize: 13,
+                        fontWeight: 700,
+                        color: '#FFFFFF',
+                        border: 'none',
+                        cursor: 'pointer',
+                        boxShadow: `0 6px 16px -2px ${T.accent}50`,
+                        transition: 'all 0.15s'
+                      }}
+                    >
+                      <Mic size={16} />
+                      Ask Vedika (Start Voice)
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={stopVedikaVoiceSession}
+                      style={{
+                        width: '100%',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 8,
+                        borderRadius: 12,
+                        background: '#EF4444',
+                        padding: '10px 16px',
+                        fontSize: 13,
+                        fontWeight: 700,
+                        color: '#FFFFFF',
+                        border: 'none',
+                        cursor: 'pointer',
+                        boxShadow: '0 6px 16px -2px rgba(239, 68, 68, 0.4)',
+                        transition: 'all 0.15s'
+                      }}
+                    >
+                      <StopCircle size={16} />
+                      Stop / Disconnect Voice
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Tab 3 Content: Q&A Chat */}
+            {activeCompanionTab === 'chat' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{
+                  height: 192,
+                  overflowY: 'auto',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 8,
+                  padding: 8,
+                  borderRadius: 12,
+                  background: T.s2,
+                  border: `1px solid ${T.border}`,
+                  fontSize: 12
+                }}>
+                  {chatHistory.length === 0 ? (
+                    <p style={{ fontSize: 11, color: T.muted, textAlign: 'center', padding: '32px 0', margin: 0 }}>
+                      Ask Vedika any question about the paused video moment!
+                    </p>
+                  ) : (
+                    chatHistory.map((msg, idx) => (
+                      <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
+                        <div style={{
+                          padding: '6px 12px',
+                          borderRadius: 12,
+                          maxWidth: '85%',
+                          fontSize: 11,
+                          background: msg.role === 'user' ? T.accent : T.s1,
+                          color: msg.role === 'user' ? '#FFFFFF' : T.text,
+                          border: msg.role === 'user' ? 'none' : `1px solid ${T.border}`
+                        }}>
+                          {msg.text}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                  {chatLoading && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: T.muted, padding: '4px 0' }}>
+                      <Loader2 size={14} style={{ color: T.accent }} className="animate-spin" />
+                      <span>Vedika AI is thinking...</span>
+                    </div>
+                  )}
+                </div>
+
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    handleAskQuestion(chatQuestion);
+                  }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                >
+                  <input
+                    type="text"
+                    value={chatQuestion}
+                    onChange={(e) => setChatQuestion(e.target.value)}
+                    placeholder="Ask Vedika about this video moment..."
+                    style={{
+                      flex: 1,
+                      borderRadius: 10,
+                      background: T.s2,
+                      border: `1px solid ${T.border}`,
+                      padding: '6px 12px',
+                      fontSize: 12,
+                      color: T.text,
+                      outline: 'none'
+                    }}
+                  />
+                  <button
+                    type="submit"
+                    disabled={chatLoading}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderRadius: 10,
+                      background: T.accent,
+                      padding: '6px 12px',
+                      color: '#FFFFFF',
+                      border: 'none',
+                      cursor: 'pointer',
+                      opacity: chatLoading ? 0.6 : 1
+                    }}
+                  >
+                    <Send size={14} />
+                  </button>
+                </form>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : getYoutubeEmbedUrl(lesson?.vid) ? (
+        <div style={{
+          borderRadius: 14,
+          overflow: 'hidden',
+          border: `1px solid ${T.border}`,
+          marginBottom: 22,
+          position: 'relative',
+          width: '100%',
+          aspectRatio: '16 / 9',
+          background: '#000'
+        }}>
+          <iframe
+            width="100%"
+            height="100%"
+            src={getYoutubeEmbedUrl(lesson.vid)}
+            title={lesson.title}
+            frameBorder="0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+            style={{ display: 'block', border: 0, width: '100%', height: '100%' }}
+          />
+        </div>
+      ) : null}
 
       {/* Overview + Key Points */}
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.4fr 1fr', gap: 16, marginBottom: 24 }}>
         <div style={{ background: T.s2, border: `1px solid ${T.border}`, borderRadius: 12, padding: '18px 20px' }}>
           <div style={{ color: T.text, fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Overview</div>
-          <p style={{ color: T.muted, fontSize: 13.5, lineHeight: 1.7, margin: 0 }}>{lesson.overview}</p>
+          <p style={{ color: T.muted, fontSize: 13.5, lineHeight: 1.7, margin: 0 }}>
+            {lesson.overview && lesson.overview !== 'Lesson details are loading...' 
+              ? lesson.overview 
+              : 'In this lesson, you will explore key concepts, practical examples, and core learning material for this topic.'}
+          </p>
         </div>
         <div style={{ background: T.s2, border: `1px solid ${T.border}`, borderRadius: 12, padding: '18px 20px' }}>
           <div style={{ color: T.text, fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Key Points</div>
-          {lesson.pts.map((p, i) => (
+          {(lesson.pts && lesson.pts.length > 0 ? lesson.pts : ['Core concept introduction.']).map((p, i) => (
             <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 9, marginBottom: 9 }}>
               <div style={{
                 width: 18, height: 18, borderRadius: '50%',
@@ -888,42 +1704,64 @@ export default function LessonPage({ lesson, completed = {}, onComplete }) {
 );
 }
 
+function extractYoutubeId(input) {
+  if (!input || typeof input !== 'string') return '';
+  const str = input.trim();
+  if (!str) return '';
+
+  // 1. Raw 11-char video ID (alphanumeric, -, _)
+  if (/^[a-zA-Z0-9_-]{11}$/.test(str)) {
+    return str;
+  }
+
+  // 2. Standard YouTube URLs: watch?v=..., embed/..., v/..., shorts/..., live/..., youtu.be/...
+  const match = str.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?.*v=|shorts\/|live\/))([a-zA-Z0-9_-]{11})/);
+  if (match && match[1]) {
+    return match[1];
+  }
+
+  // 3. Fallback URL search parameter 'v'
+  try {
+    const urlObj = new URL(str.startsWith('http') ? str : `https://${str}`);
+    const vParam = urlObj.searchParams.get('v');
+    if (vParam && /^[a-zA-Z0-9_-]{11}$/.test(vParam)) {
+      return vParam;
+    }
+  } catch (e) {}
+
+  // 4. Any 11-character token match
+  const tokenMatch = str.match(/([a-zA-Z0-9_-]{11})/);
+  if (tokenMatch && tokenMatch[1]) {
+    return tokenMatch[1];
+  }
+
+  return '';
+}
+
 function getYoutubeEmbedUrl(vid) {
   if (!vid) return '';
-  
-  let videoId = vid;
-  let queryParams = {};
 
-  if (vid.includes('youtube.com/watch')) {
-    try {
-      const url = new URL(vid);
-      videoId = url.searchParams.get('v') || '';
-      url.searchParams.forEach((value, key) => {
-        if (key !== 'v') queryParams[key] = value;
-      });
-    } catch (e) {}
-  } else if (vid.includes('youtu.be/')) {
-    try {
-      const parts = vid.split('youtu.be/');
-      const endPart = parts[1] || '';
-      const [id, query] = endPart.split('?');
-      videoId = id;
-      if (query) {
-        const searchParams = new URLSearchParams(query);
-        searchParams.forEach((value, key) => {
-          queryParams[key] = value;
-        });
-      }
-    } catch (e) {}
-  } else {
-    const separatorIdx = vid.search(/[&?]/);
-    if (separatorIdx !== -1) {
-      videoId = vid.substring(0, separatorIdx);
-      const queryString = vid.substring(separatorIdx + 1);
+  const videoId = extractYoutubeId(vid);
+  if (!videoId) return '';
+
+  let queryParams = {};
+  if (typeof vid === 'string') {
+    const qIdx = vid.indexOf('?');
+    if (qIdx !== -1) {
+      const queryString = vid.substring(qIdx + 1);
       const searchParams = new URLSearchParams(queryString);
       searchParams.forEach((value, key) => {
-        queryParams[key] = value;
+        if (key !== 'v') queryParams[key] = value;
       });
+    } else {
+      const ampIdx = vid.indexOf('&');
+      if (ampIdx !== -1) {
+        const queryString = vid.substring(ampIdx + 1);
+        const searchParams = new URLSearchParams(queryString);
+        searchParams.forEach((value, key) => {
+          if (key !== 'v') queryParams[key] = value;
+        });
+      }
     }
   }
 
@@ -935,13 +1773,13 @@ function getYoutubeEmbedUrl(vid) {
 
   let embedUrl = `https://www.youtube.com/embed/${videoId}`;
   const embedParams = new URLSearchParams();
-  
+
   if (startTime !== null) {
     embedParams.set('start', startTime);
   }
-  
+
   Object.entries(queryParams).forEach(([key, value]) => {
-    if (key !== 't' && key !== 'start') {
+    if (key !== 't' && key !== 'start' && key !== 'v' && key !== 'si' && key !== 'feature') {
       embedParams.set(key, value);
     }
   });

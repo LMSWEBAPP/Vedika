@@ -241,4 +241,3 @@ sed -i "s/bench serve.*/bench serve --host 0.0.0.0 --port ${PORT:-8000} --norelo
 # Start the Frappe Bench server (binds to 0.0.0.0 for external routing)
 echo "Starting Frappe Bench web server on 0.0.0.0:${PORT:-8000}..."
 bench --site lms.render serve --host 0.0.0.0 --port "${PORT:-8000}" --noreload
-

@@ -6,10 +6,12 @@ import Sidebar from './Sidebar';
 import AdminSidebar from './AdminSidebar';
 import { T } from '@/lib/lms-data';
 import { useDesktopPetBridge } from '@/hooks/useDesktopPetBridge';
+import { useMediaQuery, isMobileMQ } from '@/lib/useMediaQuery';
 
 export default function LayoutWrapper({ children }) {
   const pathname = usePathname();
   const router = useRouter();
+  const isMobile = useMediaQuery(isMobileMQ);
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -139,15 +141,16 @@ export default function LayoutWrapper({ children }) {
   }
 
   const isAdminRoute = pathname.startsWith('/admin');
+  const layoutFlexDirection = isAdminRoute ? (isMobile ? 'column' : 'row') : 'column';
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: 'var(--bg)', color: 'var(--text)', width: '100%' }}>
+    <div style={{ display: 'flex', flexDirection: layoutFlexDirection, minHeight: '100vh', background: 'var(--bg)', color: 'var(--text)', width: '100%' }}>
       {isAdminRoute ? (
         <AdminSidebar isCollapsed={sidebarCollapsed} onToggleCollapse={handleToggleCollapse} />
       ) : (
         <Sidebar />
       )}
-      <div className="sidebar-content-area" style={{ flex: 1, overflowY: 'auto', width: '100%' }}>
+      <div className="sidebar-content-area" style={{ flex: 1, overflowY: 'auto', width: '100%', minWidth: 0 }}>
         {children}
       </div>
     </div>

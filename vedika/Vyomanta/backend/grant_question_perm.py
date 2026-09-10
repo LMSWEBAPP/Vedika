@@ -26,7 +26,14 @@ def grant_permissions(doctype, role, perm_dict):
     frappe.clear_cache(doctype=doctype)
 
 print("Configuring LMS Student permissions...")
-# LMS Student needs to read LMS Quiz and LMS Question, and submit quizzes
+# LMS Student & Guest permissions for LMS Course, Chapter, Lesson, Quiz, Question
+grant_permissions("Course Lesson", "Guest", {"read": 1, "write": 1, "create": 1})
+grant_permissions("Course Lesson", "LMS Student", {"read": 1, "write": 1, "create": 1})
+grant_permissions("Course Chapter", "Guest", {"read": 1, "write": 1, "create": 1})
+grant_permissions("Course Chapter", "LMS Student", {"read": 1, "write": 1, "create": 1})
+grant_permissions("LMS Course", "Guest", {"read": 1, "write": 1, "create": 1})
+grant_permissions("LMS Course", "LMS Student", {"read": 1, "write": 1, "create": 1})
+
 grant_permissions("LMS Quiz", "LMS Student", {"read": 1, "write": 0, "create": 0})
 grant_permissions("LMS Question", "LMS Student", {"read": 1, "write": 0, "create": 0})
 grant_permissions("LMS Quiz Submission", "LMS Student", {"read": 1, "write": 1, "create": 1})

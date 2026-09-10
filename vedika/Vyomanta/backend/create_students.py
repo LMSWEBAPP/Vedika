@@ -45,20 +45,20 @@ def grant_permission(doctype, role, read=1, write=0, create=0, delete=0):
 # Grant permissions for LMS DocTypes
 permissions_to_grant = [
     # LMS Course
-    ("LMS Course", "LMS Student", 1, 0, 0, 0),
-    ("LMS Course", "Guest", 1, 0, 0, 0),
+    ("LMS Course", "LMS Student", 1, 1, 1, 0),
+    ("LMS Course", "Guest", 1, 1, 1, 0),
     
     # Course Chapter
-    ("Course Chapter", "LMS Student", 1, 0, 0, 0),
-    ("Course Chapter", "Guest", 1, 0, 0, 0),
+    ("Course Chapter", "LMS Student", 1, 1, 1, 0),
+    ("Course Chapter", "Guest", 1, 1, 1, 0),
     
     # Course Lesson
-    ("Course Lesson", "LMS Student", 1, 0, 0, 0),
-    ("Course Lesson", "Guest", 1, 0, 0, 0),
+    ("Course Lesson", "LMS Student", 1, 1, 1, 0),
+    ("Course Lesson", "Guest", 1, 1, 1, 0),
     
     # LMS Course Category
-    ("LMS Course Category", "LMS Student", 1, 0, 0, 0),
-    ("LMS Course Category", "Guest", 1, 0, 0, 0),
+    ("LMS Course Category", "LMS Student", 1, 1, 1, 0),
+    ("LMS Course Category", "Guest", 1, 1, 1, 0),
     
     # LMS Enrollment
     ("LMS Enrollment", "LMS Student", 1, 1, 1, 0),

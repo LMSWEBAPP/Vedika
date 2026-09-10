@@ -66,58 +66,59 @@ export default function LessonRoute() {
         if (FRAPPE_URL) {
           try {
             const lDoc = await frappeRestGet(`Course Lesson/${id}`);
-            if (lDoc && lDoc.course) {
-              const syllabus = await getCourseSyllabus(lDoc.course);
-              if (syllabus && syllabus.modules) {
-                const lessonsInCourse = [];
-                syllabus.modules.forEach(m => {
-                  m.lessons.forEach(l => {
-                    lessonsInCourse.push({
-                      ...l,
-                      moduleTitle: m.title,
-                      courseTitle: syllabus.title,
-                      courseId: syllabus.id,
-                      module: m
-                    });
-                  });
-                });
-                found = lessonsInCourse.find(l => l.id === id);
-                if (found && found.lazyLoad) {
-                  let pts = ["Key concept introduction."];
-                  let quizQuestions = [];
-                  let codingExercise = {
-                    hasExercise: false,
-                    language: 'python',
-                    instruction: '',
-                    starterCode: '',
-                    solutionCode: '',
-                    testCases: []
-                  };
-                  let pdf = "";
-                  if (lDoc.instructor_notes) {
-                    try {
-                      const meta = JSON.parse(lDoc.instructor_notes);
-                      if (Array.isArray(meta.pts)) pts = meta.pts;
-                      if (Array.isArray(meta.quizQuestions)) quizQuestions = meta.quizQuestions;
-                      if (meta.codingExercise) codingExercise = meta.codingExercise;
-                      if (meta.pdf) pdf = meta.pdf;
-                    } catch (e) {}
-                  }
-                  
-                  found = {
-                    ...found,
-                    title: lDoc.title || found.title,
-                    dur: lDoc.duration || "10 min",
-                    vid: lDoc.youtube || "rfscVS0vtbw",
-                    overview: lDoc.body || "",
-                    pts,
-                    quizQuestions,
-                    codingExercise,
-                    pdf,
-                    lazyLoad: false
-                  };
-                }
+            if (lDoc && (lDoc.name || lDoc.title)) {
+              let pts = ["Key concept introduction."];
+              let quizQuestions = [];
+              let codingExercise = {
+                hasExercise: false,
+                language: 'python',
+                instruction: '',
+                starterCode: '',
+                solutionCode: '',
+                testCases: []
+              };
+              let pdf = "";
+              if (lDoc.instructor_notes) {
+                try {
+                  const meta = JSON.parse(lDoc.instructor_notes);
+                  if (Array.isArray(meta.pts)) pts = meta.pts;
+                  if (Array.isArray(meta.quizQuestions)) quizQuestions = meta.quizQuestions;
+                  if (meta.codingExercise) codingExercise = meta.codingExercise;
+                  if (meta.pdf) pdf = meta.pdf;
+                } catch (e) {}
               }
+
+              let moduleTitle = "Module";
+              let courseTitle = "Course";
+              let courseId = lDoc.course || "";
+
+              if (lDoc.course) {
+                try {
+                  const syllabus = await getCourseSyllabus(lDoc.course, { forceRefresh: true });
+                  if (syllabus) {
+                    courseTitle = syllabus.title || courseTitle;
+                    if (syllabus.modules) {
+                      const m = syllabus.modules.find(mod => mod.lessons && mod.lessons.some(l => l.id === id));
+                      if (m) moduleTitle = m.title;
+                    }
+                  }
+                } catch (e) {}
+              }
+
+              found = {
+                id: lDoc.name || id,
+                title: lDoc.title || id,
+                dur: "10 min",
+                vid: lDoc.youtube || "",
+                overview: lDoc.body || "",
+                pts,
+                quizQuestions,
+                codingExercise,
+                pdf,
+                moduleTitle,
+                courseTitle,
+                courseId
+              };
             }
           } catch (e) {
             console.error("Backend fetch failed, trying local fallback", e);
