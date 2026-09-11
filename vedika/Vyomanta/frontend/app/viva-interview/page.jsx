@@ -1865,7 +1865,9 @@ export default function VivaInterviewPage() {
   return (
     <div style={{
       width: '100%',
-      minHeight: '100vh',
+      minHeight: '100%',
+      height: '100%',
+      overflowY: 'auto',
       background: 'var(--bg)',
       color: 'var(--text)',
       fontFamily: 'var(--font-outfit), sans-serif',

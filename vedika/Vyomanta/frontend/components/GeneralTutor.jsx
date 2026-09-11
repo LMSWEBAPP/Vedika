@@ -923,7 +923,7 @@ export default function GeneralTutor() {
   return (
     <>
       <MobileNav title="Ask your AI Tutor" accent={T.purple} items={[]} dropdownItems={NAV} extras={tutorExtras} />
-      <div style={{ display: 'flex', height: '100vh', background: T.bg, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', height: '100%', maxHeight: '100%', background: T.bg, overflow: 'hidden', width: '100%' }}>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
         {/* ── HEADER ── */}
@@ -1084,6 +1084,30 @@ export default function GeneralTutor() {
                               </button>
                             );
                           })}
+                          {/* Dismiss / Close Feature Button */}
+                          <button
+                            type="button"
+                            onClick={() => setMessages(prev => prev.map((m, i) => i === mi ? { ...m, activeFeature: null } : m))}
+                            style={{
+                              marginLeft: 'auto',
+                              padding: '0 14px',
+                              background: 'transparent',
+                              border: 'none',
+                              color: T.muted,
+                              cursor: 'pointer',
+                              fontSize: 11.5,
+                              fontWeight: 600,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              transition: 'color 0.15s'
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.color = T.text}
+                            onMouseLeave={e => e.currentTarget.style.color = T.muted}
+                            title="Close this feature panel"
+                          >
+                            <span>✕ Close</span>
+                          </button>
                         </div>
 
                         {/* Tab Content Panel */}
@@ -1263,8 +1287,8 @@ export default function GeneralTutor() {
                       </div>
                     )}
 
-                    {/* ── Suggestion chips ── */}
-                    {!msg.local && (
+                    {/* ── Suggestion chips (Only shown when feature panel is not active) ── */}
+                    {!msg.local && !msg.activeFeature && (
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
                         {SUGGESTIONS.map(s => {
                           const loading = isGeneratingFeature(mi, s.id);

@@ -22,12 +22,12 @@
 
 /* Modal Window Frame (Smooth Bézier Curvature Driven by RAF) */
 .practice-modal-window {
-  width: 95vw;
-  max-width: 1560px;
-  height: 90vh;
-  max-height: 940px;
+  width: 98vw;
+  max-width: 98vw;
+  height: 96vh;
+  max-height: 96vh;
   background: #06080C;
-  border-radius: 20px;
+  border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.14);
   box-shadow: 
     0 40px 120px -20px rgba(0, 0, 0, 0.92),
@@ -41,19 +41,10 @@
   transform-origin: center bottom;
   transform-style: preserve-3d;
   will-change: transform, opacity, clip-path;
-  transition: width 0.25s cubic-bezier(0.16, 1, 0.3, 1), height 0.25s cubic-bezier(0.16, 1, 0.3, 1), max-width 0.25s ease, max-height 0.25s ease, border-radius 0.2s ease;
 }
 
 .practice-modal-window.closing {
   pointer-events: none;
-}
-
-.practice-modal-window.is-maximized {
-  width: 99vw;
-  max-width: 99vw;
-  height: 97vh;
-  max-height: 97vh;
-  border-radius: 12px;
 }
 
 /* Iridescent Cloth Folding Shimmer */
@@ -178,33 +169,6 @@
   border-radius: 50%;
   background: #34D399;
   box-shadow: 0 0 8px #34D399;
-}
-
-/* Maximize / Fullscreen Icon Button */
-.practice-header-icon-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #94A3B8;
-  cursor: pointer;
-  outline: none;
-  transition: all 0.16s ease;
-}
-
-.practice-header-icon-btn:hover {
-  background: rgba(255, 255, 255, 0.10);
-  border-color: rgba(255, 255, 255, 0.22);
-  color: #F8FAFC;
-  transform: translateY(-1px);
-}
-
-.practice-header-icon-btn:active {
-  transform: translateY(0);
 }
 
 /* Bespoke Close Button (Frosted, soft red hover) */

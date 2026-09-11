@@ -177,14 +177,41 @@ export default function LayoutWrapper({ children }) {
   const isAdminRoute = pathname.startsWith('/admin');
   const layoutFlexDirection = isAdminRoute ? (isMobile ? 'column' : 'row') : 'column';
 
+  const isFullscreenAppRoute =
+    pathname.startsWith('/vedika-ai/ask') ||
+    pathname.startsWith('/vedika-ai/code') ||
+    pathname.startsWith('/vedika-ai/puzzle') ||
+    pathname === '/general-tutor' ||
+    pathname === '/code-puzzle' ||
+    pathname.startsWith('/viva-interview');
+
   return (
-    <div style={{ display: 'flex', flexDirection: layoutFlexDirection, minHeight: '100vh', background: 'var(--bg)', color: 'var(--text)', width: '100%' }}>
+    <div style={{
+      display: 'flex',
+      flexDirection: layoutFlexDirection,
+      height: '100vh',
+      maxHeight: '100dvh',
+      overflow: 'hidden',
+      background: 'var(--bg)',
+      color: 'var(--text)',
+      width: '100%'
+    }}>
       {isAdminRoute ? (
         <AdminSidebar isCollapsed={sidebarCollapsed} onToggleCollapse={handleToggleCollapse} />
       ) : (
         <Sidebar />
       )}
-      <div className="sidebar-content-area" style={{ flex: 1, overflowY: 'auto', width: '100%', minWidth: 0 }}>
+      <div
+        className="sidebar-content-area"
+        style={{
+          flex: 1,
+          height: isAdminRoute ? '100%' : 'calc(100vh - 64px)',
+          overflowY: isFullscreenAppRoute ? 'hidden' : 'auto',
+          overflowX: 'hidden',
+          width: '100%',
+          minWidth: 0
+        }}
+      >
         {children}
       </div>
     </div>

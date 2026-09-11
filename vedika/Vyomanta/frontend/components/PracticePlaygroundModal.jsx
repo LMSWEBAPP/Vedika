@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Terminal, Maximize2, Minimize2, X, Minus } from 'lucide-react';
+import { Terminal, X, Minus } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import './PracticePlaygroundModal.css';
 
@@ -43,7 +43,6 @@ export default function PracticePlaygroundModal({
   onCodeChange = null,
 }) {
   const [isClosing, setIsClosing] = useState(false);
-  const [isMaximized, setIsMaximized] = useState(false);
   const windowRef = React.useRef(null);
   const backdropRef = React.useRef(null);
   const rafRef = React.useRef(null);
@@ -291,7 +290,7 @@ export default function PracticePlaygroundModal({
     >
       <div
         ref={windowRef}
-        className={`practice-modal-window ${isClosing ? 'closing' : ''} ${isMaximized ? 'is-maximized' : ''}`}
+        className={`practice-modal-window ${isClosing ? 'closing' : ''}`}
         role="dialog"
         aria-modal="true"
       >
@@ -315,17 +314,6 @@ export default function PracticePlaygroundModal({
               <span className="practice-status-dot" />
               <span>Pyodide WASM</span>
             </div>
-
-            {/* Fullscreen / Maximize Toggle */}
-            <button
-              type="button"
-              className="practice-header-icon-btn"
-              onClick={() => setIsMaximized(!isMaximized)}
-              title={isMaximized ? 'Exit Fullscreen' : 'Maximize Window'}
-              aria-label="Toggle Window Size"
-            >
-              {isMaximized ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
-            </button>
 
             {/* Sleek Custom Close Button */}
             <button

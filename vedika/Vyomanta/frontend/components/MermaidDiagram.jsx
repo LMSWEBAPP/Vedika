@@ -1,8 +1,52 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { ZoomIn, ZoomOut, RotateCcw, Code, Copy, Check, Sparkles, AlertCircle } from 'lucide-react';
+import { ZoomIn, ZoomOut, RotateCcw, Code, Copy, Check, Sparkles, AlertCircle, Maximize2, ChevronDown, X } from 'lucide-react';
 import './MermaidDiagram.css';
+
+/**
+ * Parses inline markdown formatted tokens (**bold**, *italic*, `code`)
+ * into clean React elements so raw asterisks are never shown.
+ */
+function renderFormattedText(str) {
+  if (!str) return '';
+  const parts = [];
+  const regex = /(\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*)/g;
+  let lastIndex = 0;
+  let match;
+
+  while ((match = regex.exec(str)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(str.substring(lastIndex, match.index));
+    }
+    const token = match[0];
+    if (token.startsWith('**') && token.endsWith('**')) {
+      parts.push(
+        <strong key={match.index} className="mermaid-text-bold">
+          {token.slice(2, -2)}
+        </strong>
+      );
+    } else if (token.startsWith('`') && token.endsWith('`')) {
+      parts.push(
+        <code key={match.index} className="mermaid-text-code">
+          {token.slice(1, -1)}
+        </code>
+      );
+    } else if (token.startsWith('*') && token.endsWith('*')) {
+      parts.push(
+        <em key={match.index} className="mermaid-text-italic">
+          {token.slice(1, -1)}
+        </em>
+      );
+    }
+    lastIndex = regex.lastIndex;
+  }
+
+  if (lastIndex < str.length) {
+    parts.push(str.substring(lastIndex));
+  }
+  return parts.length > 0 ? parts : str;
+}
 
 /**
  * Sanitizes raw Mermaid flowchart syntax to prevent parser syntax errors
@@ -38,6 +82,8 @@ export default function MermaidDiagram({ chart, points = [], onRegenerate }) {
   const [zoom, setZoom] = useState(1);
   const [showCode, setShowCode] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [isKeypointsOpen, setIsKeypointsOpen] = useState(false); // Collapsed by default
+  const [isModalOpen, setIsModalOpen] = useState(false); // Fullscreen expand modal
 
   // Generate unique render ID per component mount to prevent SVG collisions
   const uniqueIdRef = useRef(`mermaid_${Math.random().toString(36).substr(2, 9)}`);
@@ -118,6 +164,16 @@ export default function MermaidDiagram({ chart, points = [], onRegenerate }) {
     };
   }, [activeChartCode, points]);
 
+  // Handle ESC key to dismiss modal
+  useEffect(() => {
+    if (!isModalOpen) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') setIsModalOpen(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isModalOpen]);
+
   const handleZoomIn = () => setZoom(prev => Math.min(prev + 0.15, 2.2));
   const handleZoomOut = () => setZoom(prev => Math.max(prev - 0.15, 0.5));
   const handleZoomReset = () => setZoom(1);
@@ -191,6 +247,17 @@ export default function MermaidDiagram({ chart, points = [], onRegenerate }) {
             {copied ? <Check size={13} color="#10B981" /> : <Copy size={13} />}
           </button>
 
+          {/* Fullscreen / Expand Modal Toggle */}
+          <button
+            type="button"
+            className="mermaid-btn mermaid-expand-btn"
+            onClick={() => setIsModalOpen(true)}
+            title="Open in Focused Modal Window"
+          >
+            <Maximize2 size={12} />
+            <span>Expand</span>
+          </button>
+
           {/* Optional Regenerate */}
           {onRegenerate && (
             <button
@@ -243,16 +310,98 @@ export default function MermaidDiagram({ chart, points = [], onRegenerate }) {
         </div>
       )}
 
-      {/* Key Takeaways Section */}
+      {/* Key Takeaways Section (Collapsible Accordion with Formatted Typography) */}
       {points && points.length > 0 && (
         <div className="mermaid-takeaways">
-          <div className="mermaid-takeaways-title">Key Takeaways & Concept Breakdown</div>
-          <div className="mermaid-takeaways-list">
-            {points.map((pt, idx) => (
-              <div key={idx} className="mermaid-takeaway-item">
-                <span>{pt}</span>
+          <button
+            type="button"
+            className="mermaid-takeaways-toggle"
+            onClick={() => setIsKeypointsOpen(!isKeypointsOpen)}
+            title={isKeypointsOpen ? "Click to collapse takeaways" : "Click to view key takeaways"}
+          >
+            <div className="mermaid-takeaways-toggle-left">
+              <Sparkles size={13} color="#F5A95B" />
+              <span className="mermaid-takeaways-title">Key Takeaways & Concepts</span>
+              <span className="mermaid-takeaways-count">({points.length} points)</span>
+            </div>
+            <ChevronDown
+              size={15}
+              className={`mermaid-takeaways-chevron ${isKeypointsOpen ? 'open' : ''}`}
+            />
+          </button>
+
+          {isKeypointsOpen && (
+            <div className="mermaid-takeaways-list">
+              {points.map((pt, idx) => (
+                <div key={idx} className="mermaid-takeaway-item">
+                  <span className="mermaid-takeaway-bullet">{idx + 1}</span>
+                  <div className="mermaid-takeaway-text">{renderFormattedText(pt)}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Expanded Modal Window */}
+      {isModalOpen && (
+        <div
+          className="mermaid-modal-backdrop"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setIsModalOpen(false);
+          }}
+        >
+          <div className="mermaid-modal-window" role="dialog" aria-modal="true">
+            {/* Modal Header */}
+            <div className="mermaid-modal-header">
+              <div className="mermaid-title-area">
+                <span className="mermaid-badge">Expanded Infographic</span>
+                <span className="mermaid-label">Full Visual Concept Overview</span>
               </div>
-            ))}
+
+              <div className="mermaid-actions">
+                <button type="button" className="mermaid-btn" onClick={handleZoomIn} title="Zoom In"><ZoomIn size={13} /></button>
+                <button type="button" className="mermaid-btn" onClick={handleZoomOut} title="Zoom Out"><ZoomOut size={13} /></button>
+                <button type="button" className="mermaid-btn" onClick={handleZoomReset} title="Reset Zoom"><RotateCcw size={12} /><span>{Math.round(zoom * 100)}%</span></button>
+                <button
+                  type="button"
+                  className="mermaid-modal-close-btn"
+                  onClick={() => setIsModalOpen(false)}
+                  title="Close (Esc)"
+                >
+                  <X size={14} />
+                  <span>Close</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Canvas */}
+            <div className="mermaid-modal-viewport">
+              {svgHtml && (
+                <div
+                  className="mermaid-svg-wrapper"
+                  style={{ transform: `scale(${zoom})` }}
+                  dangerouslySetInnerHTML={{ __html: svgHtml }}
+                />
+              )}
+            </div>
+
+            {/* Modal Takeaways Footer */}
+            {points && points.length > 0 && (
+              <div className="mermaid-modal-takeaways">
+                <div className="mermaid-takeaways-title" style={{ marginBottom: 8 }}>
+                  Key Takeaways ({points.length})
+                </div>
+                <div className="mermaid-takeaways-list">
+                  {points.map((pt, idx) => (
+                    <div key={idx} className="mermaid-takeaway-item">
+                      <span className="mermaid-takeaway-bullet">{idx + 1}</span>
+                      <div className="mermaid-takeaway-text">{renderFormattedText(pt)}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -1207,7 +1207,7 @@ export default function CodePuzzle() {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#07080F', color: '#DDE3F2', fontFamily: 'var(--font-outfit), sans-serif', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', maxHeight: '100%', width: '100%', background: '#07080F', color: '#DDE3F2', fontFamily: 'var(--font-outfit), sans-serif', overflow: 'hidden' }}>
       
       {/* --- Top Header bar --- */}
       <div style={{ height: 56, padding: '0 20px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#0C0F1C', zIndex: 10, flexShrink: 0 }}>

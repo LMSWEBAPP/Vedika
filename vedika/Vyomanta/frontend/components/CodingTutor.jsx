@@ -1305,7 +1305,7 @@ export default function CodingTutor() {
   return (
     <>
       <MobileNav title="Code with AI Tutor" accent={T.amber} items={[]} dropdownItems={NAV} extras={tutorExtras} />
-      <div style={{ display: 'flex', height: '100vh', background: T.bg, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', height: '100%', maxHeight: '100%', background: T.bg, overflow: 'hidden', width: '100%' }}>
         <div id="tutor-workspace-container" style={{ flex: 1, display: 'flex', flexDirection: showVerticalSplit ? 'column' : 'row', overflow: 'hidden' }}>
           
           {/* Chat Container */}
@@ -1544,7 +1544,31 @@ export default function CodingTutor() {
                                   </button>
                                 );
                               })}
-                            </div>
+                                {/* Dismiss / Close Feature Button */}
+                                <button
+                                  type="button"
+                                  onClick={() => setMessages(prev => prev.map((m, i) => i === mi ? { ...m, activeFeature: null } : m))}
+                                  style={{
+                                    marginLeft: 'auto',
+                                    padding: '0 14px',
+                                    background: 'transparent',
+                                    border: 'none',
+                                    color: T.muted,
+                                    cursor: 'pointer',
+                                    fontSize: 11.5,
+                                    fontWeight: 600,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 4,
+                                    transition: 'color 0.15s'
+                                  }}
+                                  onMouseEnter={e => e.currentTarget.style.color = T.text}
+                                  onMouseLeave={e => e.currentTarget.style.color = T.muted}
+                                  title="Close this feature panel"
+                                >
+                                  <span>✕ Close</span>
+                                </button>
+                              </div>
 
                             {/* Tab Content Panel */}
                             <div style={{ padding: 20 }}>
@@ -1722,8 +1746,8 @@ export default function CodingTutor() {
                           </div>
                         )}
 
-                        {/* Suggestion Chips */}
-                        {!msg.local && (
+                        {/* Suggestion Chips (Only shown when feature panel is not active) */}
+                        {!msg.local && !msg.activeFeature && (
                           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
                             {SUGGESTIONS.map(s => {
                               const loading = isGeneratingFeature(mi, s.id);
