@@ -76,14 +76,33 @@ function sanitizeMermaid(raw) {
 
 export default function MermaidDiagram({ chart, points = [], onRegenerate }) {
   const containerRef = useRef(null);
+  const modalViewportRef = useRef(null);
   const [svgHtml, setSvgHtml] = useState('');
   const [renderError, setRenderError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [zoom, setZoom] = useState(1);
+  const [modalZoom, setModalZoom] = useState(1);
   const [showCode, setShowCode] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [isKeypointsOpen, setIsKeypointsOpen] = useState(false); // Collapsed by default
+  const [isKeypointsOpen, setIsKeypointsOpen] = useState(false); // Collapsed by default (inline chat)
   const [isModalOpen, setIsModalOpen] = useState(false); // Fullscreen expand modal
+  const [isModalKeypointsOpen, setIsModalKeypointsOpen] = useState(false); // Collapsed by default (modal)
+
+  // Reset modal scroll and state whenever modal is opened
+  useEffect(() => {
+    if (isModalOpen) {
+      setIsModalKeypointsOpen(false); // Collapsed by default
+      setModalZoom(1);
+      // Wait for layout paint to ensure scroll starts at the absolute top (0,0)
+      const timer = setTimeout(() => {
+        if (modalViewportRef.current) {
+          modalViewportRef.current.scrollTop = 0;
+          modalViewportRef.current.scrollLeft = 0;
+        }
+      }, 40);
+      return () => clearTimeout(timer);
+    }
+  }, [isModalOpen]);
 
   // Generate unique render ID per component mount to prevent SVG collisions
   const uniqueIdRef = useRef(`mermaid_${Math.random().toString(36).substr(2, 9)}`);
@@ -177,6 +196,10 @@ export default function MermaidDiagram({ chart, points = [], onRegenerate }) {
   const handleZoomIn = () => setZoom(prev => Math.min(prev + 0.15, 2.2));
   const handleZoomOut = () => setZoom(prev => Math.max(prev - 0.15, 0.5));
   const handleZoomReset = () => setZoom(1);
+
+  const handleModalZoomIn = () => setModalZoom(prev => Math.min(prev + 0.15, 2.5));
+  const handleModalZoomOut = () => setModalZoom(prev => Math.max(prev - 0.15, 0.4));
+  const handleModalZoomReset = () => setModalZoom(1);
 
   const handleCopyCode = async () => {
     try {
@@ -360,9 +383,22 @@ export default function MermaidDiagram({ chart, points = [], onRegenerate }) {
               </div>
 
               <div className="mermaid-actions">
-                <button type="button" className="mermaid-btn" onClick={handleZoomIn} title="Zoom In"><ZoomIn size={13} /></button>
-                <button type="button" className="mermaid-btn" onClick={handleZoomOut} title="Zoom Out"><ZoomOut size={13} /></button>
-                <button type="button" className="mermaid-btn" onClick={handleZoomReset} title="Reset Zoom"><RotateCcw size={12} /><span>{Math.round(zoom * 100)}%</span></button>
+                {/* Toggle Key Takeaways on the Right Side */}
+                {points && points.length > 0 && (
+                  <button
+                    type="button"
+                    className={`mermaid-btn mermaid-modal-keypoints-btn ${isModalKeypointsOpen ? 'active' : ''}`}
+                    onClick={() => setIsModalKeypointsOpen(!isModalKeypointsOpen)}
+                    title={isModalKeypointsOpen ? "Hide Key Takeaways Drawer" : "Show Key Takeaways on Right Side"}
+                  >
+                    <Sparkles size={12} color={isModalKeypointsOpen ? "#F5A95B" : "#94A3B8"} />
+                    <span>Key Takeaways ({points.length})</span>
+                  </button>
+                )}
+
+                <button type="button" className="mermaid-btn" onClick={handleModalZoomIn} title="Zoom In"><ZoomIn size={13} /></button>
+                <button type="button" className="mermaid-btn" onClick={handleModalZoomOut} title="Zoom Out"><ZoomOut size={13} /></button>
+                <button type="button" className="mermaid-btn" onClick={handleModalZoomReset} title="Reset Zoom"><RotateCcw size={12} /><span>{Math.round(modalZoom * 100)}%</span></button>
                 <button
                   type="button"
                   className="mermaid-modal-close-btn"
@@ -375,33 +411,49 @@ export default function MermaidDiagram({ chart, points = [], onRegenerate }) {
               </div>
             </div>
 
-            {/* Modal Canvas */}
-            <div className="mermaid-modal-viewport">
-              {svgHtml && (
-                <div
-                  className="mermaid-svg-wrapper"
-                  style={{ transform: `scale(${zoom})` }}
-                  dangerouslySetInnerHTML={{ __html: svgHtml }}
-                />
+            {/* Modal Main Body: Flowchart on left (full height), Key Takeaways Drawer on right */}
+            <div className="mermaid-modal-body">
+              <div className="mermaid-modal-viewport" ref={modalViewportRef}>
+                {svgHtml && (
+                  <div
+                    className="mermaid-svg-wrapper modal-chart"
+                    style={{ transform: `scale(${modalZoom})` }}
+                    dangerouslySetInnerHTML={{ __html: svgHtml }}
+                  />
+                )}
+              </div>
+
+              {/* Right-Side Key Takeaways Drawer (Opens horizontally so vertical flowchart height is never lost) */}
+              {points && points.length > 0 && isModalKeypointsOpen && (
+                <aside className="mermaid-modal-sidebar">
+                  <div className="mermaid-modal-sidebar-header">
+                    <div className="mermaid-modal-sidebar-title">
+                      <Sparkles size={14} color="#F5A95B" />
+                      <span>Key Takeaways</span>
+                      <span className="mermaid-takeaways-count">({points.length})</span>
+                    </div>
+                    <button
+                      type="button"
+                      className="mermaid-modal-sidebar-close"
+                      onClick={() => setIsModalKeypointsOpen(false)}
+                      title="Collapse Key Takeaways"
+                      aria-label="Collapse Key Takeaways"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+
+                  <div className="mermaid-modal-sidebar-content">
+                    {points.map((pt, idx) => (
+                      <div key={idx} className="mermaid-takeaway-item sidebar-item">
+                        <span className="mermaid-takeaway-bullet">{idx + 1}</span>
+                        <div className="mermaid-takeaway-text">{renderFormattedText(pt)}</div>
+                      </div>
+                    ))}
+                  </div>
+                </aside>
               )}
             </div>
-
-            {/* Modal Takeaways Footer */}
-            {points && points.length > 0 && (
-              <div className="mermaid-modal-takeaways">
-                <div className="mermaid-takeaways-title" style={{ marginBottom: 8 }}>
-                  Key Takeaways ({points.length})
-                </div>
-                <div className="mermaid-takeaways-list">
-                  {points.map((pt, idx) => (
-                    <div key={idx} className="mermaid-takeaway-item">
-                      <span className="mermaid-takeaway-bullet">{idx + 1}</span>
-                      <div className="mermaid-takeaway-text">{renderFormattedText(pt)}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         </div>
       )}
