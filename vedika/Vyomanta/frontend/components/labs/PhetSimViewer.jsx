@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   Maximize2, RotateCcw, BookOpen, HelpCircle, 
   ExternalLink, Layers, CheckCircle2, ChevronDown, Award, Send, Bot, RefreshCw
@@ -13,13 +13,41 @@ export default function PhetSimViewer({ subject = 'physics', activeSimId, onSele
   const activeSim = sims.find(s => s.id === activeSimId) || sims[0];
   const subjectMeta = LAB_SUBJECT_METADATA[subject] || LAB_SUBJECT_METADATA.physics;
 
+  const getInitialGreeting = (sim, subj) => {
+    const title = sim?.title || 'this experiment';
+    const badge = sim?.badge ? ` (${sim.badge})` : '';
+    const formulas = sim?.keyFormulas?.length ? `\n\n📐 **Key Formulas:** ${sim.keyFormulas.join(', ')}` : '';
+    const objectives = sim?.objectives?.length 
+      ? `\n\n🎯 **Core Objectives:**\n${sim.objectives.slice(0, 2).map(o => `• ${o}`).join('\n')}`
+      : '';
+
+    return `Hello! I am Vedika, your ${subj.toUpperCase()} Science Tutor. I am fully briefed on **${title}**${badge}.${objectives}${formulas}\n\nAsk me any question about the experiment, or select a question from the **Viva & Self Test** tab for a complete guided solution!`;
+  };
+
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('sim'); // 'sim', 'objectives', 'formulas', 'questions', 'ai'
   const [aiQuery, setAiQuery] = useState('');
   const [aiChat, setAiChat] = useState([
-    { sender: 'ai', text: `Hello! I am Vedika, your ${subject.toUpperCase()} Science Tutor. Ask me any question about ${activeSim?.title || 'this experiment'}!` }
+    { sender: 'ai', text: getInitialGreeting(activeSim, subject) }
   ]);
   const [isAiThinking, setIsAiThinking] = useState(false);
+  const chatBottomRef = useRef(null);
+
+  // Reset AI chat context with primed experiment briefing when switching to a different simulation
+  useEffect(() => {
+    setAiChat([
+      { sender: 'ai', text: getInitialGreeting(activeSim, subject) }
+    ]);
+    setAiQuery('');
+    setIsAiThinking(false);
+  }, [activeSimId, subject]);
+
+  // Auto-scroll chat to bottom
+  useEffect(() => {
+    if (activeTab === 'ai' && chatBottomRef.current) {
+      chatBottomRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [aiChat, isAiThinking, activeTab]);
 
   const containerRef = useRef(null);
   const iframeRef = useRef(null);
@@ -42,32 +70,79 @@ export default function PhetSimViewer({ subject = 'physics', activeSimId, onSele
     }
   };
 
-  const handleAskAi = async (textToSend) => {
+  const handleAskAi = async (textToSend, options = {}) => {
     const q = textToSend || aiQuery;
     if (!q.trim()) return;
 
     const userMsg = { sender: 'user', text: q };
     setAiChat(prev => [...prev, userMsg]);
-    if (!textToSend) setAiQuery('');
+    setAiQuery(''); // Always clear input
     setIsAiThinking(true);
 
+    let vivaQuestion = options.vivaQuestion;
+    let questionIndex = options.questionIndex;
+
+    // Parse viva question details if called with standard question prefix
+    if (!vivaQuestion && q.startsWith('Answer Viva Question Q')) {
+      const match = q.match(/Answer Viva Question Q(\d+):\s*(.*)/i);
+      if (match) {
+        questionIndex = parseInt(match[1], 10);
+        vivaQuestion = match[2];
+      }
+    }
+
     try {
-      const res = await fetch('/api/tutor/chat', {
+      // Primary: Dedicated Labs Tutor API with full experiment briefing & Gemini key rotation
+      const res = await fetch('/api/labs/tutor', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: `Subject: ${subject}. Experiment: ${activeSim?.title}. Objective: ${activeSim?.description}. Student Question: ${q}`,
-          subject: subject,
-          history: aiChat.slice(-6).map(m => ({ role: m.sender === 'user' ? 'user' : 'model', content: m.text }))
+          subject,
+          experiment: activeSim,
+          userQuery: q,
+          vivaQuestion: vivaQuestion || null,
+          questionIndex: questionIndex || null,
+          history: aiChat.slice(-6).map(m => ({ sender: m.sender, text: m.text }))
         })
       });
+
+      if (!res.ok) throw new Error(`Server responded with ${res.status}`);
       const data = await res.json();
-      const aiReply = data.reply || data.response || "Based on the principles of this PhET experiment, observed variables adjust system equilibrium according to fundamental physical and chemical laws.";
-      setAiChat(prev => [...prev, { sender: 'ai', text: aiReply }]);
+      const aiReply = data.reply || data.response;
+      if (aiReply) {
+        setAiChat(prev => [...prev, { sender: 'ai', text: aiReply }]);
+        return;
+      }
+      throw new Error('No response text received');
     } catch (err) {
+      console.warn('[Lab Tutor API error, attempting direct fallback]:', err);
+      // Secondary fallback: Direct /api/gemini endpoint
+      try {
+        const directRes = await fetch('/api/gemini', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            system: `You are Vedika, the senior AI science tutor for ${activeSim?.title || 'Virtual Labs'}. Key Formulas: ${activeSim?.keyFormulas?.join(', ') || 'Fundamental laws'}. Provide a clear direct viva answer, theoretical explanation, and simulation verification steps.`,
+            user: q
+          })
+        });
+        if (directRes.ok) {
+          const directData = await directRes.json();
+          if (directData.text) {
+            setAiChat(prev => [...prev, { sender: 'ai', text: directData.text }]);
+            return;
+          }
+        }
+      } catch (fallbackErr) {
+        console.warn('[Direct fallback also failed]:', fallbackErr);
+      }
+
+      // Offline synthesis fallback
       setAiChat(prev => [...prev, { 
         sender: 'ai', 
-        text: `Key Principle: In ${activeSim?.title}, the relevant laws are: ${activeSim?.keyFormulas?.join(', ')}. Keep experimenting with sliders and probes to observe system behavior!` 
+        text: `### Direct Viva Answer: ${activeSim?.title || 'Experiment'}\n\n` +
+              `**Key Principle:** In this experiment, system behavior is determined by: **${activeSim?.keyFormulas?.join(', ') || 'fundamental laws'}**.\n\n` +
+              `**Simulation Guidance:** Use the simulator components and meters to observe direct changes as you adjust parameters. Please ask again in a moment for full live analysis.` 
       }]);
     } finally {
       setIsAiThinking(false);
@@ -445,7 +520,10 @@ export default function PhetSimViewer({ subject = 'physics', activeSimId, onSele
                     <button
                       onClick={() => {
                         setActiveTab('ai');
-                        handleAskAi(`Answer Viva Question Q${i+1}: ${q}`);
+                        handleAskAi(`Answer Viva Question Q${i+1}: ${q}`, {
+                          vivaQuestion: q,
+                          questionIndex: i + 1
+                        });
                       }}
                       style={{
                         background: 'rgba(255, 255, 255, 0.08)',
@@ -474,30 +552,40 @@ export default function PhetSimViewer({ subject = 'physics', activeSimId, onSele
         {/* TAB 5: Integrated Vedika AI Tutor Assistant */}
         {activeTab === 'ai' && (
           <div style={{ padding: 24, background: '#0A0E17', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 450 }}>
-            <div style={{ flex: 1, overflowY: 'auto', marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ flex: 1, overflowY: 'auto', marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
               {aiChat.map((msg, idx) => (
                 <div 
                   key={idx}
                   style={{
                     alignSelf: msg.sender === 'user' ? 'flex-end' : 'flex-start',
-                    maxWidth: '80%',
-                    background: msg.sender === 'user' ? subjectMeta.accentColor : 'rgba(255, 255, 255, 0.08)',
+                    maxWidth: '85%',
+                    background: msg.sender === 'user' ? subjectMeta.accentColor : 'rgba(255, 255, 255, 0.07)',
                     color: '#fff',
-                    padding: '12px 16px',
+                    padding: '14px 18px',
                     borderRadius: 12,
                     fontSize: 14,
-                    lineHeight: 1.5
+                    lineHeight: 1.6,
+                    border: msg.sender === 'user' ? 'none' : '1px solid rgba(255, 255, 255, 0.08)'
                   }}
                 >
-                  <strong>{msg.sender === 'user' ? 'You' : 'Vedika AI Tutor'}:</strong>
-                  <div style={{ marginTop: 4 }}>{msg.text}</div>
+                  <div style={{ fontWeight: 700, fontSize: 13, opacity: 0.9, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {msg.sender === 'user' ? 'You' : (
+                      <>
+                        <Bot size={15} style={{ color: subjectMeta.accentColor }} />
+                        <span>Vedika AI Science Tutor</span>
+                      </>
+                    )}
+                  </div>
+                  <div style={{ whiteSpace: 'pre-wrap', fontSize: 13.5 }}>{msg.text}</div>
                 </div>
               ))}
               {isAiThinking && (
-                <div style={{ alignSelf: 'flex-start', color: subjectMeta.accentColor, fontSize: 13, fontWeight: 600 }}>
-                  Vedika AI Tutor is evaluating lab experiment data...
+                <div style={{ alignSelf: 'flex-start', color: subjectMeta.accentColor, fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'rgba(255,255,255,0.04)', borderRadius: 8 }}>
+                  <RefreshCw size={14} style={{ animation: 'spin 1.5s linear infinite' }} />
+                  Vedika AI Tutor is analyzing experiment principles and preparing viva guidance...
                 </div>
               )}
+              <div ref={chatBottomRef} />
             </div>
 
             <div style={{ display: 'flex', gap: 8 }}>

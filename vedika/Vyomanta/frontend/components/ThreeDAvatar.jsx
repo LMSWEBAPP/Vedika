@@ -8,11 +8,11 @@ import './ThreeDPhysicsAvatar.css';
 /**
  * ThreeDAvatar — Ultra-Optimized 3D Avatar (Zero Loading Flash)
  *
- * Avatars matching Home Page Squad:
- *  1. Emerald (Mowgli)   — Physics Lab   (#2dd4bf / avatar_green.webp)
- *  2. Blue (Belle)       — Chemistry Lab (#38bdf8 / avatar_blue.webp)
- *  3. Pink (Moana)       — Biology Lab   (#f472b6 / avatar_pink.webp)
- *  4. Gold (Bagheera)    — Math Lab      (#facc15 / avatar_gold.webp)
+ * Avatars matching Unified Color Palette:
+ *  1. Avatar 1 (Neon Green)  — (#39FF14 / avatar_1_purple.webp)
+ *  2. Avatar 2 (Neon Pink)   — (#FF6EFF / avatar_2_lime.webp)
+ *  3. Avatar 3 (Neon Red)    — (#FF3131 / avatar_3_red.webp)
+ *  4. Avatar 4 (Neon Orange) — (#FF5C00 / avatar_4_blue.webp)
  */
 
 const DB_NAME = 'Vedika3DModelCache';
@@ -129,12 +129,15 @@ function updateSpring(val, vel, target, stiffness, damping, dt) {
 
 export default function ThreeDAvatar({
   expression = 'idle',
-  glowColor = '#2dd4bf',
+  glowColor = '#39FF14',
   modelColor = '#FFFFFF',
   textureUrl = null,
   size = 250,
   mouseOffset = { x: 0, y: 0 },
   isSpeaking = false,
+  baseRotX = 0,
+  baseRotY = 0,
+  baseRotZ = 0,
   className = '',
   onLoaded,
   onClick,
@@ -153,11 +156,14 @@ export default function ThreeDAvatar({
     mouse: { x: 0, y: 0 },
     mouseVel: { x: 0, y: 0 },
     isSpeaking,
+    baseRotX,
+    baseRotY,
+    baseRotZ,
 
     // 3D Model Rotation Springs
-    rotX: 0, rotVX: 0,
-    rotY: 0, rotVY: 0,
-    rotZ: 0, rotVZ: 0,
+    rotX: baseRotX, rotVX: 0,
+    rotY: baseRotY, rotVY: 0,
+    rotZ: baseRotZ, rotVZ: 0,
 
     // Expression Morph Weights
     happyWeight: 0, vHappy: 0,
@@ -179,7 +185,10 @@ export default function ThreeDAvatar({
     s.textureUrl = textureUrl;
     s.targetMouse = mouseOffset;
     s.isSpeaking = isSpeaking;
-  }, [expression, glowColor, modelColor, textureUrl, mouseOffset, isSpeaking]);
+    s.baseRotX = baseRotX;
+    s.baseRotY = baseRotY;
+    s.baseRotZ = baseRotZ;
+  }, [expression, glowColor, modelColor, textureUrl, mouseOffset, isSpeaking, baseRotX, baseRotY, baseRotZ]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -286,8 +295,10 @@ export default function ThreeDAvatar({
             } else if (modelColor && modelColor !== '#FFFFFF') {
               child.material.color = new THREE.Color(modelColor);
             }
-            child.material.roughness = 0.45;
-            child.material.metalness = 0.08;
+            child.material.roughness = 0.32;
+            child.material.metalness = 0.04;
+            child.material.emissive = new THREE.Color(0x000000);
+            child.material.emissiveIntensity = 0.0;
             child.material.needsUpdate = true;
           }
         });
@@ -341,13 +352,13 @@ export default function ThreeDAvatar({
         modelRoot.position.y = floatOffset + talkOffset;
 
         // Target Euler rotations
-        let targetRotX = (s.mouse.y / 100) * 0.45;
-        let targetRotY = (s.mouse.x / 100) * 0.65;
-        let targetRotZ = 0;
+        let targetRotX = (s.baseRotX || 0) + (s.mouse.y / 100) * 0.45;
+        let targetRotY = (s.baseRotY || 0) + (s.mouse.x / 100) * 0.65;
+        let targetRotZ = (s.baseRotZ || 0);
 
         if (s.currentExpr === 'side_eye_right') targetRotY += 0.35;
         if (s.currentExpr === 'side_eye_left')  targetRotY -= 0.35;
-        if (s.currentExpr === 'thinking') { targetRotZ = -0.15; targetRotX -= 0.12; }
+        if (s.currentExpr === 'thinking') { targetRotZ -= 0.15; targetRotX -= 0.12; }
 
         const [rx, rvx] = updateSpring(s.rotX, s.rotVX, targetRotX, 100, 14, dt);
         const [ry, rvy] = updateSpring(s.rotY, s.rotVY, targetRotY, 100, 14, dt);

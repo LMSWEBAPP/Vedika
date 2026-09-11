@@ -62,12 +62,14 @@ export default function VedikaChamberPage() {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const scene = new VedikaChamberScene(canvas, handleIndexChangeFromScene);
+    const scene = new VedikaChamberScene(canvas, handleIndexChangeFromScene, () => {
+      setIsSceneReady(true);
+    });
     sceneInstanceRef.current = scene;
 
     const readyTimer = setTimeout(() => {
       setIsSceneReady(true);
-    }, 150);
+    }, 4500);
 
     return () => {
       clearTimeout(readyTimer);

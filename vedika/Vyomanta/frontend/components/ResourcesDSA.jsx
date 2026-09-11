@@ -15,8 +15,8 @@ export default function ResourcesDSA({ navigateTo }) {
     },
     {
       id: 'dsa/resources',
-      title: 'Learning Resources',
-      description: 'Comprehensive DSA study materials and guides',
+      title: 'DSA Roadmap & Learning Guide',
+      description: 'Master DSA with a step-by-step 8-stage roadmap, algorithms, and 14 interview patterns',
       gradient: 'linear-gradient(135deg, #10B981 0%, #14B8A6 100%)',
       Icon: BookOpen
     }

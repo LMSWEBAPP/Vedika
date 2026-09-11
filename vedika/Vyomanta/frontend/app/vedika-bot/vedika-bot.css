@@ -1,0 +1,561 @@
+/* ═══════════════════════════════════════════════════════════════
+   Vedika Bot 3D Studio & Model Rig Inspection
+   Styling for /vedika-bot page
+   ═══════════════════════════════════════════════════════════════ */
+
+.vbot-page {
+  position: relative;
+  width: 100%;
+  min-height: 100vh;
+  background: #000000;
+  color: #ffffff;
+  font-family: var(--font-outfit), 'Plus Jakarta Sans', sans-serif;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Background Ambient Lighting & Cyber Matrix Grid */
+.vbot-bg-ambient {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background: 
+    radial-gradient(circle at 50% 30%, rgba(45, 212, 191, 0.08) 0%, transparent 60%),
+    radial-gradient(circle at 20% 70%, rgba(191, 85, 247, 0.06) 0%, transparent 55%),
+    radial-gradient(circle at 80% 80%, rgba(56, 189, 248, 0.06) 0%, transparent 55%);
+}
+
+.vbot-grid-overlay {
+  position: fixed;
+  inset: 0;
+  opacity: 0.025;
+  background-image: linear-gradient(#444444 1px, transparent 1px), linear-gradient(90deg, #444444 1px, transparent 1px);
+  background-size: 60px 60px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Header Bar */
+.vbot-header {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 32px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(10, 12, 20, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.vbot-header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.vbot-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #cbd5e1;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-decoration: none;
+}
+
+.vbot-back-btn:hover {
+  background: rgba(45, 212, 191, 0.15);
+  border-color: rgba(45, 212, 191, 0.45);
+  color: #ffffff;
+  transform: translateX(-2px);
+}
+
+.vbot-title-group h1 {
+  font-size: 1.35rem;
+  font-weight: 800;
+  margin: 0;
+  letter-spacing: -0.02em;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.vbot-title-sub {
+  font-size: 0.80rem;
+  color: #94a3b8;
+  margin-top: 2px;
+}
+
+.vbot-header-badges {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.vbot-rig-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: rgba(239, 68, 68, 0.14);
+  border: 1px solid rgba(239, 68, 68, 0.40);
+  color: #f87171;
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.20);
+}
+
+.vbot-rig-badge.vbot-rig-badge-green {
+  background: rgba(16, 185, 129, 0.16);
+  border-color: rgba(16, 185, 129, 0.45);
+  color: #34d399;
+  box-shadow: 0 0 14px rgba(16, 185, 129, 0.25);
+}
+
+.vbot-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: rgba(45, 212, 191, 0.12);
+  border: 1px solid rgba(45, 212, 191, 0.35);
+  color: #2dd4bf;
+}
+
+/* Main Studio Layout Grid */
+.vbot-studio-grid {
+  position: relative;
+  z-index: 5;
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  flex: 1;
+  min-height: calc(100vh - 85px);
+}
+
+@media (max-width: 1024px) {
+  .vbot-studio-grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto;
+  }
+}
+
+/* 3D Viewport Stage */
+.vbot-viewport-stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 520px;
+  overflow: hidden;
+}
+
+.vbot-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: grab;
+}
+
+.vbot-canvas:active {
+  cursor: grabbing;
+}
+
+/* Floating Stage Controls HUD */
+.vbot-hud-controls {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(12, 16, 28, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  padding: 6px 12px;
+  border-radius: 9999px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  z-index: 10;
+}
+
+.vbot-hud-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  color: #cbd5e1;
+  font-size: 0.74rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.vbot-hud-btn:hover {
+  background: rgba(45, 212, 191, 0.16);
+  border-color: rgba(45, 212, 191, 0.45);
+  color: #ffffff;
+}
+
+.vbot-hud-btn.active {
+  background: #2dd4bf;
+  border-color: #2dd4bf;
+  color: #000000;
+  box-shadow: 0 0 12px rgba(45, 212, 191, 0.45);
+}
+
+/* Interaction Hint Box on Canvas */
+.vbot-interaction-hint {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 20px;
+  background: rgba(12, 16, 28, 0.80);
+  border: 1px solid rgba(45, 212, 191, 0.28);
+  border-radius: 9999px;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  font-size: 0.76rem;
+  color: #e2e8f0;
+  font-weight: 600;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.7);
+  pointer-events: none;
+}
+
+.vbot-hint-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #2dd4bf;
+  box-shadow: 0 0 8px #2dd4bf;
+}
+
+/* Sidebar Inspector & Animations Dock */
+.vbot-sidebar {
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(10, 12, 22, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  overflow-y: auto;
+  max-height: calc(100vh - 85px);
+}
+
+/* Card Sections */
+.vbot-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-top: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 16px;
+  padding: 18px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6);
+}
+
+.vbot-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.86rem;
+  font-weight: 800;
+  color: #ffffff;
+  margin-bottom: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.vbot-card-title.cyan { color: #2dd4bf; }
+.vbot-card-title.purple { color: #bf55f7; }
+.vbot-card-title.amber { color: #fbbf24; }
+
+/* Technical Rig Inspector Table */
+.vbot-tech-table {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.vbot-tech-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  font-size: 0.78rem;
+}
+
+.vbot-tech-label {
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.vbot-tech-val {
+  color: #f1f5f9;
+  font-weight: 700;
+}
+
+.vbot-tech-val.no {
+  color: #f87171;
+}
+
+.vbot-tech-val.yes {
+  color: #34d399;
+}
+
+.vbot-rig-notice {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  font-size: 0.74rem;
+  color: #fca5a5;
+  line-height: 1.5;
+}
+
+.vbot-rig-notice.vbot-rig-notice-green {
+  background: rgba(16, 185, 129, 0.08);
+  border-color: rgba(16, 185, 129, 0.30);
+  color: #6ee7b7;
+}
+
+/* Animations Selector Menu */
+.vbot-anim-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.vbot-anim-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  color: #e2e8f0;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+  font-family: inherit;
+}
+
+.vbot-anim-btn:hover {
+  background: rgba(45, 212, 191, 0.12);
+  border-color: rgba(45, 212, 191, 0.40);
+  color: #ffffff;
+  transform: translateX(3px);
+}
+
+.vbot-anim-btn.active {
+  background: linear-gradient(135deg, rgba(45, 212, 191, 0.22) 0%, rgba(56, 189, 248, 0.18) 100%);
+  border-color: #2dd4bf;
+  color: #ffffff;
+  box-shadow: 0 4px 16px rgba(45, 212, 191, 0.25);
+}
+
+.vbot-anim-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.vbot-anim-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #2dd4bf;
+}
+
+.vbot-anim-btn.active .vbot-anim-icon {
+  background: #2dd4bf;
+  color: #000000;
+}
+
+.vbot-anim-name {
+  font-size: 0.82rem;
+  font-weight: 700;
+  display: block;
+}
+
+.vbot-anim-sub {
+  font-size: 0.70rem;
+  color: #94a3b8;
+  display: block;
+  margin-top: 1px;
+}
+
+.vbot-anim-pill {
+  font-size: 0.65rem;
+  padding: 3px 8px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.vbot-anim-btn.active .vbot-anim-pill {
+  background: rgba(45, 212, 191, 0.25);
+  color: #2dd4bf;
+}
+
+/* Speed Slider & Action Controls */
+.vbot-controls-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.vbot-slider-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+.vbot-range-input {
+  width: 100%;
+  accent-color: #2dd4bf;
+  cursor: pointer;
+}
+
+.vbot-action-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.vbot-primary-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(45, 212, 191, 0.25) 0%, rgba(56, 189, 248, 0.25) 100%);
+  border: 1px solid #2dd4bf;
+  color: #ffffff;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.vbot-primary-btn:hover {
+  background: #2dd4bf;
+  color: #000000;
+  box-shadow: 0 0 16px rgba(45, 212, 191, 0.4);
+}
+
+.vbot-secondary-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #e2e8f0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.vbot-secondary-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+/* Loading Overlay */
+.vbot-loading-stage {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: #000000;
+  z-index: 20;
+}
+
+.vbot-spinner {
+  width: 42px;
+  height: 42px;
+  border: 3px solid rgba(45, 212, 191, 0.20);
+  border-top-color: #2dd4bf;
+  border-radius: 50%;
+  animation: vbotSpin 1s linear infinite;
+}
+
+@keyframes vbotSpin {
+  to { transform: rotate(360deg); }
+}
+
+.vbot-loading-text {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #94a3b8;
+}
+
+@media (max-width: 768px) {
+  .vbot-header {
+    padding: 16px 18px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .vbot-header-badges {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .vbot-hud-controls {
+    top: 14px;
+    left: 14px;
+    padding: 4px 8px;
+  }
+  .vbot-interaction-hint {
+    bottom: 14px;
+    font-size: 0.70rem;
+    padding: 6px 14px;
+  }
+  .vbot-sidebar {
+    padding: 18px;
+  }
+}

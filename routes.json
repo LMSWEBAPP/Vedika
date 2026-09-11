@@ -7,6 +7,7 @@
     { "id": "/vedika-ai/code", "label": "Code with Vedika (Start Coding)", "aliases": ["start coding", "code with vedika", "coding tutor", "code tutor", "programming tutor"] },
     { "id": "/vedika-ai/puzzle", "label": "Code Puzzles (Play Puzzles)", "aliases": ["play puzzles", "code puzzles", "code puzzle", "dsa", "puzzles", "problem"] },
     { "id": "/viva-interview", "label": "Viva & Interview", "aliases": ["viva", "interview", "viva interview", "mock interview"] },
+    { "id": "/avatar-chamber", "label": "Avatar Chamber", "aliases": ["avatar chamber", "avatar-chamber", "avatarchamber"] },
     { "id": "/vedika-labs", "label": "Vedika 3D Science Simulator Labs", "aliases": ["labs", "virtual labs", "science labs"] },
     { "id": "/vedika-labs/physics", "label": "Physics Lab (Enter Physics Lab)", "aliases": ["enter physics lab", "physics lab", "physics", "enter physics"] },
     { "id": "/vedika-labs/chemistry", "label": "Chemistry Lab (Enter Chemistry Lab)", "aliases": ["enter chemistry lab", "chemistry lab", "chemistry", "enter chemistry"] },

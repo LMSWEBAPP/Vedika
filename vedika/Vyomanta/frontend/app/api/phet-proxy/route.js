@@ -97,8 +97,26 @@ export async function GET(request) {
               }
             });
           }
-          setInterval(purgeLogos, 300);
-          window.addEventListener('DOMContentLoaded', purgeLogos);
+          // Run immediately and retry up to 20 times (6 seconds total), then stop
+          var attempts = 0;
+          var maxAttempts = 20;
+          var intervalId = setInterval(function() {
+            purgeLogos();
+            attempts++;
+            if (attempts >= maxAttempts) clearInterval(intervalId);
+          }, 300);
+          // Also observe DOM mutations for any late-inserted branding elements
+          if (typeof MutationObserver !== 'undefined') {
+            var observer = new MutationObserver(function() { purgeLogos(); });
+            window.addEventListener('DOMContentLoaded', function() {
+              purgeLogos();
+              observer.observe(document.body, { childList: true, subtree: true });
+              // Stop observing after 10 seconds to free resources
+              setTimeout(function() { observer.disconnect(); }, 10000);
+            });
+          } else {
+            window.addEventListener('DOMContentLoaded', purgeLogos);
+          }
         })();
       </script>
     `;

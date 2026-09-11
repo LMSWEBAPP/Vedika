@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import {
   BookOpen, Brain, CheckCircle, ChevronRight, GraduationCap, Flame,
@@ -9,7 +10,49 @@ import {
 import { T, getCourseDetails } from '@/lib/lms-data';
 import { getCourses, getStudentEnrollments, getCourseSyllabus, saveProgressToRedis, getProgressFromRedis } from '@/lib/frappe';
 import { useMediaQuery, isMobileMQ, isTabletMQ } from '@/lib/useMediaQuery';
-import VedikaHeroZajno from '@/components/VedikaHeroZajno';
+
+const VedikaHeroZajno = dynamic(() => import('@/components/VedikaHeroZajno'), {
+  ssr: false,
+  loading: () => (
+    <div style={{
+      width: '100%',
+      minHeight: '680px',
+      height: '100vh',
+      maxHeight: '940px',
+      background: 'radial-gradient(ellipse at 50% 35%, #0e162d 0%, #000000 75%)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      position: 'relative',
+      overflow: 'hidden'
+    }}>
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 16,
+      }}>
+        <div style={{
+          width: 50,
+          height: 50,
+          borderRadius: '50%',
+          border: '2px solid rgba(56, 189, 248, 0.25)',
+          borderTopColor: '#38BDF8',
+          animation: 'spin 0.8s linear infinite'
+        }} />
+        <div style={{
+          fontSize: 13,
+          fontWeight: 700,
+          letterSpacing: '0.15em',
+          color: 'rgba(255, 255, 255, 0.7)',
+          textTransform: 'uppercase'
+        }}>
+          Loading Vedika AI...
+        </div>
+      </div>
+    </div>
+  )
+});
 
 export default function Dashboard() {
   const router = useRouter();
@@ -128,24 +171,32 @@ export default function Dashboard() {
         setCourses(published);
 
         const enrolled = published.filter(c => enrollments.includes(c.id));
+        // Immediately populate enrolled courses with available details for instantaneous display
+        const initialEnrolled = enrolled.map(c => ({
+          ...c,
+          details: c.details || getCourseDetails(c)
+        }));
+        setEnrolledCourses(initialEnrolled);
+        setLoading(false); // Instantly unblock dashboard UI!
         
-        // Fetch syllabus/details for all enrolled courses in parallel
-        const enrolledWithDetails = await Promise.all(
-          enrolled.map(async (course) => {
-            try {
-              const details = await getCourseSyllabus(course.id);
-              return { ...course, details };
-            } catch (err) {
-              console.error("Failed to fetch syllabus for course:", course.id, err);
-              const details = getCourseDetails(course);
-              return { ...course, details };
-            }
-          })
-        );
-        setEnrolledCourses(enrolledWithDetails);
+        // Progressively fetch detailed live syllabus in the background without blocking the view
+        if (enrolled.length > 0) {
+          Promise.all(
+            enrolled.map(async (course) => {
+              try {
+                const details = await getCourseSyllabus(course.id);
+                return { ...course, details };
+              } catch (err) {
+                const details = getCourseDetails(course);
+                return { ...course, details };
+              }
+            })
+          ).then((enrolledWithDetails) => {
+            setEnrolledCourses(enrolledWithDetails);
+          }).catch(() => {});
+        }
       } catch (e) {
         console.error(e);
-      } finally {
         setLoading(false);
       }
     }
@@ -280,32 +331,33 @@ export default function Dashboard() {
 
   // Extra Shiny Obsidian Glass Container Styles matching reference image
   const shinyCardStyle = {
-    background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.03) 35%, rgba(255, 255, 255, 0.005) 100%), rgba(12, 13, 20, 0.85)',
-    border: '1px solid rgba(255, 255, 255, 0.16)',
-    borderTop: '1px solid rgba(255, 255, 255, 0.35)',
-    borderRadius: 18,
-    boxShadow: '0 16px 40px rgba(0, 0, 0, 0.7), inset 0 1px 1px rgba(255, 255, 255, 0.3), inset 0 -1px 2px rgba(0, 0, 0, 0.5)',
+    background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.02) 40%, rgba(255, 255, 255, 0.005) 100%), rgba(11, 14, 24, 0.88)',
+    border: '1px solid rgba(255, 255, 255, 0.12)',
+    borderTop: '1px solid rgba(255, 255, 255, 0.28)',
+    borderRadius: 20,
+    boxShadow: '0 18px 45px rgba(0, 0, 0, 0.6), inset 0 1px 1px rgba(255, 255, 255, 0.25)',
     backdropFilter: 'blur(20px)',
-    WebkitBackdropFilter: 'blur(20px)'
+    WebkitBackdropFilter: 'blur(20px)',
+    transition: 'transform 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease'
   };
 
   const shinyPillButtonStyle = {
-    background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.08) 50%, rgba(255, 255, 255, 0.02) 100%), #1B1D2C',
-    border: '1px solid rgba(255, 255, 255, 0.28)',
-    borderTop: '1px solid rgba(255, 255, 255, 0.45)',
+    background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.20) 0%, rgba(255, 255, 255, 0.06) 50%, rgba(255, 255, 255, 0.02) 100%), #1B2134',
+    border: '1px solid rgba(255, 255, 255, 0.22)',
+    borderTop: '1px solid rgba(255, 255, 255, 0.40)',
     borderRadius: 9999,
     color: '#FFFFFF',
-    boxShadow: '0 6px 18px rgba(0, 0, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.4), inset 0 -1px 2px rgba(0, 0, 0, 0.6)',
+    boxShadow: '0 6px 18px rgba(0, 0, 0, 0.45), inset 0 1px 1px rgba(255, 255, 255, 0.35)',
     fontWeight: 600,
     cursor: 'pointer',
-    transition: 'all 0.2s ease'
+    transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)'
   };
 
   return (
     <div style={{
       padding: '0 0 48px 0',
       minHeight: '100vh',
-      background: 'radial-gradient(circle at 18% 12%, rgba(70, 90, 140, 0.45) 0%, rgba(5, 5, 8, 1) 45%), radial-gradient(circle at 82% 82%, rgba(90, 50, 130, 0.4) 0%, rgba(5, 5, 8, 1) 50%), #030305',
+      background: '#000000',
       color: '#FFFFFF',
       fontFamily: 'var(--font-outfit), sans-serif'
     }}>

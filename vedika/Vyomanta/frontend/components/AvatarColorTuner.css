@@ -1,0 +1,314 @@
+/* ═══════════════════════════════════════════════════════════════
+   Avatar Color Tuner Floating Studio Widget
+   ═══════════════════════════════════════════════════════════════ */
+
+.avatar-color-tuner {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 99999;
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  user-select: none;
+}
+
+.act-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(15, 23, 42, 0.92);
+  color: #f8fafc;
+  border: 1.5px solid rgba(168, 85, 247, 0.55);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.65), 0 0 16px rgba(168, 85, 247, 0.35);
+  border-radius: 9999px;
+  padding: 8px 18px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.act-toggle-btn:hover {
+  transform: translateY(-2px);
+  background: rgba(24, 34, 60, 0.96);
+  border-color: #c084fc;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.8), 0 0 24px rgba(168, 85, 247, 0.6);
+}
+
+.act-panel {
+  width: 380px;
+  max-width: calc(100vw - 32px);
+  max-height: 82vh;
+  overflow-y: auto;
+  background: rgba(10, 15, 29, 0.96);
+  border: 1.5px solid rgba(168, 85, 247, 0.45);
+  border-radius: 20px;
+  padding: 16px 18px;
+  color: #f1f5f9;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.85), 0 0 32px rgba(168, 85, 247, 0.25);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  animation: actSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes actSlideUp {
+  0% { opacity: 0; transform: translateY(16px) scale(0.97); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.act-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+  padding-bottom: 10px;
+  margin-bottom: 12px;
+}
+
+.act-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.act-close-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #94a3b8;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.act-close-btn:hover {
+  background: rgba(239, 68, 68, 0.25);
+  border-color: #ef4444;
+  color: #ffffff;
+}
+
+/* Avatar Tabs */
+.act-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.act-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 4px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.act-tab:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.act-tab.active {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: var(--active-color, #c084fc);
+  box-shadow: 0 0 12px var(--active-color, #c084fc);
+}
+
+.act-tab-preview {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+.act-tab-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #cbd5e1;
+}
+
+/* Color Controls */
+.act-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.act-row-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 10px;
+}
+
+.act-color-picker-wrap {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  flex-shrink: 0;
+}
+
+.act-color-picker-input {
+  position: absolute;
+  top: -10px;
+  left: -10px;
+  width: 80px;
+  height: 80px;
+  border: none;
+  cursor: pointer;
+  background: transparent;
+}
+
+.act-hex-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.act-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.act-hex-input {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-family: monospace;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #ffffff;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.act-hex-input:focus {
+  border-color: #c084fc;
+  box-shadow: 0 0 8px rgba(168, 85, 247, 0.4);
+}
+
+/* Sliders Section */
+.act-sliders-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  padding: 10px;
+}
+
+.act-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+.act-slider-row span:first-child {
+  width: 18px;
+  color: #cbd5e1;
+}
+
+.act-slider-row input[type="range"] {
+  flex: 1;
+  accent-color: #c084fc;
+  cursor: pointer;
+  height: 5px;
+}
+
+.act-slider-val {
+  width: 32px;
+  text-align: right;
+  font-family: monospace;
+  color: #94a3b8;
+}
+
+/* Preset Chips */
+.act-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.act-chip {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: 1.5px solid rgba(255, 255, 255, 0.25);
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.act-chip:hover {
+  transform: scale(1.18);
+  box-shadow: 0 0 10px currentColor;
+}
+
+/* Actions Footer */
+.act-footer {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.act-copy-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: linear-gradient(135deg, #9333ea 0%, #3b82f6 100%);
+  border: none;
+  border-radius: 10px;
+  padding: 10px 16px;
+  color: #ffffff;
+  font-size: 0.84rem;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(147, 51, 234, 0.4);
+  transition: all 0.2s;
+}
+
+.act-copy-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(147, 51, 234, 0.6);
+}
+
+.act-copy-btn.copied {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+}
+
+.act-hint {
+  font-size: 0.68rem;
+  color: #94a3b8;
+  text-align: center;
+  line-height: 1.35;
+}

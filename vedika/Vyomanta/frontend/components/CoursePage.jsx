@@ -9,6 +9,7 @@ import { getCourses, getCourseSyllabus, checkStudentEnrollment, enrollStudentInC
 import { useMediaQuery, isMobileMQ } from '@/lib/useMediaQuery';
 import dynamic from 'next/dynamic';
 import PDFViewerModal from './PDFViewerModal';
+import ZimCarousel3D from './ZimCarousel3D';
 const Playground = dynamic(() => import('./Playground'), { ssr: false });
 
 const DECK_ROTATIONS = ['4deg', '-2deg', '-9deg', '7deg', '3deg', '-5deg', '6deg'];
@@ -218,19 +219,11 @@ function CourseDeckWidget({ courses, handleSelectCourse, handleEnrollFromCard, e
   const total = courses.length;
 
   const handleNext = () => {
-    setAnimatingIdx(activeIdx);
-    setTimeout(() => {
-      setActiveIdx((prev) => (prev + 1) % total);
-      setAnimatingIdx(null);
-    }, 320);
+    setActiveIdx((prev) => (prev + 1) % total);
   };
 
   const handlePrev = () => {
-    setAnimatingIdx(activeIdx);
-    setTimeout(() => {
-      setActiveIdx((prev) => (prev - 1 + total) % total);
-      setAnimatingIdx(null);
-    }, 320);
+    setActiveIdx((prev) => (prev - 1 + total) % total);
   };
 
   const totalLessons = currentCourse.lessonsCount || 0;
@@ -247,202 +240,112 @@ function CourseDeckWidget({ courses, handleSelectCourse, handleEnrollFromCard, e
       border: 'none',
       borderRadius: 0,
       padding: isMobile ? '12px 0' : '20px 0',
-      marginBottom: 24,
-      position: 'relative'
+      marginBottom: 32,
+      position: 'relative',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      width: '100%',
+      gap: isMobile ? 18 : 26
     }}>
+      {/* Centered ZIM 3D Cylindrical Carousel (Dex / Carousel3D) */}
       <div style={{
-        display: 'grid',
-        gridTemplateColumns: isMobile ? '1fr' : '340px 1fr',
-        gap: isMobile ? 24 : 44,
-        alignItems: 'center'
+        width: '100%',
+        maxWidth: 880,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: isMobile ? 270 : 330,
+        margin: '0 auto'
       }}>
-        {/* Left Stacked Card Deck */}
-        <div style={{ position: 'relative', width: '100%', height: isMobile ? 240 : 310, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          {courses.slice(0, 5).map((c, i) => {
-            const isCurrent = i === activeIdx;
-            const rot = DECK_ROTATIONS[i % DECK_ROTATIONS.length];
-            const imgUrl = c.thumbnail || DEFAULT_THUMBNAILS[i % DEFAULT_THUMBNAILS.length];
-            const zIndex = isCurrent ? 20 : 10 - i;
-            const isAnimating = animatingIdx === i;
+        <ZimCarousel3D
+          courses={courses}
+          activeIdx={activeIdx}
+          onActiveIdxChange={setActiveIdx}
+          onSelectCourse={handleSelectCourse}
+          isMobile={isMobile}
+        />
+      </div>
 
-            return (
-              <div
-                key={c.id || i}
-                onClick={() => {
-                  if (!isCurrent) setActiveIdx(i);
-                }}
-                style={{
-                  position: 'absolute',
-                  width: isMobile ? '82%' : 260,
-                  height: isMobile ? 210 : 260,
-                  borderRadius: 16,
-                  overflow: 'hidden',
-                  border: `1px solid ${T.border}`,
-                  boxShadow: isCurrent ? '0 16px 40px rgba(0, 0, 0, 0.45)' : '0 8px 24px rgba(0, 0, 0, 0.2)',
-                  transform: `rotate(${rot}) scale(${isCurrent ? 1 : 0.92 - i * 0.02})`,
-                  zIndex: zIndex,
-                  cursor: 'pointer',
-                  transition: 'all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)',
-                  animation: isAnimating ? 'moveOutIn 0.66s cubic-bezier(0.34, 1.56, 0.64, 1)' : 'none'
-                }}
-              >
-                <img
-                  src={imgUrl}
-                  alt={c.title}
-                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                />
-                <div style={{
-                  position: 'absolute',
-                  bottom: 0,
-                  left: 0,
-                  width: '100%',
-                  padding: '24px 14px 12px 14px',
-                  background: 'linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0) 100%)',
-                  color: '#FFFFFF'
-                }}>
-                  <div style={{ fontSize: 11, fontWeight: 800, color: '#F97316', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    {c.category}
-                  </div>
-                  <div style={{ fontSize: 13.5, fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {c.title}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+      {/* Active Course Details Centered Below the Carousel */}
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        textAlign: 'center',
+        gap: 12,
+        maxWidth: 720,
+        width: '100%',
+        margin: '0 auto'
+      }}>
+        <h2 style={{ fontSize: isMobile ? 22 : 30, fontWeight: 900, color: T.text, margin: 0, lineHeight: 1.2, letterSpacing: '-0.03em' }}>
+          {currentCourse.title}
+        </h2>
+
+        <p style={{ fontSize: isMobile ? 13.5 : 15, color: T.muted, margin: 0, lineHeight: 1.6, maxWidth: 640 }}>
+          {currentCourse.tagline || 'Master essential skills through structured modules, interactive coding exercises, and real-time AI viva assessments.'}
+        </p>
+
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center' }}>
+          <span style={{ fontSize: 11.5, color: T.purple, background: `${T.purple}15`, padding: '3px 10px', borderRadius: 6, fontWeight: 700 }}>
+            {level}
+          </span>
+          <span style={{ fontSize: 12, color: T.muted, fontWeight: 600 }}>
+            ⏱️ {durationStr} total
+          </span>
+          <span style={{ fontSize: 12, color: T.muted, fontWeight: 600 }}>
+            📚 {totalLessons} lessons
+          </span>
+          <span style={{ fontSize: 12, color: T.muted, fontWeight: 600 }}>
+            👤 By {currentCourse.instructor || 'Vedika Instructors'}
+          </span>
         </div>
 
-        {/* Right Active Card Details & Navigation Controls */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {/* Header Row with Active Count Counter */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: 12, fontWeight: 800, color: T.accent, background: `${T.accent}15`, padding: '4px 14px', borderRadius: 20, border: `1px solid ${T.accent}35` }}>
-              FEATURED COURSE DECK
-            </span>
-            <span style={{ fontSize: 15, fontWeight: 800, color: T.muted, letterSpacing: '0.05em' }}>
-              {activeIdx + 1} / {total}
-            </span>
-          </div>
+        {/* Action Row */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, marginTop: 6 }}>
+          <button
+            onClick={() => handleSelectCourse(currentCourse)}
+            style={{
+              background: T.accent,
+              color: '#FFFFFF',
+              border: 'none',
+              padding: '11px 26px',
+              borderRadius: 12,
+              fontSize: 13.5,
+              fontWeight: 800,
+              cursor: 'pointer',
+              boxShadow: '0 4px 16px rgba(59, 130, 246, 0.3)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              transition: 'transform 0.15s ease'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.03)'}
+            onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+          >
+            View Syllabus <ChevronRight size={16} />
+          </button>
 
-          <h2 style={{ fontSize: isMobile ? 22 : 28, fontWeight: 900, color: T.text, margin: 0, lineHeight: 1.2, letterSpacing: '-0.03em' }}>
-            {currentCourse.title}
-          </h2>
-
-          <p style={{ fontSize: isMobile ? 13.5 : 15, color: T.muted, margin: 0, lineHeight: 1.6, maxWidth: 640 }}>
-            {currentCourse.tagline || 'Master essential skills through structured modules, interactive coding exercises, and real-time AI viva assessments.'}
-          </p>
-
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-            <span style={{ fontSize: 11.5, color: T.purple, background: `${T.purple}15`, padding: '3px 10px', borderRadius: 6, fontWeight: 700 }}>
-              {level}
-            </span>
-            <span style={{ fontSize: 12, color: T.muted, fontWeight: 600 }}>
-              ⏱️ {durationStr} total
-            </span>
-            <span style={{ fontSize: 12, color: T.muted, fontWeight: 600 }}>
-              📚 {totalLessons} lessons
-            </span>
-            <span style={{ fontSize: 12, color: T.muted, fontWeight: 600 }}>
-              👤 By {currentCourse.instructor || 'Vedika Instructors'}
-            </span>
-          </div>
-
-          {/* Action Row */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 14, flexWrap: 'wrap', gap: 16 }}>
-            <div style={{ display: 'flex', gap: 12 }}>
-              <button
-                onClick={() => handleSelectCourse(currentCourse)}
-                style={{
-                  background: T.accent,
-                  color: '#FFFFFF',
-                  border: 'none',
-                  padding: '11px 24px',
-                  borderRadius: 12,
-                  fontSize: 13.5,
-                  fontWeight: 800,
-                  cursor: 'pointer',
-                  boxShadow: '0 4px 16px rgba(59, 130, 246, 0.3)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  transition: 'transform 0.15s ease'
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.03)'}
-                onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-              >
-                View Syllabus <ChevronRight size={16} />
-              </button>
-
-              {!isEnrolled && (
-                <button
-                  onClick={(e) => handleEnrollFromCard(currentCourse.id, e)}
-                  style={{
-                    background: T.s2,
-                    color: T.text,
-                    border: `1px solid ${T.border}`,
-                    padding: '11px 20px',
-                    borderRadius: 12,
-                    fontSize: 13.5,
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease'
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.borderColor = T.accent}
-                  onMouseLeave={(e) => e.currentTarget.style.borderColor = T.border}
-                >
-                  Quick Enroll
-                </button>
-              )}
-            </div>
-
-            {/* Navigation Controls (⭠ ⭢) */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <button
-                aria-label="Previous Course"
-                onClick={handlePrev}
-                style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: '50%',
-                  background: T.s2,
-                  border: `1px solid ${T.border}`,
-                  color: T.text,
-                  fontSize: 19,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  transition: 'all 0.2s ease'
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = T.accent; e.currentTarget.style.color = '#FFFFFF'; e.currentTarget.style.borderColor = T.accent; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = T.s2; e.currentTarget.style.color = T.text; e.currentTarget.style.borderColor = T.border; }}
-              >
-                ⭠
-              </button>
-              <button
-                aria-label="Next Course"
-                onClick={handleNext}
-                style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: '50%',
-                  background: T.s2,
-                  border: `1px solid ${T.border}`,
-                  color: T.text,
-                  fontSize: 19,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  transition: 'all 0.2s ease'
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = T.accent; e.currentTarget.style.color = '#FFFFFF'; e.currentTarget.style.borderColor = T.accent; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = T.s2; e.currentTarget.style.color = T.text; e.currentTarget.style.borderColor = T.border; }}
-              >
-                ⭢
-              </button>
-            </div>
-          </div>
+          {!isEnrolled && (
+            <button
+              onClick={(e) => handleEnrollFromCard(currentCourse.id, e)}
+              style={{
+                background: T.s2,
+                color: T.text,
+                border: `1px solid ${T.border}`,
+                padding: '11px 22px',
+                borderRadius: 12,
+                fontSize: 13.5,
+                fontWeight: 700,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.borderColor = T.accent}
+              onMouseLeave={(e) => e.currentTarget.style.borderColor = T.border}
+            >
+              Quick Enroll
+            </button>
+          )}
         </div>
       </div>
     </div>

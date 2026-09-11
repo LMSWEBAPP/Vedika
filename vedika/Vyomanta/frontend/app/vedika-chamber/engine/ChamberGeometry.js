@@ -16,48 +16,48 @@ export const CHAMBERS_DATA = [
     index: 0,
     name: 'Ask Vedika',
     subtitle: 'Your curious learning buddy',
-    route: '/vedika-ai',
-    colorHex: '#29756e', // User Specified Deep Teal Cyan
-    bodyColor: '#29756e',
-    themeColor: '#29756e',
-    emissiveHex: '#14403c',
-    lightColor: '#5eead4',
+    route: '/vedika-ai/ask',
+    colorHex: '#39FF14', // 1. Neon Green (#39FF14 - Physics / Ask)
+    bodyColor: '#39FF14',
+    themeColor: '#39FF14',
+    emissiveHex: '#146604',
+    lightColor: '#6eff52',
   },
   {
     id: 'code',
     index: 1,
     name: 'Code with Vedika',
     subtitle: 'Your AI pair programmer & coding mentor',
-    route: '/vedika-ai',
-    colorHex: '#34187b', // User Specified Deep Indigo Violet
-    bodyColor: '#34187b',
-    themeColor: '#34187b',
-    emissiveHex: '#190a40',
-    lightColor: '#c084fc',
+    route: '/vedika-ai/code',
+    colorHex: '#FF6EFF', // 2. Neon Pink (#FF6EFF - Chemistry / Code)
+    bodyColor: '#FF6EFF',
+    themeColor: '#FF6EFF',
+    emissiveHex: '#7a1b7a',
+    lightColor: '#ffa3ff',
   },
   {
     id: 'puzzles',
     index: 2,
     name: 'Code Puzzles',
     subtitle: 'Interactive logic & algorithmic challenges',
-    route: '/vedika-ai',
-    colorHex: '#1b4e83', // User Specified Royal Sky Blue
-    bodyColor: '#1b4e83',
-    themeColor: '#1b4e83',
-    emissiveHex: '#0c2744',
-    lightColor: '#60a5fa',
+    route: '/vedika-ai/puzzle',
+    colorHex: '#FF3131', // 3. Neon Red (#FF3131 - Biology / Puzzle)
+    bodyColor: '#FF3131',
+    themeColor: '#FF3131',
+    emissiveHex: '#800f0f',
+    lightColor: '#ff7575',
   },
   {
     id: 'viva',
     index: 3,
     name: 'Viva and Interview',
     subtitle: 'Real-time voice & technical mock interviews',
-    route: '/vedika-ai',
-    colorHex: '#761845', // User Specified Deep Ruby Berry
-    bodyColor: '#761845',
-    themeColor: '#761845',
-    emissiveHex: '#3d0a23',
-    lightColor: '#f472b6',
+    route: '/viva-interview',
+    colorHex: '#FF5C00', // 4. Neon Orange (#FF5C00 - Math / Viva)
+    bodyColor: '#FF5C00',
+    themeColor: '#FF5C00',
+    emissiveHex: '#7a2b00',
+    lightColor: '#ffa066',
   },
 ];
 
@@ -92,6 +92,44 @@ function getSharedFloorTexture() {
   return sharedFloorTexture;
 }
 
+let sharedFogTexture = null;
+function getSharedFogTexture() {
+  if (typeof document === 'undefined') return null;
+  if (!sharedFogTexture) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+
+    // Multi-layered Gaussian smoke puff
+    const gradient = ctx.createRadialGradient(256, 256, 15, 256, 256, 250);
+    gradient.addColorStop(0.0, 'rgba(255, 255, 255, 0.90)');
+    gradient.addColorStop(0.20, 'rgba(255, 255, 255, 0.60)');
+    gradient.addColorStop(0.48, 'rgba(255, 255, 255, 0.25)');
+    gradient.addColorStop(0.75, 'rgba(255, 255, 255, 0.06)');
+    gradient.addColorStop(1.0, 'rgba(0, 0, 0, 0.0)');
+
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 512, 512);
+
+    sharedFogTexture = new THREE.CanvasTexture(canvas);
+    sharedFogTexture.minFilter = THREE.LinearFilter;
+    sharedFogTexture.magFilter = THREE.LinearFilter;
+  }
+  return sharedFogTexture;
+}
+
+const cachedDiskTextures = {};
+function getSharedDiskTexture(index) {
+  if (!cachedDiskTextures[index]) {
+    const textureLoader = new THREE.TextureLoader();
+    const tex = textureLoader.load(`/disk_${index}.png`);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    cachedDiskTextures[index] = tex;
+  }
+  return cachedDiskTextures[index];
+}
+
 export class Chamber {
   constructor({ id, index, name, colorHex, emissiveHex, lightColor }) {
     this.id = id;
@@ -113,16 +151,14 @@ export class Chamber {
     // ── Solid Premium 3D Circular Metallic Pedestal & Neon Ring ──
     this._createCircularPedestal();
 
-    this.setFocusState(index === 0 ? 1.0 : 0.0);
+    this.setFocusState(0.0);
   }
 
   _createCircularPedestal() {
     this.pedestalGroup = new THREE.Group();
 
-    // 1. High-Definition Photorealistic Disk from user uploaded image
-    const textureLoader = new THREE.TextureLoader();
-    this.diskTexture = textureLoader.load(`/disk_${this.index}.png`);
-    this.diskTexture.colorSpace = THREE.SRGBColorSpace;
+    // 1. High-Definition Photorealistic Disk from user uploaded image (Cached for instant load)
+    this.diskTexture = getSharedDiskTexture(this.index);
 
     const diskWidth = 3.90;
     const diskHeight = diskWidth / 3.698; // ~1.055
@@ -144,7 +180,7 @@ export class Chamber {
     this.haloMat = new THREE.MeshBasicMaterial({
       color: this.primaryColor,
       transparent: true,
-      opacity: 0.12,
+      opacity: 0.14,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       side: THREE.DoubleSide,
@@ -168,6 +204,37 @@ export class Chamber {
     this.poolMesh = new THREE.Mesh(poolGeo, this.poolMat);
     this.poolMesh.position.set(0, -1.28, 0.28);
     this.pedestalGroup.add(this.poolMesh);
+
+    // 4. Camera-facing Soft Floating Smoky Fog Layer at Disk Base (Continuous ethereal waft)
+    this.fogPlanes = [];
+    const fogGeo = new THREE.PlaneGeometry(3.6, 1.4);
+
+    for (let f = 0; f < 3; f++) {
+      const fogMat = new THREE.MeshBasicMaterial({
+        map: getSharedFogTexture(),
+        color: this.primaryColor,
+        transparent: true,
+        opacity: 0.22, // Soft, visible ethereal fog
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      });
+      const fogMesh = new THREE.Mesh(fogGeo, fogMat);
+      const baseX = (f - 1) * 0.75;
+      const baseY = -1.40 + (f === 1 ? -0.06 : 0.04);
+      const baseZ = 0.35 + f * 0.08;
+      fogMesh.position.set(baseX, baseY, baseZ);
+      fogMesh.scale.set(1.0 + f * 0.22, 1.0 + f * 0.15, 1.0);
+      this.pedestalGroup.add(fogMesh);
+
+      this.fogPlanes.push({
+        mesh: fogMesh,
+        baseX,
+        baseY,
+        baseOpacity: 0.22,
+        phase: f * 2.1 + this.index * 1.5,
+      });
+    }
 
     this.group.add(this.pedestalGroup);
   }
@@ -201,7 +268,16 @@ export class Chamber {
   }
 
   update(time) {
-    // Optional pedestal animations
+    // Continuous subtle floating smoky fog waft at bottom of disk
+    if (this.fogPlanes && this.fogPlanes.length > 0) {
+      for (let i = 0; i < this.fogPlanes.length; i++) {
+        const p = this.fogPlanes[i];
+        p.mesh.position.x = p.baseX + Math.sin(time * 0.85 + p.phase) * 0.18;
+        p.mesh.position.y = p.baseY + Math.sin(time * 1.1 + p.phase) * 0.038;
+        p.mesh.rotation.z = Math.sin(time * 0.6 + p.phase) * 0.06;
+        p.mesh.material.opacity = p.baseOpacity + Math.sin(time * 0.75 + p.phase) * 0.06;
+      }
+    }
   }
 
   dispose() {
