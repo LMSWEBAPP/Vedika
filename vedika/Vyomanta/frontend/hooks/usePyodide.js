@@ -1,13 +1,91 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 
-export function usePyodide({ onStdout, onStderr, onReady, onFinish, onError, onTraceResult, onStdinRequest } = {}) {
-  const [isReady, setIsReady] = useState(false);
-  const [isRunning, setIsRunning] = useState(false);
-  const workerRef = useRef(null);
-  const stdinBufferRef = useRef(null);
-  const lastRunInputsRef = useRef([]); // inputs typed during the last RUN
+// Singleton worker instance & state shared across the browser session
+let globalWorker = null;
+let globalIsReady = false;
+let globalStdinBuffer = null;
+let globalLastRunInputs = [];
+const subscribers = new Set();
 
-  // Keep latest callbacks in ref to prevent recreating initWorker on every render
+function ensureWorker() {
+  if (typeof window === 'undefined') return null;
+  if (globalWorker) return globalWorker;
+
+  try {
+    // Create SharedArrayBuffer for stdin if cross-origin isolation is enabled
+    if (!globalStdinBuffer) {
+      try {
+        globalStdinBuffer = new SharedArrayBuffer(4 + 1024);
+      } catch (e) {
+        globalStdinBuffer = null;
+      }
+    }
+
+    const worker = new Worker('/workers/pyodide.worker.js');
+    globalWorker = worker;
+
+    worker.onmessage = (event) => {
+      const { type, content, message, inputs } = event.data;
+
+      if (type === 'READY') {
+        globalIsReady = true;
+        if (globalStdinBuffer) {
+          worker.postMessage({ type: 'INIT_STDIN_BUFFER', buffer: globalStdinBuffer });
+        }
+      } else if (type === 'FINISH') {
+        globalLastRunInputs = inputs || [];
+      }
+
+      // Dispatch event to active component subscriber
+      subscribers.forEach((subscriber) => {
+        try {
+          subscriber(event.data);
+        } catch (err) {
+          console.error('[usePyodide] Subscriber dispatch error:', err);
+        }
+      });
+    };
+
+    worker.onerror = (err) => {
+      console.error('[usePyodide] Worker runtime error:', err);
+      subscribers.forEach((subscriber) => {
+        try {
+          subscriber({ type: 'ERROR', message: err.message || 'Pyodide execution error' });
+        } catch {}
+      });
+    };
+
+    // Trigger Pyodide loading inside the web worker
+    worker.postMessage({ type: 'INIT' });
+    return worker;
+  } catch (err) {
+    console.error('[usePyodide] Failed to create Worker:', err);
+    return null;
+  }
+}
+
+/**
+ * Pre-warm Pyodide in the background during idle time so it is ready before the user clicks Open Sandbox.
+ */
+export function warmupPyodide() {
+  if (typeof window === 'undefined') return;
+  if (globalWorker && globalIsReady) return;
+  if ('requestIdleCallback' in window) {
+    window.requestIdleCallback(() => ensureWorker(), { timeout: 1500 });
+  } else {
+    setTimeout(() => ensureWorker(), 300);
+  }
+}
+
+export function isPyodideReady() {
+  return globalIsReady;
+}
+
+export function usePyodide({ onStdout, onStderr, onReady, onFinish, onError, onTraceResult, onStdinRequest } = {}) {
+  const [isReady, setIsReady] = useState(() => globalIsReady);
+  const [isRunning, setIsRunning] = useState(false);
+
+  // Keep latest callbacks in ref to prevent stale closures
   const callbacksRef = useRef({ onStdout, onStderr, onReady, onFinish, onError, onTraceResult, onStdinRequest });
   useEffect(() => {
     callbacksRef.current = { onStdout, onStderr, onReady, onFinish, onError, onTraceResult, onStdinRequest };
@@ -24,36 +102,24 @@ export function usePyodide({ onStdout, onStderr, onReady, onFinish, onError, onT
     isRunningRef.current = isRunning;
   }, [isRunning]);
 
-  const initWorker = useCallback(() => {
-    setIsReady(false);
-    setIsRunning(false);
+  useEffect(() => {
+    const worker = ensureWorker();
 
-    // Create a new web worker instance from public folder
-    const worker = new Worker('/workers/pyodide.worker.js');
-    workerRef.current = worker;
-
-    // Create a SharedArrayBuffer for stdin: 4 bytes control + 1024 bytes data
-    // Only available in cross-origin isolated contexts (COOP/COEP headers required)
-    let stdinBuffer = null;
-    try {
-      stdinBuffer = new SharedArrayBuffer(4 + 1024);
-      stdinBufferRef.current = stdinBuffer;
-    } catch (e) {
-      console.warn('[usePyodide] SharedArrayBuffer not available. Interactive input() will use fallback prompt.');
-      stdinBufferRef.current = null;
+    // If Pyodide was already initialized in this session, immediately mark ready
+    if (globalIsReady) {
+      setIsReady(true);
+      if (callbacksRef.current.onReady) {
+        callbacksRef.current.onReady();
+      }
     }
 
-    worker.onmessage = (event) => {
-      const { type, content, message } = event.data;
+    const handleMessage = (data) => {
+      const { type, content, message, inputs } = data;
       const cb = callbacksRef.current;
 
       switch (type) {
         case 'READY':
           setIsReady(true);
-          // Send the stdin buffer to the worker right after it's ready
-          if (stdinBuffer) {
-            worker.postMessage({ type: 'INIT_STDIN_BUFFER', buffer: stdinBuffer });
-          }
           if (cb.onReady) cb.onReady();
           break;
         case 'STDOUT':
@@ -63,7 +129,6 @@ export function usePyodide({ onStdout, onStderr, onReady, onFinish, onError, onT
           if (cb.onStderr) cb.onStderr(content);
           break;
         case 'STDIN_REQUEST':
-          // Worker is blocked waiting for input — notify the UI
           if (cb.onStdinRequest) cb.onStdinRequest();
           break;
         case 'TRACE_RESULT':
@@ -72,9 +137,7 @@ export function usePyodide({ onStdout, onStderr, onReady, onFinish, onError, onT
           break;
         case 'FINISH':
           setIsRunning(false);
-          // Store the inputs typed during this run so runTrace can replay them
-          lastRunInputsRef.current = event.data.inputs || [];
-          if (cb.onFinish) cb.onFinish(event.data.inputs || []);
+          if (cb.onFinish) cb.onFinish(inputs || []);
           break;
         case 'ERROR':
           setIsRunning(false);
@@ -85,53 +148,44 @@ export function usePyodide({ onStdout, onStderr, onReady, onFinish, onError, onT
       }
     };
 
-    // Trigger Pyodide loading inside the web worker
-    worker.postMessage({ type: 'INIT' });
+    subscribers.add(handleMessage);
+
+    return () => {
+      subscribers.delete(handleMessage);
+      // DO NOT terminate worker on unmount! Keep warm for zero-latency reopening.
+    };
   }, []);
 
-  useEffect(() => {
-    initWorker();
-    return () => {
-      if (workerRef.current) {
-        workerRef.current.terminate();
-      }
-    };
-  }, [initWorker]);
-
   const runCode = useCallback((code) => {
-    if (!isReadyRef.current || isRunningRef.current || !workerRef.current) return;
+    if (!globalWorker || !isReadyRef.current || isRunningRef.current) return;
     setIsRunning(true);
-    workerRef.current.postMessage({ type: 'RUN', code });
+    globalWorker.postMessage({ type: 'RUN', code });
   }, []);
 
   const runTrace = useCallback((code, inputs) => {
-    if (!isReadyRef.current || isRunningRef.current || !workerRef.current) return;
+    if (!globalWorker || !isReadyRef.current || isRunningRef.current) return;
     setIsRunning(true);
-    // Use provided inputs or fall back to what was typed in last RUN
-    const replayInputs = inputs !== undefined ? inputs : lastRunInputsRef.current;
-    workerRef.current.postMessage({ type: 'TRACE', code, inputs: replayInputs });
+    const replayInputs = inputs !== undefined ? inputs : globalLastRunInputs;
+    globalWorker.postMessage({ type: 'TRACE', code, inputs: replayInputs });
   }, []);
 
   const stopCode = useCallback(() => {
-    if (workerRef.current) {
-      workerRef.current.terminate();
+    if (globalWorker) {
+      globalWorker.terminate();
+      globalWorker = null;
+      globalIsReady = false;
       setIsRunning(false);
       setIsReady(false);
-      // Relaunch a fresh worker immediately to handle future run commands
-      initWorker();
+      // Relaunch fresh worker to recover from infinite loops
+      ensureWorker();
     }
-  }, [initWorker]);
+  }, []);
 
-  /**
-   * Send a line of input to the blocked worker via SharedArrayBuffer.
-   * Called by the terminal when the user presses Enter.
-   */
   const sendStdin = useCallback((text) => {
-    const buffer = stdinBufferRef.current;
+    const buffer = globalStdinBuffer;
     if (!buffer) {
-      // Fallback: just send as message (worker handles STDIN_RESPONSE)
-      if (workerRef.current) {
-        workerRef.current.postMessage({ type: 'STDIN_RESPONSE', inputText: text });
+      if (globalWorker) {
+        globalWorker.postMessage({ type: 'STDIN_RESPONSE', inputText: text });
       }
       return;
     }

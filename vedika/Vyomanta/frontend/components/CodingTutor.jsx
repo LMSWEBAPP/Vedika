@@ -30,6 +30,7 @@ import MobileNav from '@/components/MobileNav';
 import { useMediaQuery, isMobileMQ } from '@/lib/useMediaQuery';
 import dynamic from 'next/dynamic';
 import PracticePlaygroundModal from './PracticePlaygroundModal';
+import { warmupPyodide } from '@/hooks/usePyodide';
 
 const MODES = ['Beginner', 'Exam', 'Interview', 'Revision'];
 const LENGTHS = ['Short', 'Medium', 'Deep'];
@@ -246,6 +247,7 @@ export default function CodingTutor() {
       }
     };
     fetchJwt();
+    warmupPyodide();
   }, []);
   
   const chatRef = useRef(null);

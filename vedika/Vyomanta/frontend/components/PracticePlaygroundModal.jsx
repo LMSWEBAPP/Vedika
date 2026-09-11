@@ -3,7 +3,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Terminal, X, Minus } from 'lucide-react';
 import dynamic from 'next/dynamic';
+import { warmupPyodide } from '@/hooks/usePyodide';
 import './PracticePlaygroundModal.css';
+
+// Preload the Playground component chunk in the browser cache
+if (typeof window !== 'undefined') {
+  import('./Playground');
+}
 
 const Playground = dynamic(() => import('./Playground'), {
   ssr: false,
@@ -46,6 +52,11 @@ export default function PracticePlaygroundModal({
   const windowRef = React.useRef(null);
   const backdropRef = React.useRef(null);
   const rafRef = React.useRef(null);
+
+  // Pre-warm Pyodide environment in background so sandbox opens instantly
+  useEffect(() => {
+    warmupPyodide();
+  }, []);
 
   // Global click capture to store the exact position of the clicked Practice Playground button
   useEffect(() => {

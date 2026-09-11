@@ -416,9 +416,12 @@ export default function Playground({
       try {
         term.open(terminalElRef.current);
         terminalInstanceRef.current = term;
-        fitAddonRef.current = fitAddon;
         fitAddon.fit();
-        term.writeln("\x1b[33mLoading Python Environment (Pyodide WASM)...\x1b[0m");
+        if (isReady) {
+          term.writeln("\x1b[32mEnvironment Ready! (Python 3.11 Pyodide)\x1b[0m");
+        } else {
+          term.writeln("\x1b[33mLoading Python Environment (Pyodide WASM)...\x1b[0m");
+        }
 
         // --- Intercept keystrokes for interactive stdin (input() support) ---
         term.onKey(({ key, domEvent }) => {
