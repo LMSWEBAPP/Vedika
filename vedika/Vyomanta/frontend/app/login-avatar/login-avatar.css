@@ -1,0 +1,444 @@
+/* ── Login Avatar Page Stylesheet (External CSS) ── */
+
+.la-page-wrapper {
+  position: relative;
+  width: 100vw;
+  min-height: 100vh;
+  overflow: hidden;
+  background: #020408;
+  color: #F1F5F9;
+  font-family: var(--font-outfit), sans-serif;
+  box-sizing: border-box;
+}
+
+/* ── Fullscreen 3D Canvas across the entire screen ── */
+.la-canvas-fullscreen {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  display: block;
+  z-index: 1;
+  pointer-events: auto;
+}
+
+.la-canvas-fullscreen canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+  outline: none;
+}
+
+/* ── Seamless Foreground Layout ── */
+.la-split-layout {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+  min-height: 100vh;
+  pointer-events: none;
+}
+
+/* ── Left Pane: Completely Transparent Login Form ── */
+.la-left-pane {
+  flex: 1;
+  max-width: 520px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 30px 48px;
+  position: relative;
+  background: transparent;
+  pointer-events: auto;
+}
+
+.la-card {
+  width: 100%;
+  max-width: 360px;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  box-shadow: none;
+  position: relative;
+  overflow: visible;
+  animation: laFadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.la-ambient-glow-top,
+.la-ambient-glow-bottom {
+  display: none;
+}
+
+.la-logo-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.la-logo-badge {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #00FF66 0%, #00B344 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 6px 20px rgba(0, 255, 102, 0.35);
+}
+
+.la-brand-title {
+  color: #F8FAFC;
+  font-weight: 800;
+  font-size: 19px;
+  letter-spacing: -0.03em;
+}
+
+.la-headings {
+  text-align: center;
+}
+
+.la-h2 {
+  color: #F8FAFC;
+  font-size: 17px;
+  font-weight: 700;
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+
+.la-subtitle {
+  color: #94A3B8;
+  font-size: 12px;
+  margin: 3px 0 0;
+}
+
+.la-error-box {
+  background: rgba(245, 91, 107, 0.14);
+  border: 1px solid rgba(245, 91, 107, 0.32);
+  color: #F55B6B;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  animation: laShake 0.4s ease both;
+}
+
+.la-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ── Mikael Ainalem SVG Snake Highlight Container ── */
+.la-snake-form-container {
+  position: relative;
+  width: 320px;
+  height: 215px;
+  margin: 0 auto;
+}
+
+.la-snake-svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 320px;
+  height: 145px;
+  pointer-events: none;
+  z-index: 1;
+  overflow: visible;
+}
+
+.la-snake-track {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.09);
+  stroke-width: 2px;
+  stroke-linecap: round;
+}
+
+.la-snake-path {
+  fill: none;
+  stroke: url(#cyberGreenGrad);
+  stroke-width: 3.5px;
+  stroke-linecap: round;
+  stroke-dasharray: 240 600;
+  stroke-dashoffset: 0;
+  filter: drop-shadow(0 0 6px #00FF66) drop-shadow(0 0 16px rgba(0, 255, 102, 0.5));
+}
+
+.la-snake-field-username {
+  position: absolute;
+  top: 20px;
+  left: 40px;
+  width: 240px;
+  height: 40px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+.la-snake-field-password {
+  position: absolute;
+  top: 90px;
+  left: 40px;
+  width: 240px;
+  height: 40px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+.la-snake-forgot-row {
+  position: absolute;
+  top: 134px;
+  left: 40px;
+  width: 240px;
+  display: flex;
+  justify-content: flex-end;
+  z-index: 2;
+}
+
+.la-link-forgot {
+  color: #00FF66;
+  font-size: 11px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 0.18s;
+}
+
+.la-link-forgot:hover {
+  color: #66FF99;
+  text-decoration: underline;
+}
+
+.la-input-icon {
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  color: #64748B;
+  pointer-events: none;
+}
+
+.la-input {
+  width: 100%;
+  height: 100%;
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none;
+  border-radius: 0;
+  padding: 8px 30px 8px 28px;
+  color: #F8FAFC !important;
+  font-size: 13.5px;
+  font-family: inherit;
+  outline: none !important;
+  box-sizing: border-box;
+}
+
+.la-input:focus,
+.la-input:active {
+  background: transparent !important;
+  background-color: transparent !important;
+  color: #F8FAFC !important;
+}
+
+/* Complete removal of Chrome/Edge user-agent autofill white box */
+.la-input:-webkit-autofill,
+.la-input:-webkit-autofill:hover, 
+.la-input:-webkit-autofill:focus, 
+.la-input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px #020408 inset !important;
+  -webkit-text-fill-color: #F8FAFC !important;
+  box-shadow: 0 0 0 1000px #020408 inset !important;
+  transition: background-color 5000s ease-in-out 0s !important;
+  caret-color: #00FF66 !important;
+}
+
+.la-input::placeholder {
+  color: #64748B;
+  font-size: 12.5px;
+}
+
+.la-password-toggle {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #64748B;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  transition: color 0.18s;
+}
+
+.la-password-toggle:hover {
+  color: #CBD5E1;
+}
+
+.la-btn-submit {
+  position: absolute;
+  top: 168px;
+  left: 40px;
+  width: 240px;
+  height: 40px;
+  box-sizing: border-box;
+  z-index: 2;
+  background: linear-gradient(135deg, #00FF66 0%, #00B344 100%);
+  color: #041006;
+  border: none;
+  border-radius: 8px;
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 18px rgba(0, 255, 102, 0.35);
+  transition: transform 0.18s, box-shadow 0.18s, opacity 0.18s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.la-btn-submit:hover:not(:disabled),
+.la-btn-submit:focus:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 24px rgba(0, 255, 102, 0.50);
+  outline: none;
+}
+
+.la-btn-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.la-spinner {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 2px solid rgba(0, 0, 0, 0.25);
+  border-top-color: #000000;
+  animation: laSpin 0.9s linear infinite;
+}
+
+.la-divider-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 2px 0;
+}
+
+.la-divider-line {
+  flex: 1;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.la-divider-text {
+  font-size: 11px;
+  color: #64748B;
+  font-weight: 500;
+}
+
+.la-btn-google {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.05);
+  color: #F8FAFC;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 9px;
+  padding: 11px 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.18s, border-color 0.18s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.la-btn-google:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(0, 255, 102, 0.4);
+}
+
+.la-footer-links {
+  margin-top: 18px;
+  text-align: center;
+  font-size: 12px;
+  color: #94A3B8;
+}
+
+.la-footer-signup {
+  color: #00FF66;
+  text-decoration: none;
+  font-weight: 600;
+  margin-left: 4px;
+}
+
+.la-footer-signup:hover {
+  text-decoration: underline;
+}
+
+/* ── Right Pane: Seamless Transparent Portal Area ── */
+.la-right-pane {
+  flex: 1.35;
+  min-height: 100vh;
+  position: relative;
+  background: transparent;
+  pointer-events: none;
+}
+
+/* ── Keyframes ── */
+@keyframes laFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes laSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes laShake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-5px); }
+  40%, 80% { transform: translateX(5px); }
+}
+
+/* ── Responsive adjustments ── */
+@media (max-width: 1024px) {
+  .la-split-layout {
+    flex-direction: column-reverse;
+  }
+  .la-left-pane {
+    max-width: 100%;
+    min-height: auto;
+    padding: 24px 16px;
+  }
+  .la-right-pane {
+    min-height: 380px;
+    height: 45vh;
+  }
+}

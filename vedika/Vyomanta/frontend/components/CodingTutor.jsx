@@ -253,6 +253,7 @@ export default function CodingTutor() {
   const [codeOverride, setCodeOverride] = useState(null);
   const [explanationOverride, setExplanationOverride] = useState(null);
 
+  
   const [currentSandboxCode, setCurrentSandboxCode] = useState('');
   const [showMentionDropdown, setShowMentionDropdown] = useState(false);
   const [mentionSearch, setMentionSearch] = useState('');
@@ -1319,30 +1320,8 @@ export default function CodingTutor() {
                 </div>
               </div>
 
-              {/* Action Buttons for Code Puzzles & Sandbox */}
+              {/* Action Buttons for Python Sandbox */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <button
-                  onClick={() => router.push('/vedika-ai/puzzle')}
-                  style={{
-                    background: `${T.purple}18`,
-                    border: `1px solid ${T.purple}40`,
-                    color: T.purple,
-                    padding: '6px 14px',
-                    borderRadius: 8,
-                    fontSize: 12.5,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    transition: 'all 0.15s',
-                    fontFamily: 'inherit'
-                  }}
-                  title="Open Code Puzzles"
-                >
-                  <Puzzle size={14} />
-                  Code Puzzles
-                </button>
 
                 <button
                   onClick={() => setIsPlaygroundOpen(!isPlaygroundOpen)}

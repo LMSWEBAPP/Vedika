@@ -9,7 +9,11 @@ import {
   Download,
 } from 'lucide-react';
 import ThreeDAvatar from '@/components/ThreeDAvatar';
+import AvatarColorTuner from '@/components/AvatarColorTuner';
+import DoctorStrangePortal from '@/components/DoctorStrangePortal';
 import { playAvatarGreeting, stopAvatarGreeting } from '@/lib/avatarChorusSpeech';
+import gsap from 'gsap';
+import { checkPortalArrival, notifyPortalExitComplete, playDeepCosmicWhoosh, playAvatarWhoosh } from '@/lib/portalTransition';
 import './vedika-labs.css';
 
 // Idle expressions
@@ -19,83 +23,289 @@ const IDLE_STATES = [
 ];
 
 /**
- * 4 Lab Station Configurations matching Home Page Squad:
- * 1. Physics Lab: Emerald (#2dd4bf / /avatar_green.webp)
- * 2. Chemistry Lab: Blue (#38bdf8 / /avatar_blue.webp)
- * 3. Biology Lab: Pink (#f472b6 / /avatar_pink.webp)
- * 4. Math Lab: Gold (#facc15 / /avatar_gold.webp)
+ * 4 Fixed Labs with dedicated 3D Avatars:
+ * 1. Physics Lab: Neon Green (#39FF14 / /avatar_1_purple.webp)
+ * 2. Chemistry Lab: Neon Pink (#FF6EFF / /avatar_2_lime.webp)
+ * 3. Biology Lab: Neon Red (#FF3131 / /avatar_3_red.webp)
+ * 4. Math Lab: Neon Orange (#FF5C00 / /avatar_4_blue.webp)
  */
 const LAB_STATIONS = [
   {
     id: 'physics',
     charId: 'mowgli',
-    name: 'Emerald',
+    name: 'Mowgli',
     style: 'Pixar (Boy)',
     title: 'Physics Lab',
     desc: 'Explore motion, energy and the laws of nature.',
     url: '/vedika-labs/physics',
-    glowColor: '#2dd4bf',
-    modelColor: '#2dd4bf',
-    texture: '/avatar_green.webp',
+    glowColor: '#39FF14',
+    modelColor: '#39FF14',
+    texture: '/avatar_1_purple.webp?v=5',
     accentClass: 'physics',
-    greetingText: '"Hi, this is Emerald, welcome to my physics lab"',
+    greetingText: '"Hi, this is Mowgli, welcome to my physics lab"',
     badgeImg: '/badges/physics_badge.png',
   },
   {
     id: 'chemistry',
     charId: 'belle',
-    name: 'Blue',
+    name: 'Belle',
     style: 'Ghibli (Girl)',
     title: 'Chemistry Lab',
     desc: 'Experiment with reactions, elements and compounds.',
     url: '/vedika-labs/chemistry',
-    glowColor: '#38bdf8',
-    modelColor: '#38bdf8',
-    texture: '/avatar_blue.webp',
+    glowColor: '#FF6EFF',
+    modelColor: '#FF6EFF',
+    texture: '/avatar_2_lime.webp?v=5',
     accentClass: 'chemistry',
-    greetingText: '"Hi, this is Blue, welcome to my chemistry lab"',
+    greetingText: '"Hi, this is Belle, welcome to my chemistry lab"',
     badgeImg: '/badges/chemistry_badge.png',
   },
   {
     id: 'biology',
     charId: 'moana',
-    name: 'Pink',
+    name: 'Moana',
     style: 'Pixar (Girl)',
     title: 'Biology Lab',
     desc: 'Discover life sciences through interactive 3D models.',
     url: '/vedika-labs/biology',
-    glowColor: '#f472b6',
-    modelColor: '#f472b6',
-    texture: '/avatar_pink.webp',
+    glowColor: '#FF3131',
+    modelColor: '#FF3131',
+    texture: '/avatar_3_red.webp?v=5',
     accentClass: 'biology',
-    greetingText: '"Hi, this is Pink, welcome to my biology lab"',
+    greetingText: '"Hi, this is Moana, welcome to my biology lab"',
     badgeImg: '/badges/biology_badge.png',
   },
   {
     id: 'math',
     charId: 'bagheera',
-    name: 'Gold',
+    name: 'Bhageera',
     style: 'Pixar (Boy)',
     title: 'Math Lab',
     desc: 'Visualize equations and solve real-world problems.',
     url: '/vedika-labs/math',
-    glowColor: '#facc15',
-    modelColor: '#facc15',
-    texture: '/avatar_gold.webp',
+    glowColor: '#FF5C00',
+    modelColor: '#FF5C00',
+    texture: '/avatar_4_blue.webp?v=5',
     accentClass: 'math',
-    greetingText: '"Hi, this is Gold, welcome to my math lab"',
+    greetingText: '"Hi, this is Bhageera, welcome to my math lab"',
     badgeImg: '/badges/math_badge.png',
   },
 ];
 
 export default function VedikaLabsHub() {
   const router = useRouter();
+  const [stations, setStations] = useState(LAB_STATIONS);
   const [pageMouse, setPageMouse] = useState({ x: 0, y: 0 });
   const [hoveredLab, setHoveredLab] = useState(null);
   const [speakingAvatar, setSpeakingAvatar] = useState(null);
   const [showVoiceStudio, setShowVoiceStudio] = useState(false);
   const [isIntroBouncing, setIsIntroBouncing] = useState(true);
   const hasTriggeredRef = useRef(false);
+
+  // Single Central Dimensional Portal State & Refs
+  const portalRef = useRef(null);
+  const physicsAvatarRef = useRef(null);
+  const chemAvatarRef = useRef(null);
+  const bioAvatarRef = useRef(null);
+  const mathAvatarRef = useRef(null);
+  const [isSettled, setIsSettled] = useState(false);
+
+  // Arrival Sequence: Avatars emerge from the swirling black void ONE BY ONE directly into their stations
+  const playLabsPortalArrival = useCallback(() => {
+    const portal = portalRef.current;
+    const avatars = [
+      { el: physicsAvatarRef.current, dest: { left: '24.5%', top: '10%' }, pitch: 0.90 },
+      { el: chemAvatarRef.current,    dest: { left: '41.2%', top: '-5%' },  pitch: 1.00 },
+      { el: bioAvatarRef.current,     dest: { left: '58.8%', top: '-5%' },  pitch: 1.10 },
+      { el: mathAvatarRef.current,    dest: { left: '79.2%', top: '7%' },   pitch: 1.20 },
+    ];
+
+    // Initial state: hidden inside the event horizon
+    avatars.forEach(({ el }) => {
+      if (el) {
+        gsap.set(el, {
+          left: '50%',
+          top: '50%',
+          scale: 0.001,
+          opacity: 0,
+          rotation: 0,
+        });
+      }
+    });
+
+    // Deep cosmic suction whoosh
+    playDeepCosmicWhoosh(2.4, 1.0);
+
+    const arrivalTl = gsap.timeline({
+      onComplete: () => {
+        setIsSettled(true);
+      }
+    });
+
+    // 1. Black void portal opens in a dramatic swirling vortex motion
+    if (portal) {
+      arrivalTl.fromTo(portal, {
+        scale: 0.001,
+        rotation: -720,
+        opacity: 0,
+      }, {
+        scale: 1.0,
+        rotation: 0,
+        opacity: 1.0,
+        duration: 0.52,
+        ease: 'power2.out',
+      }, 0);
+    }
+
+    // 2. Avatars emerge ONE BY ONE directly into their individual lab stations with silky smooth flight
+    const emergeStartTime = 0.28;
+    avatars.forEach(({ el, dest, pitch }, idx) => {
+      if (!el) return;
+      const emergeTime = emergeStartTime + idx * 0.32;
+
+      // Micro whoosh sound
+      arrivalTl.call(() => {
+        playAvatarWhoosh(pitch);
+      }, null, emergeTime);
+
+      // Directly emerge into own station destination with silky smooth easing
+      arrivalTl.fromTo(el, {
+        rotation: (idx % 2 === 0 ? -16 : 16),
+      }, {
+        left: dest.left,
+        top: dest.top,
+        scale: 1.0,
+        opacity: 1,
+        rotation: 0,
+        duration: 0.74,
+        ease: 'power2.out',
+      }, emergeTime);
+    });
+
+    // 3. Portal swirls shut into absolute void
+    const closeTime = emergeStartTime + avatars.length * 0.32 + 0.30;
+    if (portal) {
+      arrivalTl.to(portal, {
+        scale: 0.001,
+        rotation: 720,
+        opacity: 0,
+        duration: 0.45,
+        ease: 'power2.in',
+      }, closeTime);
+    }
+  }, []);
+
+  // Departure Sequence: Avatars enter the swirling void ONE BY ONE directly from their own positions
+  const playLabsPortalExit = useCallback(() => {
+    const portal = portalRef.current;
+    const avatars = [
+      { el: physicsAvatarRef.current, pitch: 1.20 },
+      { el: chemAvatarRef.current,    pitch: 1.10 },
+      { el: bioAvatarRef.current,     pitch: 1.00 },
+      { el: mathAvatarRef.current,    pitch: 0.88 },
+    ];
+
+    setIsSettled(false);
+    playDeepCosmicWhoosh(2.4, 1.0);
+
+    const exitTl = gsap.timeline({
+      onComplete: () => {
+        notifyPortalExitComplete();
+      }
+    });
+
+    // 1. Black void portal opens in a swirling vortex motion
+    if (portal) {
+      exitTl.fromTo(portal, {
+        scale: 0.001,
+        rotation: -720,
+        opacity: 0,
+      }, {
+        scale: 1.0,
+        rotation: 0,
+        opacity: 1.0,
+        duration: 0.54,
+        ease: 'power2.out',
+      }, 0);
+    }
+
+    // 2. Avatars dive into swirling void ONE BY ONE directly from their stations with graceful spiral glide
+    const enterStartTime = 0.25;
+    avatars.forEach(({ el, pitch }, idx) => {
+      if (!el) return;
+      const stepTime = enterStartTime + idx * 0.34;
+
+      // Micro whoosh sound
+      exitTl.call(() => {
+        playAvatarWhoosh(pitch);
+      }, null, stepTime);
+
+      // Dive smoothly from current station position into event horizon
+      exitTl.to(el, {
+        left: '50%',
+        top: '50%',
+        scale: 0.001,
+        opacity: 0,
+        rotation: (idx % 2 === 0 ? 360 : -360),
+        duration: 0.58,
+        ease: 'power2.inOut',
+      }, stepTime);
+    });
+
+    // 3. Once all avatars have entered, the black void portal swirls shut
+    const collapseTime = enterStartTime + avatars.length * 0.34 + 0.25;
+    if (portal) {
+      exitTl.to(portal, {
+        scale: 0.001,
+        rotation: 720,
+        opacity: 0,
+        duration: 0.42,
+        ease: 'power2.in',
+      }, collapseTime);
+    }
+  }, []);
+
+  // Hook Cross-Page Portal Listeners
+  useEffect(() => {
+    const handleExit = () => {
+      playLabsPortalExit();
+    };
+    window.addEventListener('vedika:portal-exit', handleExit);
+
+    // Check if arrived via portal
+    const arrival = checkPortalArrival('/vedika-labs');
+    if (arrival.fromPortal) {
+      const timer = setTimeout(() => {
+        playLabsPortalArrival();
+      }, 150);
+      return () => {
+        clearTimeout(timer);
+        window.removeEventListener('vedika:portal-exit', handleExit);
+      };
+    } else {
+      setIsSettled(true);
+    }
+
+    return () => {
+      window.removeEventListener('vedika:portal-exit', handleExit);
+    };
+  }, [playLabsPortalArrival, playLabsPortalExit]);
+
+  // Real-time Color Tuner Listener
+  useEffect(() => {
+    const handleColorChange = (e) => {
+      const { index, hex } = e.detail;
+      setStations((prev) => {
+        const next = [...prev];
+        if (next[index]) {
+          next[index] = { ...next[index], glowColor: hex, modelColor: hex };
+        }
+        return next;
+      });
+    };
+    window.addEventListener('vedika_avatar_color_change', handleColorChange);
+    return () => window.removeEventListener('vedika_avatar_color_change', handleColorChange);
+  }, []);
 
   // Independent expressions per avatar
   const [avatarExprs, setAvatarExprs] = useState(() =>
@@ -138,11 +348,14 @@ export default function VedikaLabsHub() {
   // Per-avatar independent idle expression cycling
   useEffect(() => {
     if (isIntroBouncing || speakingAvatar) return;
+    let isActive = true; // Guard against orphan timers after cleanup
     const timers = {};
 
     const scheduleNext = (labId) => {
+      if (!isActive) return; // Don't schedule if effect was cleaned up
       const delay = 2800 + Math.random() * 3500;
       timers[labId] = setTimeout(() => {
+        if (!isActive) return; // Double-check before state update
         setAvatarExprs((prev) => {
           if (hoveredLab || isIntroBouncing || speakingAvatar) return prev;
           const pool = IDLE_STATES.filter((e) => e !== prev[labId]);
@@ -154,7 +367,10 @@ export default function VedikaLabsHub() {
     };
 
     LAB_STATIONS.forEach((l) => scheduleNext(l.id));
-    return () => Object.values(timers).forEach(clearTimeout);
+    return () => {
+      isActive = false;
+      Object.values(timers).forEach(clearTimeout);
+    };
   }, [hoveredLab, isIntroBouncing, speakingAvatar]);
 
   // Hover Interaction & Voice Trigger
@@ -239,80 +455,95 @@ export default function VedikaLabsHub() {
           {/* Seamless Vignette (Zero Box Border) */}
           <div className="vl-stage-vignette" />
 
-          {/* 1. Emerald (Physics) — Above Newton's Cradle (Green Pedestal) */}
+          {/* Doctor Strange Sling Ring Portal (Single fiery spark ring + black void) */}
+          <DoctorStrangePortal ref={portalRef} size={250} className="vl-central-portal-wrap" />
+
+          {/* 1. Purple (Physics) — Above Newton's Cradle */}
           <div
-            className="vl-pedestal-avatar vl-avatar-physics"
+            ref={physicsAvatarRef}
+            className={`vl-pedestal-avatar vl-avatar-physics ${isSettled ? 'settled' : 'in-transit'}`}
             onClick={() => router.push('/vedika-labs/physics')}
-            onMouseEnter={() => handleLabHover(LAB_STATIONS[0])}
+            onMouseEnter={() => handleLabHover(stations[0])}
             onMouseLeave={handleLabLeave}
           >
-            <ThreeDAvatar
-              expression={avatarExprs.physics || 'happy'}
-              glowColor="#2dd4bf"
-              modelColor="#2dd4bf"
-              textureUrl="/avatar_green.webp"
-              size={92}
-              mouseOffset={getOffset()}
-              isSpeaking={speakingAvatar === 'mowgli'}
-              onLoaded={handleAvatarLoaded}
-            />
+            <div className={`vl-avatar-floating-inner ${isSettled ? 'vl-float-physics' : ''}`}>
+              <ThreeDAvatar
+                expression={avatarExprs.physics || 'happy'}
+                glowColor={stations[0]?.glowColor || '#39FF14'}
+                modelColor={stations[0]?.modelColor || '#39FF14'}
+                textureUrl={stations[0]?.texture || '/avatar_1_purple.webp'}
+                size={92}
+                mouseOffset={getOffset()}
+                isSpeaking={speakingAvatar === 'mowgli'}
+                onLoaded={handleAvatarLoaded}
+              />
+            </div>
           </div>
 
-          {/* 2. Blue (Chemistry) — Above Chemical Flask (Blue Pedestal) */}
+          {/* 2. Lime (Chemistry) — Above Chemical Flask */}
           <div
-            className="vl-pedestal-avatar vl-avatar-chemistry"
+            ref={chemAvatarRef}
+            className={`vl-pedestal-avatar vl-avatar-chemistry ${isSettled ? 'settled' : 'in-transit'}`}
             onClick={() => router.push('/vedika-labs/chemistry')}
-            onMouseEnter={() => handleLabHover(LAB_STATIONS[1])}
+            onMouseEnter={() => handleLabHover(stations[1])}
             onMouseLeave={handleLabLeave}
           >
-            <ThreeDAvatar
-              expression={avatarExprs.chemistry || 'happy'}
-              glowColor="#38bdf8"
-              modelColor="#38bdf8"
-              textureUrl="/avatar_blue.webp"
-              size={92}
-              mouseOffset={getOffset()}
-              isSpeaking={speakingAvatar === 'belle'}
-              onLoaded={handleAvatarLoaded}
-            />
+            <div className={`vl-avatar-floating-inner ${isSettled ? 'vl-float-chemistry' : ''}`}>
+              <ThreeDAvatar
+                expression={avatarExprs.chemistry || 'happy'}
+                glowColor={stations[1]?.glowColor || '#FF6EFF'}
+                modelColor={stations[1]?.modelColor || '#FF6EFF'}
+                textureUrl={stations[1]?.texture || '/avatar_2_lime.webp'}
+                size={92}
+                mouseOffset={getOffset()}
+                isSpeaking={speakingAvatar === 'belle'}
+                onLoaded={handleAvatarLoaded}
+              />
+            </div>
           </div>
 
-          {/* 3. Pink (Biology) — Above Molecule Model (Pink Pedestal) */}
+          {/* 3. Ruby (Biology) — Above Molecule Model */}
           <div
-            className="vl-pedestal-avatar vl-avatar-biology"
+            ref={bioAvatarRef}
+            className={`vl-pedestal-avatar vl-avatar-biology ${isSettled ? 'settled' : 'in-transit'}`}
             onClick={() => router.push('/vedika-labs/biology')}
-            onMouseEnter={() => handleLabHover(LAB_STATIONS[2])}
+            onMouseEnter={() => handleLabHover(stations[2])}
             onMouseLeave={handleLabLeave}
           >
-            <ThreeDAvatar
-              expression={avatarExprs.biology || 'happy'}
-              glowColor="#f472b6"
-              modelColor="#f472b6"
-              textureUrl="/avatar_pink.webp"
-              size={92}
-              mouseOffset={getOffset()}
-              isSpeaking={speakingAvatar === 'moana'}
-              onLoaded={handleAvatarLoaded}
-            />
+            <div className={`vl-avatar-floating-inner ${isSettled ? 'vl-float-biology' : ''}`}>
+              <ThreeDAvatar
+                expression={avatarExprs.biology || 'happy'}
+                glowColor={stations[2]?.glowColor || '#FF3131'}
+                modelColor={stations[2]?.modelColor || '#FF3131'}
+                textureUrl={stations[2]?.texture || '/avatar_3_red.webp'}
+                size={92}
+                mouseOffset={getOffset()}
+                isSpeaking={speakingAvatar === 'moana'}
+                onLoaded={handleAvatarLoaded}
+              />
+            </div>
           </div>
 
-          {/* 4. Gold (Math) — Above Geometric Cone (Yellow Pedestal) */}
+          {/* 4. Blue (Math) — Above Geometric Cone */}
           <div
-            className="vl-pedestal-avatar vl-avatar-math"
+            ref={mathAvatarRef}
+            className={`vl-pedestal-avatar vl-avatar-math ${isSettled ? 'settled' : 'in-transit'}`}
             onClick={() => router.push('/vedika-labs/math')}
-            onMouseEnter={() => handleLabHover(LAB_STATIONS[3])}
+            onMouseEnter={() => handleLabHover(stations[3])}
             onMouseLeave={handleLabLeave}
           >
-            <ThreeDAvatar
-              expression={avatarExprs.math || 'happy'}
-              glowColor="#facc15"
-              modelColor="#facc15"
-              textureUrl="/avatar_gold.webp"
-              size={92}
-              mouseOffset={getOffset()}
-              isSpeaking={speakingAvatar === 'bagheera'}
-              onLoaded={handleAvatarLoaded}
-            />
+            <div className={`vl-avatar-floating-inner ${isSettled ? 'vl-float-math' : ''}`}>
+              <ThreeDAvatar
+                expression={avatarExprs.math || 'happy'}
+                glowColor={stations[3]?.glowColor || '#FF5C00'}
+                modelColor={stations[3]?.modelColor || '#FF5C00'}
+                textureUrl={stations[3]?.texture || '/avatar_4_blue.webp'}
+                size={92}
+                mouseOffset={getOffset()}
+                isSpeaking={speakingAvatar === 'bagheera'}
+                onLoaded={handleAvatarLoaded}
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -444,6 +675,8 @@ export default function VedikaLabsHub() {
           </div>
         </div>
       )}
+      {/* Real-time Interactive Color Tuner Widget */}
+      <AvatarColorTuner />
     </div>
   );
 }

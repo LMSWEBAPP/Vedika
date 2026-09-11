@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { ArrowLeft, Menu, X } from 'lucide-react';
+import { ArrowLeft, Menu, X, Search, Sparkles, BookOpen, Layers } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkSlug from 'remark-slug';
@@ -14,20 +14,26 @@ export default function ResourcesDSAResources({ navigateTo }) {
   const [expandedSections, setExpandedSections] = useState({});
   const [activeHeading, setActiveHeading] = useState('');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  
-  const [markdownChunks, setMarkdownChunks] = useState([]);
-  const [loadedChunks, setLoadedChunks] = useState(0);
+  const [tocFilter, setTocFilter] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     // Fetch the markdown file from the public folder
+    setIsLoading(true);
     fetch('/src/ds-res/das-resource.md')
-      .then(response => response.text())
+      .then(response => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.text();
+      })
       .then(text => {
         setMarkdown(text);
         extractHeadings(text);
       })
       .catch(error => {
-        console.error('Error loading markdown file:', error);
+        console.warn('Could not load markdown file from static server:', error);
+      })
+      .finally(() => {
+        setIsLoading(false);
       });
   }, []);
 
@@ -54,7 +60,7 @@ export default function ResourcesDSAResources({ navigateTo }) {
 
     setHeadings(headingsList);
     
-    // Expand top-level sections
+    // Expand top-level sections by default
     const initialExpanded = {};
     headingsList.forEach(h => {
       if (h.level <= 2) {
@@ -76,8 +82,21 @@ export default function ResourcesDSAResources({ navigateTo }) {
         currentGroup.children.push(heading);
       }
     });
-    return groups;
-  }, [headings]);
+
+    if (!tocFilter.trim()) return groups;
+
+    // Filter TOC by search term
+    const filter = tocFilter.toLowerCase();
+    return groups.filter(g => 
+      g.title.toLowerCase().includes(filter) || 
+      g.children.some(c => c.title.toLowerCase().includes(filter))
+    ).map(g => ({
+      ...g,
+      children: g.children.filter(c => 
+        c.title.toLowerCase().includes(filter) || g.title.toLowerCase().includes(filter)
+      )
+    }));
+  }, [headings, tocFilter]);
 
   const toggleSection = (id) => {
     setExpandedSections(prev => ({ ...prev, [id]: !prev[id] }));
@@ -89,7 +108,7 @@ export default function ResourcesDSAResources({ navigateTo }) {
     const container = document.querySelector('.dsa-resources-markdown');
     
     if (element && container) {
-      const offsetPosition = element.offsetTop - 80;
+      const offsetPosition = element.offsetTop - 30;
       container.scrollTo({ top: offsetPosition, behavior: 'smooth' });
       
       setTimeout(() => {
@@ -105,12 +124,12 @@ export default function ResourcesDSAResources({ navigateTo }) {
       const container = document.querySelector('.dsa-resources-markdown');
       if (!container) return;
       
-      const hs = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
+      const hs = document.querySelectorAll('h1[id], h2[id], h3[id]');
       let currentHeading = '';
       
       for (let i = 0; i < hs.length; i++) {
         const heading = hs[i];
-        if (heading.offsetTop - container.scrollTop <= 100) {
+        if (heading.offsetTop - container.scrollTop <= 120) {
           currentHeading = heading.id;
         }
       }
@@ -131,26 +150,16 @@ export default function ResourcesDSAResources({ navigateTo }) {
     }
   }, [activeHeading, markdown]);
 
-  // Lazy load content
-  useEffect(() => {
-    if (markdown) {
-      const chunkSize = 5000;
-      const chunks = [];
-      for (let i = 0; i < markdown.length; i += chunkSize) {
-        chunks.push(markdown.slice(i, i + chunkSize));
-      }
-      setMarkdownChunks(chunks);
-      setLoadedChunks(Math.min(3, chunks.length));
-    }
-  }, [markdown]);
-
-  const handleMarkdownScroll = (e) => {
-    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
-    if ((scrollTop / (scrollHeight - clientHeight)) * 100 > 70) {
-      if (loadedChunks < markdownChunks.length) {
-        setLoadedChunks(prev => Math.min(prev + 2, markdownChunks.length));
-      }
-    }
+  // Helper to create reliable slug ID from heading node
+  const getHeadingId = (children) => {
+    const text = Array.isArray(children) 
+      ? children.map(c => (typeof c === 'string' ? c : (c?.props?.children || ''))).join('')
+      : String(children || '');
+    return text
+      .toLowerCase()
+      .replace(/[^\w\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-');
   };
 
   return (
@@ -158,11 +167,12 @@ export default function ResourcesDSAResources({ navigateTo }) {
       <div className="dsa-resources-container">
         
         {/* Navigation header */}
-        <div className="dsa-resources-header">
-          <div className="dsa-resources-header-controls">
+        <div className="dsa-resources-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div className="dsa-resources-header-controls" style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             <button
               className="dsa-resources-mobile-menu-button"
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              aria-label="Toggle Table of Contents"
             >
               {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
@@ -175,44 +185,83 @@ export default function ResourcesDSAResources({ navigateTo }) {
               Back to DSA Practice
             </button>
           </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, paddingRight: 8 }}>
+            <span style={{ 
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              background: 'rgba(16, 185, 129, 0.15)', color: '#10B981', 
+              fontSize: 12.5, fontWeight: 700, padding: '5px 12px', borderRadius: 6,
+              border: '1px solid rgba(16, 185, 129, 0.25)'
+            }}>
+              <Sparkles size={13} /> DSA Master Roadmap
+            </span>
+            <span style={{ fontSize: 12, color: 'var(--muted)', display: 'none', smDisplay: 'inline' }}>
+              8 Stages • 14 Core Patterns
+            </span>
+          </div>
         </div>
 
         <div className="dsa-resources-content-wrapper">
           <div className="dsa-resources-content">
             
-            {/* Sidebar (collapsible for mobile drawer) */}
-            <div className={`dsa-resources-mobile-toc-drawer ${isMobileMenuOpen ? 'open' : ''}`}>
-              <div className="dsa-resources-mobile-toc-menu">
-                <div className="dsa-resources-mobile-toc-header">
-                  <h2 className="dsa-resources-sidebar-title">Table of Contents</h2>
-                  <button
-                    className="dsa-resources-mobile-toc-close"
-                    onClick={() => setIsMobileMenuOpen(false)}
-                  >
-                    <X size={20} />
-                  </button>
-                </div>
-                <div className="dsa-resources-toc-container">
-                  <ul className="dsa-resources-toc">
-                    {groupedHeadings.map((section) => (
-                      <TOCSection
-                        key={section.id}
-                        section={section}
-                        activeHeading={activeHeading}
-                        expandedSections={expandedSections}
-                        handleHeadingClick={handleHeadingClick}
-                        toggleSection={toggleSection}
-                      />
-                    ))}
-                  </ul>
+            {/* Mobile Drawer (rendered only when user opens mobile menu) */}
+            {isMobileMenuOpen && (
+              <div className="dsa-resources-mobile-toc-drawer open">
+                <div className="dsa-resources-mobile-toc-menu">
+                  <div className="dsa-resources-mobile-toc-header">
+                    <h2 className="dsa-resources-sidebar-title">Roadmap Sections</h2>
+                    <button
+                      className="dsa-resources-mobile-toc-close"
+                      onClick={() => setIsMobileMenuOpen(false)}
+                      aria-label="Close menu"
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
+                  <div className="dsa-resources-toc-container">
+                    <ul className="dsa-resources-toc">
+                      {groupedHeadings.map((section) => (
+                        <TOCSection
+                          key={section.id}
+                          section={section}
+                          activeHeading={activeHeading}
+                          expandedSections={expandedSections}
+                          handleHeadingClick={handleHeadingClick}
+                          toggleSection={toggleSection}
+                        />
+                      ))}
+                    </ul>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
             {/* Desktop Sidebar */}
             <div className="dsa-resources-sidebar">
-              <div className="dsa-resources-sidebar-header">
-                <h2 className="dsa-resources-sidebar-title">Table of Contents</h2>
+              <div className="dsa-resources-sidebar-header" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Layers size={15} color="var(--accent)" />
+                  <h2 className="dsa-resources-sidebar-title">Table of Contents</h2>
+                </div>
+                <div style={{ position: 'relative', width: '100%' }}>
+                  <Search size={13} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }} />
+                  <input
+                    type="text"
+                    placeholder="Search topics..."
+                    value={tocFilter}
+                    onChange={(e) => setTocFilter(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '6px 10px 6px 30px',
+                      background: 'rgba(255,255,255,0.05)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 6,
+                      color: 'var(--text)',
+                      fontSize: 12,
+                      outline: 'none'
+                    }}
+                  />
+                </div>
               </div>
               <div className="dsa-resources-toc-container">
                 <ul className="dsa-resources-toc">
@@ -230,18 +279,31 @@ export default function ResourcesDSAResources({ navigateTo }) {
               </div>
             </div>
 
-            {/* Main markdown content scrollbox */}
+            {/* Main Content Area */}
             <div className="dsa-resources-main">
-              <div className="dsa-resources-markdown" onScroll={handleMarkdownScroll}>
-                {markdownChunks.slice(0, loadedChunks).map((chunk, index) => (
+              {isLoading ? (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 12, color: 'var(--muted)' }}>
+                  <div style={{ width: 28, height: 28, borderRadius: '50%', border: '2px solid var(--border)', borderTopColor: 'var(--accent)', animation: 'spin 1s linear infinite' }} />
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>Loading DSA Master Roadmap...</span>
+                </div>
+              ) : (
+                <div className="dsa-resources-markdown">
                   <ReactMarkdown
-                    key={index}
                     remarkPlugins={[remarkGfm, remarkSlug]}
                     rehypePlugins={[rehypeAutolinkHeadings]}
                     components={{
-                      h1: ({ node, ...props }) => <h1 className="dsa-resources-heading-1" {...props} />,
-                      h2: ({ node, ...props }) => <h2 className="dsa-resources-heading-2" {...props} />,
-                      h3: ({ node, ...props }) => <h3 className="dsa-resources-heading-3" {...props} />,
+                      h1: ({ node, ...props }) => {
+                        const id = getHeadingId(props.children);
+                        return <h1 id={id} className="dsa-resources-heading-1" {...props} />;
+                      },
+                      h2: ({ node, ...props }) => {
+                        const id = getHeadingId(props.children);
+                        return <h2 id={id} className="dsa-resources-heading-2" {...props} />;
+                      },
+                      h3: ({ node, ...props }) => {
+                        const id = getHeadingId(props.children);
+                        return <h3 id={id} className="dsa-resources-heading-3" {...props} />;
+                      },
                       h4: ({ node, ...props }) => <h4 className="dsa-resources-heading-4" {...props} />,
                       h5: ({ node, ...props }) => <h5 className="dsa-resources-heading-5" {...props} />,
                       h6: ({ node, ...props }) => <h6 className="dsa-resources-heading-6" {...props} />,
@@ -258,10 +320,10 @@ export default function ResourcesDSAResources({ navigateTo }) {
                       td: ({ node, ...props }) => <td className="dsa-resources-table-cell" {...props} />,
                     }}
                   >
-                    {chunk}
+                    {markdown}
                   </ReactMarkdown>
-                ))}
-              </div>
+                </div>
+              )}
             </div>
 
           </div>

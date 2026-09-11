@@ -1,0 +1,198 @@
+/* ── ZIM 3D Carousel (Dex / Carousel3D) External Stylesheet ── */
+
+.zim-carousel-container {
+  position: relative;
+  width: 100%;
+  height: 330px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  -webkit-user-select: none;
+  overflow: visible;
+}
+
+@media (max-width: 768px) {
+  .zim-carousel-container {
+    height: 270px;
+  }
+}
+
+/* ── 3D Stage & Cylinder Space ── */
+.zim-stage {
+  position: relative;
+  width: 100%;
+  height: 280px;
+  cursor: grab;
+  perspective: 1000px;
+  overflow: visible;
+}
+
+.zim-stage:active {
+  cursor: grabbing;
+}
+
+/* ── Individual Cylindrical Card ── */
+.zim-card {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 220px;
+  height: 250px;
+  margin-top: -125px;
+  margin-left: -110px;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #0C0F1C;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+  transform-origin: center center;
+  transition: box-shadow 0.25s ease, border-color 0.25s ease;
+  will-change: transform, opacity, z-index;
+  cursor: pointer;
+}
+
+@media (max-width: 768px) {
+  .zim-card {
+    width: 180px;
+    height: 210px;
+    margin-top: -105px;
+    margin-left: -90px;
+  }
+}
+
+.zim-card.is-active {
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.55);
+}
+
+.zim-card-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  pointer-events: none;
+}
+
+/* ── Fader Overlay (ZIM page.fader depth darkening) ── */
+.zim-card-fader {
+  position: absolute;
+  inset: 0;
+  background: #07080F;
+  pointer-events: none;
+  transition: opacity 0.1s linear;
+}
+
+/* ── Card Content Overlay ── */
+.zim-card-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  padding: 24px 14px 12px 14px;
+  background: linear-gradient(to top, rgba(7, 8, 15, 0.96) 0%, rgba(7, 8, 15, 0.6) 60%, transparent 100%);
+  color: #FFFFFF;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.zim-card-category {
+  font-size: 10.5px;
+  font-weight: 800;
+  color: #F97316;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 2px;
+}
+
+.zim-card-title {
+  font-size: 13.5px;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #F8FAFC;
+  line-height: 1.3;
+}
+
+/* ── Navigation Arrows (ZIM Arrow style) ── */
+.zim-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: rgba(17, 24, 39, 0.75);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #F1F5F9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 50;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.zim-arrow:hover {
+  background: #5B8CF8;
+  color: #FFFFFF;
+  border-color: #5B8CF8;
+  box-shadow: 0 6px 18px rgba(91, 140, 248, 0.4);
+  transform: translateY(-50%) scale(1.08);
+}
+
+.zim-arrow:active {
+  transform: translateY(-50%) scale(0.95);
+}
+
+.zim-arrow-left {
+  left: 6px;
+}
+
+.zim-arrow-right {
+  right: 6px;
+}
+
+/* ── Indicator Lights (ZIM Indicator style) ── */
+.zim-indicator-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 6px 14px;
+  background: rgba(17, 24, 39, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 20px;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 40;
+}
+
+.zim-indicator-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.22);
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.zim-indicator-dot:hover {
+  background: rgba(255, 255, 255, 0.6);
+  transform: scale(1.2);
+}
+
+.zim-indicator-dot.is-active {
+  width: 22px;
+  border-radius: 6px;
+  background: #5B8CF8;
+  box-shadow: 0 0 10px rgba(91, 140, 248, 0.7);
+}

@@ -1,0 +1,512 @@
+/* ═══════════════════════════════════════════════════════════════
+   Avatar Chamber Experience — Dynamic Shader Pedestals Page Styling
+   ═══════════════════════════════════════════════════════════════ */
+
+:root {
+  --vchamber-void-bg: #010003;
+}
+
+.vchamber-container {
+  position: relative;
+  width: 100%;
+  height: calc(100vh - 64px);
+  height: calc(100dvh - 64px);
+  max-height: calc(100vh - 64px);
+  max-height: calc(100dvh - 64px);
+  background-color: var(--vchamber-void-bg);
+  overflow: hidden;
+  user-select: none;
+  box-sizing: border-box;
+}
+
+/* 3D WebGL Canvas Viewport */
+.vchamber-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  z-index: 2;
+  outline: none;
+}
+
+/* Cinematic Depth-of-Field Soft Blur on Side Chambers */
+.vchamber-dof-blur {
+  position: absolute;
+  top: 10%;
+  bottom: 12%;
+  width: 32%;
+  pointer-events: none;
+  z-index: 6;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.vchamber-dof-left {
+  left: 0;
+  mask-image: linear-gradient(to right, rgba(0, 0, 0, 0.95) 30%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, rgba(0, 0, 0, 0.95) 30%, transparent 100%);
+}
+
+.vchamber-dof-right {
+  right: 0;
+  mask-image: linear-gradient(to left, rgba(0, 0, 0, 0.95) 30%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to left, rgba(0, 0, 0, 0.95) 30%, transparent 100%);
+}
+
+/* Loading Hologram Spinner */
+.vchamber-loader-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--vchamber-void-bg);
+  z-index: 20;
+  transition: opacity 0.6s ease, visibility 0.6s ease;
+}
+
+.vchamber-loader-hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.vchamber-loader-ring {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2px solid rgba(148, 163, 184, 0.12);
+  border-top-color: #0ea5e9;
+  border-right-color: #d946ef;
+  animation: vchamberSpin 1.1s cubic-bezier(0.68, -0.55, 0.27, 1.55) infinite;
+  margin-bottom: 14px;
+}
+
+@keyframes vchamberSpin {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.vchamber-loader-text {
+  font-family: 'Outfit', sans-serif;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Avatar Chamber HUD & Bottom Controller Dock Styling
+   ═══════════════════════════════════════════════════════════════ */
+
+.aco-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 28px 18px;
+  box-sizing: border-box;
+  z-index: 10;
+  color: #f1f5f9;
+  font-family: 'Outfit', 'Plus Jakarta Sans', system-ui, sans-serif;
+  user-select: none;
+  overflow: hidden;
+}
+
+/* ── Top Header Section ──────────────────────────────────────── */
+.aco-header {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin-top: 4px;
+  padding: 10px 24px 12px;
+  background: rgba(8, 7, 18, 0.60);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 22px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  pointer-events: auto;
+}
+
+.aco-header-top-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.aco-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 14px;
+  border-radius: 9999px;
+  background: rgba(10, 12, 24, 0.75);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: #94a3b8;
+  text-transform: uppercase;
+}
+
+.aco-badge-pulse {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 10px #10b981;
+  animation: acoPulse 2s ease-in-out infinite;
+}
+
+@keyframes acoPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.85); }
+}
+
+.aco-rays-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  color: #94a3b8;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.aco-rays-btn:hover {
+  background: rgba(30, 41, 59, 0.85);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.aco-rays-btn-active {
+  background: rgba(56, 189, 248, 0.12);
+  border-color: rgba(56, 189, 248, 0.45);
+  color: #38bdf8;
+}
+
+.aco-title {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #ffffff;
+  line-height: 1.15;
+}
+
+.aco-title-accent {
+  background: linear-gradient(135deg, #c084fc 0%, #f472b6 60%, #e879f9 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-left: 6px;
+}
+
+.aco-subtitle {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  font-weight: 400;
+  color: #94a3b8;
+  letter-spacing: 0.01em;
+}
+
+/* ── Screen-Edge Side Carousel Navigation Arrows (Multi-Coloured & Prominent) ── */
+.aco-screen-nav-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  outline: none;
+  z-index: 40;
+  pointer-events: auto;
+  border: none;
+  padding: 2.5px;
+  background: linear-gradient(135deg, #f43f5e 0%, #ec4899 20%, #a855f7 40%, #06b6d4 60%, #10b981 80%, #f59e0b 100%);
+  background-size: 250% 250%;
+  animation: acoRainbowShift 4.5s ease infinite;
+  box-shadow: 0 0 28px rgba(236, 72, 153, 0.50), 0 0 52px rgba(6, 182, 212, 0.40), 0 14px 36px rgba(0, 0, 0, 0.85);
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.28s ease;
+}
+
+@keyframes acoRainbowShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.aco-screen-nav-left {
+  left: clamp(24px, 3.5vw, 48px);
+}
+
+.aco-screen-nav-right {
+  right: clamp(24px, 3.5vw, 48px);
+}
+
+.aco-screen-nav-inner {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, rgba(28, 22, 52, 0.94), rgba(8, 7, 18, 0.98));
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  transition: background 0.25s ease;
+}
+
+.aco-nav-icon-left,
+.aco-nav-icon-right {
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.8));
+  transition: transform 0.22s ease;
+}
+
+.aco-screen-nav-btn:hover {
+  transform: translateY(-50%) scale(1.12);
+  box-shadow: 0 0 40px rgba(244, 63, 94, 0.70), 0 0 70px rgba(6, 182, 212, 0.55), 0 18px 48px rgba(0, 0, 0, 0.95);
+}
+
+.aco-screen-nav-btn:hover .aco-screen-nav-inner {
+  background: radial-gradient(circle at 35% 35%, rgba(46, 36, 80, 0.96), rgba(14, 12, 28, 0.98));
+}
+
+.aco-screen-nav-left:hover .aco-nav-icon-left {
+  transform: translateX(-3.5px);
+}
+
+.aco-screen-nav-right:hover .aco-nav-icon-right {
+  transform: translateX(3.5px);
+}
+
+.aco-screen-nav-btn:active {
+  transform: translateY(-50%) scale(0.95);
+}
+
+/* ── Bottom Companion Controller Dock (Exact Replica of User Screenshot) ── */
+.aco-bottom-dock-wrapper {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 20px;
+  pointer-events: auto;
+  z-index: 25;
+}
+
+/* Soft Ambient Theme Glow Bleeding Above Capsule Dock */
+.aco-dock-ambient-glow {
+  position: absolute;
+  top: -28px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 440px;
+  height: 55px;
+  border-radius: 50%;
+  background: var(--active-ambient-color, rgba(245, 158, 11, 0.55));
+  filter: blur(40px);
+  opacity: 0.75;
+  pointer-events: none;
+  transition: background 0.45s ease, opacity 0.45s ease;
+}
+
+/* Sleek Horizontal Capsule Bar */
+.aco-companion-capsule-dock {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: rgba(8, 7, 18, 0.84);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 9999px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  max-width: 96vw;
+  box-sizing: border-box;
+}
+
+/* Individual Dock Card (Rounded Pill) */
+.aco-dock-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 18px 8px 8px;
+  border-radius: 9999px;
+  background: transparent;
+  border: 1.5px solid rgba(255, 255, 255, 0.05);
+  color: #94a3b8;
+  font-family: inherit;
+  cursor: pointer;
+  outline: none;
+  text-align: left;
+  transition: all 0.30s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  white-space: normal;
+}
+
+.aco-dock-card:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.aco-dock-card:hover .aco-card-title {
+  color: #ffffff;
+}
+
+.aco-dock-card:hover .aco-card-subtitle {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+/* Active Highlighted State — Exactly Matching Middle Avatar Color */
+.aco-dock-card-active {
+  background: var(--card-bg) !important;
+  border-color: var(--card-border) !important;
+  box-shadow: 0 0 28px var(--card-glow), inset 0 0 16px var(--card-glow) !important;
+}
+
+.aco-dock-card-active .aco-card-title {
+  color: #ffffff !important;
+  text-shadow: 0 0 14px var(--card-glow);
+}
+
+.aco-dock-card-active .aco-card-subtitle {
+  color: rgba(255, 255, 255, 0.90) !important;
+}
+
+/* Circular Icon Badge */
+.aco-card-icon-circle {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.aco-card-icon-circle-active {
+  transform: scale(1.04);
+}
+
+.aco-card-icon-svg {
+  display: block;
+  flex-shrink: 0;
+}
+
+/* Text Block */
+.aco-card-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.aco-card-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #ffffff;
+  line-height: 1.2;
+  transition: color 0.2s ease;
+}
+
+.aco-card-subtitle {
+  font-size: 11px;
+  font-weight: 400;
+  color: rgba(148, 163, 184, 0.72);
+  line-height: 1.25;
+  max-width: 142px;
+  white-space: normal;
+  transition: color 0.2s ease;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1120px) {
+  .aco-card-subtitle {
+    max-width: 120px;
+    font-size: 10.5px;
+  }
+  .aco-dock-card {
+    padding: 7px 14px 7px 7px;
+    gap: 10px;
+  }
+  .aco-card-icon-circle {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+  }
+}
+
+@media (max-width: 890px) {
+  .aco-card-subtitle {
+    display: none;
+  }
+  .aco-dock-card {
+    padding: 6px 14px 6px 8px;
+    gap: 8px;
+  }
+  .aco-screen-nav-left {
+    left: 14px;
+  }
+  .aco-screen-nav-right {
+    right: 14px;
+  }
+  .aco-screen-nav-btn {
+    width: 46px;
+    height: 46px;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Golddust Sprinkling Canvas Overlay (Middle Avatar Only)
+   ═══════════════════════════════════════════════════════════════ */
+.Golddust {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 113%;
+  pointer-events: none;
+  z-index: 99;
+}
+
+#Golddust {
+  pointer-events: none;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+
+

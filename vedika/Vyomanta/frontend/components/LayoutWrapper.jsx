@@ -12,8 +12,13 @@ export default function LayoutWrapper({ children }) {
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [mounted, setMounted] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { sendStateUpdate } = useDesktopPetBridge();
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (sendStateUpdate && pathname) {
@@ -48,7 +53,23 @@ export default function LayoutWrapper({ children }) {
       }
     }
 
-    const isAuthPage = pathname === '/login' || pathname === '/users' || pathname === '/admin/login' || pathname.startsWith('/auth');
+    const KNOWN_PREFIXES = [
+      '/', '/login', '/login-avatar', '/users', '/admin', '/assignments', '/courses', 
+      '/api', '/jobs', '/labs', '/lesson', '/presentation', '/progress', '/quizzes', 
+      '/resources', '/vedika-ai', '/vedika-bot', '/vedika-chamber', '/vedika-labs', 
+      '/viva-interview', '/coding-tutor', '/general-tutor', '/code-puzzle', 
+      '/home-avatar', '/avatar-chamber', '/avatar-blob', '/2d-avatar-testing', '/auth'
+    ];
+    const isKnown = KNOWN_PREFIXES.some(r => r === pathname || (r !== '/' && pathname.startsWith(r)));
+    const isNotFound = (typeof window !== 'undefined' && window.__IS_NOT_FOUND__) || !isKnown;
+
+    if (isNotFound) {
+      setUser(currentUser);
+      setLoading(false);
+      return;
+    }
+
+    const isAuthPage = pathname === '/login' || pathname === '/login-avatar' || pathname === '/users' || pathname === '/admin/login' || pathname.startsWith('/auth') || pathname.startsWith('/vedika-bot') || pathname === '/home-avatar';
 
     if (!currentUser) {
       if (!isAuthPage) {
@@ -99,7 +120,21 @@ export default function LayoutWrapper({ children }) {
     document.body.style.backgroundColor = theme === 'dark' ? '#07080F' : '#F9FAFB';
   }, []);
 
-  if (loading) {
+  const KNOWN_ROUTES_LIST = [
+    '/', '/login', '/login-avatar', '/users', '/admin', '/assignments', '/courses', 
+    '/api', '/jobs', '/labs', '/lesson', '/presentation', '/progress', '/quizzes', 
+    '/resources', '/vedika-ai', '/vedika-bot', '/vedika-chamber', '/vedika-labs', 
+    '/viva-interview', '/coding-tutor', '/general-tutor', '/code-puzzle', 
+    '/home-avatar', '/avatar-chamber', '/avatar-blob', '/2d-avatar-testing', '/auth'
+  ];
+  const isUnknown404 = !KNOWN_ROUTES_LIST.some(r => r === pathname || (r !== '/' && pathname.startsWith(r)));
+  const isFullBleed = pathname === '/home-avatar' || pathname === '/login-avatar' || isUnknown404 || (typeof window !== 'undefined' && window.__IS_NOT_FOUND__);
+  if (isFullBleed) {
+    return <div style={{ minHeight: '100vh', background: 'var(--bg)', color: 'var(--text)' }}>{children}</div>;
+  }
+
+
+  if (!mounted || loading) {
     return (
       <div style={{
         display: 'flex',
@@ -131,7 +166,7 @@ export default function LayoutWrapper({ children }) {
     );
   }
 
-  const isAuthPage = pathname === '/login' || pathname === '/users' || pathname === '/admin/login' || pathname.startsWith('/auth');
+  const isAuthPage = pathname === '/login' || pathname === '/login-avatar' || pathname === '/users' || pathname === '/admin/login' || pathname.startsWith('/auth') || pathname.startsWith('/vedika-bot') || pathname === '/home-avatar';
 
   // Auth pages (like /login) render directly without a sidebar
   if (isAuthPage || !user) {

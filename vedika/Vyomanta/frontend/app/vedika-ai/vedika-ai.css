@@ -239,14 +239,15 @@
   position: relative;
   z-index: 10;
   width: 100%;
-  max-width: 1240px;
+  max-width: 1440px;
   margin: 0 auto;
+  padding: 0 20px;
 }
 
 .vai-cards-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 36px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 24px;
   align-items: flex-end;
   width: 100%;
 }
@@ -304,6 +305,10 @@
   background: radial-gradient(circle, rgba(56, 189, 248, 0.95) 0%, rgba(37, 99, 235, 0.45) 55%, transparent 100%);
 }
 
+.vai-floor-puzzle {
+  background: radial-gradient(circle, rgba(245, 158, 11, 0.95) 0%, rgba(217, 119, 6, 0.45) 55%, transparent 100%);
+}
+
 .vai-floor-viva {
   background: radial-gradient(circle, rgba(163, 230, 53, 0.95) 0%, rgba(234, 179, 8, 0.45) 55%, transparent 100%);
 }
@@ -334,6 +339,10 @@
   box-shadow: 0 0 16px 6px #38BDF8, 0 0 35px 12px rgba(56, 189, 248, 0.9);
 }
 
+.vai-antenna-puzzle {
+  box-shadow: 0 0 16px 6px #F59E0B, 0 0 35px 12px rgba(245, 158, 11, 0.9);
+}
+
 .vai-antenna-viva {
   box-shadow: 0 0 16px 6px #A3E635, 0 0 35px 12px rgba(163, 230, 53, 0.9);
 }
@@ -346,7 +355,7 @@
 /* ── Atmospheric Typography Beneath Characters ───────────────────── */
 .vai-card-title {
   font-family: 'Cinzel', 'Playfair Display', serif;
-  font-size: 21px;
+  font-size: 20px;
   font-weight: 700;
   letter-spacing: 0.03em;
   margin: 0 0 4px 0;
@@ -364,17 +373,22 @@
   text-shadow: 0 0 20px rgba(56, 189, 248, 0.7);
 }
 
+.vai-title-puzzle {
+  color: #FEF3C7;
+  text-shadow: 0 0 20px rgba(245, 158, 11, 0.7);
+}
+
 .vai-title-viva {
   color: #FEF9C3;
   text-shadow: 0 0 20px rgba(234, 179, 8, 0.7);
 }
 
 .vai-card-desc {
-  font-size: 12.5px;
+  font-size: 12px;
   line-height: 1.48;
   color: #94A3B8;
   margin: 0 0 10px 0;
-  max-width: 300px;
+  max-width: 270px;
   text-align: center;
   opacity: 0.9;
 }
@@ -384,7 +398,7 @@
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 600;
   background: transparent;
   border: none;
@@ -412,6 +426,15 @@
   text-shadow: 0 0 16px #38BDF8;
 }
 
+.vai-btn-puzzle {
+  color: #FCD34D;
+}
+
+.vai-btn-puzzle:hover {
+  color: #FFFFFF;
+  text-shadow: 0 0 16px #F59E0B;
+}
+
 .vai-btn-viva {
   color: #FDE047;
 }
@@ -430,15 +453,23 @@
 }
 
 /* ── Responsive ─────────────────────────────────────────────────── */
-@media (max-width: 960px) {
+@media (max-width: 1180px) {
+  .vai-cards-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 28px;
+  }
+}
+
+@media (max-width: 768px) {
   .vai-page {
     height: auto;
     max-height: none;
     overflow-y: auto;
+    padding-bottom: 40px;
   }
   .vai-cards-grid {
     grid-template-columns: 1fr;
-    gap: 20px;
+    gap: 24px;
   }
   .vai-hologram-stage {
     display: none;

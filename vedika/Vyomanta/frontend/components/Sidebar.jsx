@@ -9,10 +9,12 @@ import {
 import { T, getTheme, setTheme } from '@/lib/lms-data';
 import { useMediaQuery, isMobileMQ } from '@/lib/useMediaQuery';
 import MobileNav from './MobileNav';
+import { triggerPortalNavigation } from '@/lib/portalTransition';
 
 const NAV = [
   { id: '/courses', Icon: BookOpen, label: 'Courses' },
   { id: '/vedika-ai', Icon: Brain, label: 'Vedika AI' },
+  { id: '/vedika-chamber', Icon: Zap, label: 'Chamber' },
   { id: '/vedika-labs', Icon: FlaskConical, label: 'Vedika Labs' },
   { id: '/jobs', Icon: Briefcase, label: 'Jobs' },
   { id: '/progress', Icon: BarChart3, label: 'Progress' },
@@ -41,7 +43,14 @@ export default function Sidebar() {
         } catch (e) { }
       }
     }
-  }, []);
+    // Prefetch all primary app destinations for zero-delay navigation
+    const routes = ['/', '/courses', '/vedika-ai', '/vedika-chamber', '/vedika-labs', '/jobs', '/progress'];
+    routes.forEach(route => {
+      try {
+        router.prefetch(route);
+      } catch (e) {}
+    });
+  }, [router]);
 
   const getInitials = (name) => {
     if (!name) return 'V';
@@ -159,7 +168,7 @@ export default function Sidebar() {
     }}>
       {/* Brand Header */}
       <div
-        onClick={() => router.push('/')}
+        onClick={() => triggerPortalNavigation(router, '/', pathname)}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -300,7 +309,7 @@ export default function Sidebar() {
           return (
             <button
               key={id}
-              onClick={() => router.push(id)}
+              onClick={() => triggerPortalNavigation(router, id, pathname)}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -318,6 +327,7 @@ export default function Sidebar() {
                 fontFamily: 'inherit'
               }}
               onMouseEnter={(e) => {
+                try { router.prefetch(id); } catch (err) {}
                 if (!active) {
                   e.currentTarget.style.color = T.text;
                   e.currentTarget.style.background = `${T.accent}08`;
