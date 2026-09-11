@@ -504,6 +504,9 @@ export class HomeAvatarScene {
     this.portalMesh.renderOrder = 5;
     this.doorContainer.add(this.portalMesh);
 
+    // Floating celestial educational elements inside cosmic space portal
+    this._initSpaceElements(archRadius, straightHeight);
+
     // 2. Glowing Golden Light Strip Tracing the Interior of the Door Arch
     const neonShape = new THREE.CurvePath();
     const stripZ = -0.06; // Inside the arch reveal
@@ -647,6 +650,81 @@ export class HomeAvatarScene {
     this.isDoorOpen = false;
     this.doorSpillLight.intensity = 0.05;
     this.lightPool.material.opacity = 0.0;
+  }
+
+  _initSpaceElements(archRadius = 1.4, straightHeight = 4.0) {
+    this.spaceElementsGroup = new THREE.Group();
+    this.spaceElementsGroup.position.set(0, 0, -0.05);
+    this.doorContainer.add(this.spaceElementsGroup);
+
+    this.floatingElements = [];
+
+    const textureLoader = new THREE.TextureLoader();
+    const elementPaths = [
+      '/space-elements/element-1.png',
+      '/space-elements/element-3.png',
+      '/space-elements/element-4.png',
+      '/space-elements/element-5.png',
+      '/space-elements/element-7.png',
+    ];
+
+    const textures = elementPaths.map((path) => {
+      const tex = textureLoader.load(path);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.generateMipmaps = true;
+      return tex;
+    });
+
+    // Each space element texture placed uniquely once (no duplicates)
+    for (let i = 0; i < elementPaths.length; i++) {
+      const tex = textures[i];
+      const isElement7 = elementPaths[i].includes('element-7');
+
+      const mat = new THREE.MeshBasicMaterial({
+        map: tex,
+        transparent: true,
+        opacity: 0.0,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      });
+
+      // Distinct, generous size for single unique elements
+      const scale = isElement7
+        ? 0.72 // Noticeably larger hero element
+        : (0.45 + (i % 3) * 0.05);
+
+      const geo = new THREE.PlaneGeometry(scale, scale);
+      const mesh = new THREE.Mesh(geo, mat);
+
+      // Nicely distributed positions across the arched space portal volume
+      const progress = i / (elementPaths.length - 1); // 0 to 1
+      const ry = 1.1 + progress * 2.8;
+      let maxSpanX = archRadius * 0.75;
+      if (ry > straightHeight) {
+        const dy = ry - straightHeight;
+        maxSpanX = Math.sqrt(Math.max(0.01, archRadius * archRadius - dy * dy)) * 0.72;
+      }
+      // Alternate left/right for balanced composition
+      const side = (i % 2 === 0) ? 1 : -1;
+      const rx = side * (0.28 + (progress * 0.4) * maxSpanX);
+      const rz = -0.04 - (i * 0.08);
+
+      mesh.position.set(rx, ry, rz);
+      mesh.renderOrder = 6; // Renders on top of cosmic space portal (renderOrder 5)
+      this.spaceElementsGroup.add(mesh);
+
+      this.floatingElements.push({
+        mesh,
+        basePos: mesh.position.clone(),
+        floatSpeed: 0.65 + i * 0.15,
+        floatAmpY: 0.06 + (i % 2) * 0.03,
+        floatAmpX: 0.03 + (i % 3) * 0.02,
+        baseRotZ: ((i % 2 === 0 ? 1 : -1) * 0.18),
+        rotSpeed: ((i % 2 === 0 ? 1 : -1) * 0.35),
+        phase: (i * 1.3),
+        targetOpacity: 0.95,
+      });
+    }
   }
 
   toggleDoor() {
@@ -803,9 +881,13 @@ export class HomeAvatarScene {
     }
   }
 
-  triggerFullDoorDeparture(onComplete = null) {
+  triggerFullDoorDeparture(audioSrc = null, onComplete = null) {
+    if (typeof audioSrc === 'function') {
+      onComplete = audioSrc;
+      audioSrc = null;
+    }
     if (this.avatars) {
-      this.avatars.triggerFullDoorDeparture(onComplete);
+      this.avatars.triggerFullDoorDeparture(audioSrc, onComplete);
     } else if (onComplete) {
       onComplete();
     }
@@ -895,6 +977,20 @@ export class HomeAvatarScene {
         this.portalMaterial.uniforms.uTime.value = this.time;
       }
 
+      // Continuously animate floating celestial space elements inside the portal
+      if (this.floatingElements && this.floatingElements.length > 0) {
+        const portalOpacity = this.portalMaterial ? this.portalMaterial.uniforms.uOpacity.value : (this.isDoorOpen ? 1 : 0);
+        this.floatingElements.forEach((el) => {
+          const wave = Math.sin(this.time * el.floatSpeed + el.phase);
+          const waveX = Math.cos(this.time * el.floatSpeed * 0.8 + el.phase);
+          el.mesh.position.y = el.basePos.y + wave * el.floatAmpY;
+          el.mesh.position.x = el.basePos.x + waveX * el.floatAmpX;
+          el.mesh.rotation.z = el.baseRotZ + wave * 0.12 + this.time * el.rotSpeed * 0.1;
+          el.mesh.material.opacity = el.targetOpacity * portalOpacity;
+          el.mesh.visible = portalOpacity > 0.01;
+        });
+      }
+
       this.renderer.render(this.roomScene, this.camera);
       if (this.avatarRenderer && this.isDualCanvas) {
         this.avatarRenderer.render(this.avatarScene, this.camera);
@@ -908,6 +1004,20 @@ export class HomeAvatarScene {
     cancelAnimationFrame(this.animId);
     window.removeEventListener('resize', this._onResize);
     window.removeEventListener('mousemove', this._onMouseMove);
+
+    if (this.floatingElements) {
+      this.floatingElements.forEach((el) => {
+        if (el.mesh) {
+          if (el.mesh.geometry) el.mesh.geometry.dispose();
+          if (el.mesh.material) el.mesh.material.dispose();
+        }
+      });
+      this.floatingElements = [];
+    }
+    if (this.spaceElementsGroup && this.doorContainer) {
+      this.doorContainer.remove(this.spaceElementsGroup);
+      this.spaceElementsGroup = null;
+    }
 
     if (this.portalMaterial) {
       this.portalMaterial.dispose();

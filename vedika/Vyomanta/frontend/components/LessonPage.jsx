@@ -19,6 +19,7 @@ import PDFViewerModal from './PDFViewerModal';
 import VideoPlayerWithAI from './VideoPlayerWithAI';
 import VideoAIExplainerCard from './VideoAIExplainerCard';
 import PetAvatar from './PetAvatar';
+import PracticePlaygroundModal from './PracticePlaygroundModal';
 function formatTimestamp(seconds) {
   const total = Math.floor(seconds || 0);
   const hrs = Math.floor(total / 3600);
@@ -591,29 +592,17 @@ export default function LessonPage({ lesson, completed = {}, onComplete }) {
     }
   };
 
-  const outerStyle = isPlaygroundOpen && !isMobile
-    ? (isTabletOrSmallDesktop
-        ? { padding: '32px 24px', display: 'flex', flexDirection: 'column', gap: 28, fontFamily: 'var(--font-outfit), sans-serif', width: '100%' }
-        : { padding: '32px 24px', display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: 28, fontFamily: 'var(--font-outfit), sans-serif', width: '100%', maxWidth: '100%' })
-    : { padding: `32px ${rPad}px`, maxWidth: 900, fontFamily: 'var(--font-outfit), sans-serif', margin: '0 auto' };
-
-  const showSplitLayout = isPlaygroundOpen && !isMobile && !isTabletOrSmallDesktop;
-  const showVerticalSplit = isPlaygroundOpen && (isMobile || isTabletOrSmallDesktop);
+  const outerStyle = { padding: `32px ${rPad}px`, maxWidth: 900, fontFamily: 'var(--font-outfit), sans-serif', margin: '0 auto' };
 
   return (
     <div style={{
       display: 'flex',
-      flexDirection: showVerticalSplit ? 'column' : 'row',
-      height: showSplitLayout ? '100vh' : 'auto',
-      overflow: showSplitLayout ? 'hidden' : 'visible',
+      flexDirection: 'column',
       width: '100%',
       background: T.bg
     }}>
       <div style={{
-        width: showSplitLayout ? '55%' : '100%',
-        flex: showSplitLayout ? 'none' : 1,
-        height: showSplitLayout ? '100%' : 'auto',
-        overflowY: showSplitLayout ? 'auto' : 'visible',
+        width: '100%',
         padding: isMobile ? '20px 16px' : '32px 36px',
         display: 'flex',
         flexDirection: 'column'
@@ -625,7 +614,14 @@ export default function LessonPage({ lesson, completed = {}, onComplete }) {
           </button>
           
           <button
-            onClick={() => setIsPlaygroundOpen(!isPlaygroundOpen)}
+            data-practice-trigger="true"
+            onClick={(e) => {
+              if (typeof window !== 'undefined') {
+                const r = e.currentTarget.getBoundingClientRect();
+                window.__lastPracticeTriggerRect = { left: r.left, top: r.top, width: r.width, height: r.height };
+              }
+              setIsPlaygroundOpen(!isPlaygroundOpen);
+            }}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -1658,41 +1654,16 @@ export default function LessonPage({ lesson, completed = {}, onComplete }) {
         )}
       </div>
 
-      {isPlaygroundOpen && isMobile && (
-        <div style={{ marginTop: 24, height: 400, flexShrink: 0 }}>
-          <Playground
-            initialCode={`# Practice Python for: ${lesson.title}\n# Write your code here\n\n`}
-            codingExercise={lesson.codingExercise}
-            onVerifySuccess={() => onComplete(lesson.id)}
-          />
-        </div>
-      )}
-      {isPlaygroundOpen && !isMobile && isTabletOrSmallDesktop && (
-        <div style={{ marginTop: 32, height: 500, flexShrink: 0 }}>
-          <Playground
-            initialCode={`# Practice Python for: ${lesson.title}\n# Write your code here\n\n`}
-            codingExercise={lesson.codingExercise}
-            onVerifySuccess={() => onComplete(lesson.id)}
-          />
-        </div>
-      )}
+      <PracticePlaygroundModal
+        isOpen={isPlaygroundOpen}
+        onClose={() => setIsPlaygroundOpen(false)}
+        title={`Practice: ${lesson.title}`}
+        badge="Python"
+        initialCode={`# Practice Python for: ${lesson.title}\n# Write your code here\n\n`}
+        codingExercise={lesson.codingExercise}
+        onVerifySuccess={() => onComplete(lesson.id)}
+      />
     </div>
-
-    {showSplitLayout && (
-      <div style={{
-        flex: 1,
-        height: '100%',
-        padding: '32px 24px 32px 0',
-        display: 'flex',
-        flexDirection: 'column'
-      }}>
-        <Playground
-          initialCode={`# Practice Python for: ${lesson.title}\n# Write your code here\n\n`}
-          codingExercise={lesson.codingExercise}
-          onVerifySuccess={() => onComplete(lesson.id)}
-        />
-      </div>
-    )}
     {/* PDF Viewer Modal */}
     <PDFViewerModal
       isOpen={isPdfViewerOpen}

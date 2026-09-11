@@ -1,0 +1,276 @@
+/* ── CodeFlowchartVisualizer.css ── */
+/* Dynamic Control Flow Graph (CFG) Execution Visualizer with Mermaid.js */
+
+.code-flowchart-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 280px;
+  background: #080A10;
+  border-radius: 10px;
+  overflow: hidden;
+  position: relative;
+  box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.6);
+}
+
+/* Header Toolbar */
+.code-flowchart-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  background: rgba(14, 18, 28, 0.95);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  flex-wrap: wrap;
+  gap: 8px;
+  z-index: 5;
+}
+
+.code-flowchart-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.code-flowchart-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 2px 8px;
+  border-radius: 5px;
+  background: rgba(99, 102, 241, 0.15);
+  color: #818CF8;
+  border: 1px solid rgba(99, 102, 241, 0.3);
+}
+
+.code-flowchart-active-tag {
+  font-size: 11px;
+  font-weight: 600;
+  color: #F8FAFC;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.code-flowchart-active-tag code {
+  font-family: var(--font-code, monospace);
+  color: #F5A95B;
+  background: rgba(245, 169, 91, 0.12);
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(245, 169, 91, 0.25);
+  font-size: 11px;
+}
+
+.code-flowchart-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.code-flowchart-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #94A3B8;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s ease;
+}
+
+.code-flowchart-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #F8FAFC;
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.code-flowchart-btn.active {
+  background: rgba(99, 102, 241, 0.2);
+  color: #A5B4FC;
+  border-color: rgba(99, 102, 241, 0.4);
+}
+
+/* Viewport Canvas */
+.code-flowchart-viewport {
+  flex: 1;
+  min-height: 220px;
+  overflow: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  position: relative;
+  background: radial-gradient(circle at 50% 40%, rgba(18, 24, 40, 0.7) 0%, rgba(6, 8, 14, 0.98) 100%);
+  user-select: none;
+}
+
+.code-flowchart-svg-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform-origin: center center;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  width: 100%;
+}
+
+.code-flowchart-svg-wrapper svg {
+  max-width: 100%;
+  height: auto;
+  filter: drop-shadow(0 4px 16px rgba(0, 0, 0, 0.6));
+}
+
+/* Active Highlight Styling inside SVG */
+.code-flowchart-svg-wrapper .activeNode rect,
+.code-flowchart-svg-wrapper .activeNode circle,
+.code-flowchart-svg-wrapper .activeNode polygon {
+  fill: #1D4ED8 !important;
+  stroke: #60A5FA !important;
+  stroke-width: 2.5px !important;
+  filter: drop-shadow(0 0 12px rgba(96, 165, 250, 0.8)) !important;
+}
+
+.code-flowchart-svg-wrapper .activeDecision polygon,
+.code-flowchart-svg-wrapper .activeDecision path {
+  fill: #B45309 !important;
+  stroke: #FDE68A !important;
+  stroke-width: 2.5px !important;
+  filter: drop-shadow(0 0 12px rgba(245, 169, 91, 0.8)) !important;
+}
+
+.code-flowchart-svg-wrapper .activeNode .label,
+.code-flowchart-svg-wrapper .activeDecision .label {
+  color: #FFFFFF !important;
+  font-weight: 700 !important;
+}
+
+/* HUD Live Variables Strip */
+.code-flowchart-hud {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px;
+  background: rgba(10, 13, 22, 0.95);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+}
+
+.code-flowchart-hud-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748B;
+}
+
+.code-flowchart-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 90px;
+  overflow-y: auto;
+}
+
+.code-flowchart-pill {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-family: var(--font-code, monospace);
+  font-size: 11px;
+}
+
+.code-flowchart-pill-key {
+  color: #94A3B8;
+  font-weight: 600;
+}
+
+.code-flowchart-pill-val {
+  color: #38BDF8;
+  font-weight: 700;
+}
+
+.code-flowchart-pill.changed {
+  border-color: #F5A95B;
+  background: rgba(245, 169, 91, 0.1);
+}
+
+.code-flowchart-pill.changed .code-flowchart-pill-val {
+  color: #F5A95B;
+}
+
+/* Loading & Error */
+.code-flowchart-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: #94A3B8;
+  font-size: 12px;
+  padding: 40px 0;
+}
+
+.code-flowchart-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #F87171;
+  font-size: 12px;
+  padding: 24px;
+  text-align: center;
+  background: rgba(239, 68, 68, 0.06);
+  border-radius: 8px;
+  margin: 12px;
+}
+
+/* Mode Switcher inside Playground toolbar */
+.viz-mode-toggle {
+  display: flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.viz-mode-btn {
+  background: transparent;
+  border: none;
+  color: #8892B0;
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s ease;
+}
+
+.viz-mode-btn:hover {
+  color: #F8FAFC;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.viz-mode-btn.active {
+  background: #F5A95B;
+  color: #000000;
+  font-weight: 700;
+}

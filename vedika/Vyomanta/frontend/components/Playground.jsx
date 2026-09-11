@@ -4,7 +4,8 @@ import { useState, useEffect, useRef } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
 import { python } from '@codemirror/lang-python';
 import { usePyodide } from '@/hooks/usePyodide';
-import { Play, Square, Trash2, CheckCircle, Loader2, ChevronLeft, ChevronRight, Pause, BookOpen, AlertCircle, X } from 'lucide-react';
+import { Play, Square, Trash2, CheckCircle, Loader2, ChevronLeft, ChevronRight, Pause, BookOpen, AlertCircle, X, GitFork, Layers, Columns } from 'lucide-react';
+import CodeFlowchartVisualizer from '@/components/CodeFlowchartVisualizer';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
@@ -78,6 +79,7 @@ export default function Playground({
   const [playSpeed, setPlaySpeed] = useState(1500); // 1500ms (1x), 1000ms (1.5x), 500ms (2x)
   const [selectedTutorAction, setSelectedTutorAction] = useState('default');
   const [vizZoom, setVizZoom] = useState(1); // zoom level for 2D visualizer
+  const [vizViewMode, setVizViewMode] = useState('flowchart'); // 'flowchart' | 'memory' | 'both'
 
   const terminalElRef = useRef(null);
   const terminalInstanceRef = useRef(null);
@@ -398,8 +400,10 @@ export default function Playground({
         foreground: '#E2E8F0',
         cursor: '#5B8CF8',
       },
-      fontSize: 13,
-      fontFamily: " var(--font-outfit), monospace",
+      fontSize: 12.5,
+      fontFamily: "'Zed Mono', 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'SF Mono', Menlo, Monaco, Consolas, monospace",
+      letterSpacing: 0,
+      lineHeight: 1.25,
       convertEol: true
     });
 
@@ -1267,7 +1271,7 @@ except Exception as e:
                 onCreateEditor={(view) => {
                   editorViewRef.current = view;
                 }}
-                style={{ fontSize: 13, fontFamily: 'monospace' }}
+                style={{ fontSize: 13, fontFamily: "'Zed Mono', 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'SF Mono', Menlo, Monaco, Consolas, monospace" }}
               />
             </div>
           </div>
@@ -1476,9 +1480,40 @@ except Exception as e:
                       </button>
                     </div>
                   </div>
-                  <span style={{ fontSize: 11, color: '#8892B0', fontWeight: 600, fontFamily: 'monospace' }}>
-                    Step {currentStep + 1} of {traceData.length}
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginLeft: 'auto' }}>
+                    <div className="viz-mode-toggle">
+                      <button
+                        type="button"
+                        className={`viz-mode-btn ${vizViewMode === 'flowchart' ? 'active' : ''}`}
+                        onClick={() => setVizViewMode('flowchart')}
+                        title="Flowchart Control Flow Graph (Mermaid.js)"
+                      >
+                        <GitFork size={11} />
+                        <span>Flowchart</span>
+                      </button>
+                      <button
+                        type="button"
+                        className={`viz-mode-btn ${vizViewMode === 'memory' ? 'active' : ''}`}
+                        onClick={() => setVizViewMode('memory')}
+                        title="Variables & Array Memory View"
+                      >
+                        <Layers size={11} />
+                        <span>Variables</span>
+                      </button>
+                      <button
+                        type="button"
+                        className={`viz-mode-btn ${vizViewMode === 'both' ? 'active' : ''}`}
+                        onClick={() => setVizViewMode('both')}
+                        title="Split View: Flowchart + Memory"
+                      >
+                        <Columns size={11} />
+                        <span>Split</span>
+                      </button>
+                    </div>
+                    <span style={{ fontSize: 11, color: '#8892B0', fontWeight: 600, fontFamily: 'monospace' }}>
+                      Step {currentStep + 1} of {traceData.length}
+                    </span>
+                  </div>
                 </>
               ) : (
                 <span style={{ fontSize: 10.5, color: '#8892B0', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
@@ -1551,9 +1586,33 @@ except Exception as e:
                   transformOrigin: 'top left',
                   transform: `scale(${vizZoom})`,
                   width: `${100 / vizZoom}%`,
-                  minHeight: '100%'
+                  minHeight: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 14
                 }}>
-                  {renderVariables()}
+                  {vizViewMode === 'flowchart' && (
+                    <CodeFlowchartVisualizer
+                      code={code}
+                      currentStep={currentStep}
+                      traceData={traceData}
+                    />
+                  )}
+                  {vizViewMode === 'memory' && (
+                    renderVariables()
+                  )}
+                  {vizViewMode === 'both' && (
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.1fr 0.9fr', gap: 14, alignItems: 'start' }}>
+                      <CodeFlowchartVisualizer
+                        code={code}
+                        currentStep={currentStep}
+                        traceData={traceData}
+                      />
+                      <div>
+                        {renderVariables()}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

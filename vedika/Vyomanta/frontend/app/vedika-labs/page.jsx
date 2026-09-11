@@ -142,15 +142,15 @@ export default function VedikaLabsHub() {
       }
     });
 
-    // 1. Black void portal opens in a dramatic swirling vortex motion
+    // 1. Black void portal opens into the CodePen hover ring (collapse mode)
     if (portal) {
-      arrivalTl.fromTo(portal, {
+      portalRef.current?.triggerCollapse?.();
+      const portalEl = portalRef.current?.getElement ? portalRef.current.getElement() : portal;
+      arrivalTl.fromTo(portalEl, {
         scale: 0.001,
-        rotation: -720,
         opacity: 0,
       }, {
         scale: 1.0,
-        rotation: 0,
         opacity: 1.0,
         duration: 0.52,
         ease: 'power2.out',
@@ -182,22 +182,27 @@ export default function VedikaLabsHub() {
       }, emergeTime);
     });
 
-    // 3. Portal swirls shut into absolute void
-    const closeTime = emergeStartTime + avatars.length * 0.32 + 0.30;
+    // 3. When all avatars are out, trigger the click expanse burst animation
+    const allOutTime = emergeStartTime + (avatars.length - 1) * 0.32 + 0.35;
+    arrivalTl.call(() => {
+      portalRef.current?.triggerExpanse?.();
+    }, null, allOutTime);
+
+    // Fade out portal smoothly over 2 seconds at scale 1.0 (no zoom stretching)
     if (portal) {
-      arrivalTl.to(portal, {
-        scale: 0.001,
-        rotation: 720,
+      const portalEl = portalRef.current?.getElement ? portalRef.current.getElement() : portal;
+      arrivalTl.to(portalEl, {
         opacity: 0,
-        duration: 0.45,
-        ease: 'power2.in',
-      }, closeTime);
+        duration: 2.0,
+        ease: 'power1.out',
+      }, allOutTime);
     }
   }, []);
 
   // Departure Sequence: Avatars enter the swirling void ONE BY ONE directly from their own positions
   const playLabsPortalExit = useCallback(() => {
     const portal = portalRef.current;
+    const portalEl = portalRef.current?.getElement ? portalRef.current.getElement() : portal;
     const avatars = [
       { el: physicsAvatarRef.current, pitch: 1.20 },
       { el: chemAvatarRef.current,    pitch: 1.10 },
@@ -214,15 +219,14 @@ export default function VedikaLabsHub() {
       }
     });
 
-    // 1. Black void portal opens in a swirling vortex motion
-    if (portal) {
-      exitTl.fromTo(portal, {
+    // 1. Black hole portal opens in collapse suction ring
+    if (portalEl) {
+      portalRef.current?.triggerCollapse?.();
+      exitTl.fromTo(portalEl, {
         scale: 0.001,
-        rotation: -720,
         opacity: 0,
       }, {
         scale: 1.0,
-        rotation: 0,
         opacity: 1.0,
         duration: 0.54,
         ease: 'power2.out',
@@ -252,16 +256,18 @@ export default function VedikaLabsHub() {
       }, stepTime);
     });
 
-    // 3. Once all avatars have entered, the black void portal swirls shut
-    const collapseTime = enterStartTime + avatars.length * 0.34 + 0.25;
-    if (portal) {
-      exitTl.to(portal, {
-        scale: 0.001,
-        rotation: 720,
+    // 3. Once all avatars have entered, trigger expanse burst and fade out
+    const collapseTime = enterStartTime + avatars.length * 0.34 + 0.15;
+    exitTl.call(() => {
+      portalRef.current?.triggerExpanse?.();
+    }, null, collapseTime);
+
+    if (portalEl) {
+      exitTl.to(portalEl, {
         opacity: 0,
-        duration: 0.42,
-        ease: 'power2.in',
-      }, collapseTime);
+        duration: 0.8,
+        ease: 'power1.out',
+      }, collapseTime + 0.1);
     }
   }, []);
 

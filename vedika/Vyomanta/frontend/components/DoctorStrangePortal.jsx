@@ -1,31 +1,76 @@
 'use client';
 
-import React, { useRef, useEffect, forwardRef } from 'react';
+import React, { useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 
 /**
- * DoctorStrangePortal — Authentic Marvel/Doctor Strange Sling Ring Portal
- * - Single high-energy fiery spark ring (NO multiple concentric rings/halos)
- * - Pure pitch-black void inside the circular aperture
- * - High-speed clockwise orbiting golden sparks with tangential ember spray
+ * BlackHolePortal (Interactive Canvas Particle Black Hole)
+ * Based on CodePen: https://codepen.io/StarKnightt/pen/VYvZeom
+ * Features:
+ * - 2,500 orbiting star particles with trail interpolation
+ * - Default state: hover ring (collapse = true), particles concentrate in a tight glowing accretion ring
+ * - Expansion burst: expanse = true, particles burst outward dynamically
+ * - Smooth returning / fading
+ * - Transparent background gradient + pitch-black event horizon void in the center
+ * - Imperative controls: triggerExpanse(), triggerCollapse(), reset()
  */
 const DoctorStrangePortal = forwardRef(function DoctorStrangePortal(
-  { size = 260, className = '', style = {} },
+  {
+    size = 280,
+    className = '',
+    style = {},
+    initialMode = 'collapse', // 'collapse' (hover ring), 'normal', or 'expanse'
+    showCenterLabel = false,
+  },
   forwardedRef
 ) {
-  const canvasRef = useRef(null);
   const containerRef = useRef(null);
+  const canvasRef = useRef(null);
   const animFrameRef = useRef(null);
   const isVisibleRef = useRef(true);
 
-  // Set up intersection observer to halt canvas rendering when portal is scrolled out of view
+  // State flags for particle behaviors
+  const stateRef = useRef({
+    collapse: initialMode === 'collapse',
+    expanse: initialMode === 'expanse',
+    returning: false,
+  });
+
+  // Expose imperative handle for external animations (GSAP / page controllers)
+  useImperativeHandle(forwardedRef, () => ({
+    triggerExpanse: () => {
+      stateRef.current.collapse = false;
+      stateRef.current.expanse = true;
+      stateRef.current.returning = false;
+    },
+    triggerCollapse: () => {
+      stateRef.current.collapse = true;
+      stateRef.current.expanse = false;
+      stateRef.current.returning = false;
+    },
+    triggerReturn: () => {
+      stateRef.current.expanse = false;
+      stateRef.current.returning = true;
+    },
+    reset: () => {
+      stateRef.current.collapse = true;
+      stateRef.current.expanse = false;
+      stateRef.current.returning = false;
+    },
+    getElement: () => containerRef.current,
+  }));
+
+  // Intersection Observer to suspend animation when offscreen
   useEffect(() => {
     const el = containerRef.current;
     if (!el || typeof IntersectionObserver === 'undefined') return;
 
-    const observer = new IntersectionObserver((entries) => {
-      const entry = entries[0];
-      isVisibleRef.current = entry.isIntersecting;
-    }, { threshold: 0.01 });
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        isVisibleRef.current = entry.isIntersecting;
+      },
+      { threshold: 0.01 }
+    );
 
     observer.observe(el);
     return () => observer.disconnect();
@@ -37,359 +82,210 @@ const DoctorStrangePortal = forwardRef(function DoctorStrangePortal(
     const ctx = canvas.getContext('2d', { alpha: true });
     if (!ctx) return;
 
-    const dpr = typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 1, 2) : 1;
-    const w = size;
-    const h = size;
-    canvas.width = w * dpr;
-    canvas.height = h * dpr;
+    const dpr = typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 2, 2.5) : 2;
+    // Expansive canvas view area for high-res star particles without boundary box cutoffs
+    const viewSize = 900;
+    const cw = viewSize;
+    const ch = viewSize;
+
+    // High resolution canvas buffer for crisp, non-pixelated rendering
+    canvas.width = Math.ceil(cw * dpr);
+    canvas.height = Math.ceil(ch * dpr);
     ctx.scale(dpr, dpr);
 
-    const cx = w / 2;
-    const cy = h / 2;
-    // Radius of the portal aperture
-    const portalRadius = w * 0.33;
+    // EXACT original portal ring size (tight, sharp, and elegant)
+    const ringRadius = 108; // Exact original compact portal radius
+    const maxorbit = ringRadius;
+    const centerx = cw / 2;
+    const centery = ch / 2;
 
-    // Doctor Strange Sling Ring Spark Particle System
-    const sparkCount = 70; // Optimized spark count for silky 60fps
-    const sparks = [];
+    const startTime = Date.now();
+    let currentTime = 0;
+    const stars = [];
+    const totalStars = 2200;
 
-    const sparkColors = [
-      '#FFFFFF', // White hot core
-      '#FFF4CC', // Brilliant champagne
-      '#FDE047', // Bright gold
-      '#F59E0B', // Fiery amber
-      '#EA580C', // Hot orange ember
-      '#D97706', // Gold glow
-    ];
-
-    for (let i = 0; i < sparkCount; i++) {
-      sparks.push({
-        angle: (i / sparkCount) * Math.PI * 2 + (Math.random() - 0.5) * 0.2,
-        speed: 0.055 + Math.random() * 0.075, // Rapid clockwise rotation
-        radOffset: (Math.random() - 0.5) * 6,  // Tight jitter along ring
-        length: 8 + Math.random() * 16,        // Tangential streak length
-        width: 1.2 + Math.random() * 2.0,
-        color: sparkColors[Math.floor(Math.random() * sparkColors.length)],
-        alpha: 0.6 + Math.random() * 0.4,
-        isSpitEmbers: Math.random() > 0.68,    // Embers that spray outward
-        emberDist: 0,
-        emberSpeed: 0.8 + Math.random() * 2.2,
-        life: Math.random(),
-      });
+    function rotate(cx, cy, x, y, angle) {
+      const cos = Math.cos(angle);
+      const sin = Math.sin(angle);
+      const nx = cos * (x - cx) + sin * (y - cy) + cx;
+      const ny = cos * (y - cy) - sin * (x - cx) + cy;
+      return [nx, ny];
     }
 
-    // Open Space Clusters inside the portal aperture (Cosmic void depth!)
-    const starCount = 36;
-    const spaceStars = [];
-    const starColors = ['#ffffff', '#bae6fd', '#ddd6fe', '#fef08a', '#a5f3fc', '#fbcfe8'];
+    class Star {
+      constructor(id) {
+        this.id = id;
+        const r1 = Math.random() * (maxorbit / 2) + 1;
+        const r2 = Math.random() * (maxorbit / 2) + maxorbit;
+        this.orbital = (r1 + r2) / 2;
 
-    for (let i = 0; i < starCount; i++) {
-      // Create clustered distribution (some dense clusters, some scattered stars)
-      const isClusterA = i < 14;
-      const isClusterB = i >= 14 && i < 26;
-      let r, theta;
-      if (isClusterA) {
-        // Star cluster 1 (Upper-left quadrant)
-        theta = -Math.PI * 0.7 + (Math.random() - 0.5) * 0.9;
-        r = portalRadius * (0.25 + Math.random() * 0.50);
-      } else if (isClusterB) {
-        // Star cluster 2 (Lower-right quadrant)
-        theta = Math.PI * 0.35 + (Math.random() - 0.5) * 0.8;
-        r = portalRadius * (0.30 + Math.random() * 0.45);
-      } else {
-        // Ambient scattered background stars
-        theta = Math.random() * Math.PI * 2;
-        r = portalRadius * Math.sqrt(Math.random()) * 0.84;
-      }
+        this.x = centerx;
+        this.y = centery + this.orbital;
+        this.yOrigin = centery + this.orbital;
 
-      spaceStars.push({
-        baseTheta: theta,
-        r,
-        size: 0.75 + Math.random() * 1.5,
-        twinkleSpeed: 1.2 + Math.random() * 2.8,
-        phase: Math.random() * Math.PI * 2,
-        color: starColors[Math.floor(Math.random() * starColors.length)],
-      });
-    }
+        this.speed = (Math.floor(Math.random() * 2.5) + 1.5) * (Math.PI / 180);
+        this.rotation = 0;
+        this.startRotation = (Math.floor(Math.random() * 360) + 1) * (Math.PI / 180);
 
-    // 3D Wavy Particle System (Subtle dimensional undulating wave matrix inside the portal)
-    const waveCols = 12;
-    const waveRows = 12;
-    const waveParticles = [];
-    const gridSpacing = (portalRadius * 1.62) / (waveCols - 1);
-
-    for (let c = 0; c < waveCols; c++) {
-      for (let r = 0; r < waveRows; r++) {
-        const gx = (c - (waveCols - 1) / 2) * gridSpacing;
-        const gy = (r - (waveRows - 1) / 2) * gridSpacing;
-        const dist = Math.hypot(gx, gy);
-        if (dist <= portalRadius * 0.90) {
-          waveParticles.push({
-            gx,
-            gy,
-            phase: (c * 0.48) + (r * 0.38),
-            color: (c + r) % 3 === 0 ? '#38bdf8' : ((c + r) % 3 === 1 ? '#c084fc' : '#fde047'),
-          });
+        this.collapseBonus = this.orbital - maxorbit * 0.7;
+        if (this.collapseBonus < 0) {
+          this.collapseBonus = 0;
         }
+
+        const normDist = this.orbital / maxorbit;
+        this.baseAlpha = Math.max(0.15, 1 - normDist * 0.85);
+
+        // Multi-color star sparks (Brilliant white core, cyan, gold, and violet stardust)
+        const randHue = Math.random();
+        if (randHue < 0.55) {
+          this.rgb = '255, 255, 255';
+        } else if (randHue < 0.75) {
+          this.rgb = '165, 243, 252'; // Cyan starlight
+        } else if (randHue < 0.90) {
+          this.rgb = '254, 240, 138'; // Golden ember
+        } else {
+          this.rgb = '216, 180, 254'; // Cosmic lavender
+        }
+
+        this.hoverPos = centery + maxorbit * 0.38 + this.collapseBonus * 0.65;
+        // Large blast radius, with smooth fadeout before reaching canvas edge
+        this.blastMaxDist = 320 + Math.random() * 120;
+        this.expansePos = centery + this.blastMaxDist;
+
+        this.prevR = this.startRotation;
+        this.prevX = this.x;
+        this.prevY = this.y;
+        this.originalY = this.yOrigin;
+      }
+
+      draw() {
+        const { collapse, expanse, returning } = stateRef.current;
+        let currentAlpha = this.baseAlpha;
+
+        if (!expanse && !returning) {
+          this.rotation = this.startRotation + currentTime * this.speed;
+          if (!collapse) {
+            // Standard loose orbit
+            if (this.y > this.yOrigin) {
+              this.y -= 2.5;
+            }
+            if (this.y < this.yOrigin - 4) {
+              this.y += (this.yOrigin - this.y) / 10;
+            }
+          } else {
+            // Hover state: collapsed tight ring
+            if (this.y > this.hoverPos) {
+              this.y -= (this.hoverPos - this.y) / -5;
+            }
+            if (this.y < this.hoverPos - 4) {
+              this.y += 2.5;
+            }
+          }
+        } else if (expanse && !returning) {
+          // Expanse: stars stream outward rapidly and smoothly fade out as they reach the blast edge
+          this.rotation = this.startRotation + currentTime * (this.speed * 0.65);
+          if (this.y < this.expansePos) {
+            this.y += (this.expansePos - this.y) * 0.042;
+          }
+
+          // Smoothly fade out particles as they approach the blast boundary (NO sharp edges)
+          const distFromCenter = Math.abs(this.y - centery);
+          const fadeStart = maxorbit * 1.2;
+          if (distFromCenter > fadeStart) {
+            const progress = (distFromCenter - fadeStart) / (this.blastMaxDist - fadeStart);
+            currentAlpha = Math.max(0, this.baseAlpha * (1 - Math.min(1, progress)));
+          }
+        } else if (returning) {
+          // Returning to original orbit
+          this.rotation = this.startRotation + currentTime * this.speed;
+          if (Math.abs(this.y - this.originalY) > 2) {
+            this.y += (this.originalY - this.y) / 45;
+          } else {
+            this.y = this.originalY;
+            this.yOrigin = this.originalY;
+          }
+        }
+
+        if (currentAlpha <= 0.01) return;
+
+        // Draw rotated star streak
+        ctx.save();
+        const colStr = `rgba(${this.rgb}, ${currentAlpha.toFixed(2)})`;
+        ctx.fillStyle = colStr;
+        ctx.strokeStyle = colStr;
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        const oldPos = rotate(centerx, centery, this.prevX, this.prevY, -this.prevR);
+        ctx.moveTo(oldPos[0], oldPos[1]);
+        ctx.translate(centerx, centery);
+        ctx.rotate(this.rotation);
+        ctx.translate(-centerx, -centery);
+        ctx.lineTo(this.x, this.y);
+        ctx.stroke();
+        ctx.restore();
+
+        this.prevR = this.rotation;
+        this.prevX = this.x;
+        this.prevY = this.y;
       }
     }
 
-    let t = 0;
-    let skipCount = 0;
+    // Initialize stars
+    for (let i = 0; i < totalStars; i++) {
+      stars.push(new Star(i));
+    }
 
-    const render = () => {
-      // If portal is offscreen or parent has zero opacity, skip expensive drawing
+    // Main animation loop
+    const loop = () => {
       if (!isVisibleRef.current) {
-        animFrameRef.current = requestAnimationFrame(render);
+        animFrameRef.current = requestAnimationFrame(loop);
         return;
       }
 
-      // Check parent opacity / transform occasionally (every 6 frames)
-      skipCount++;
-      if (skipCount % 6 === 0) {
-        const parent = containerRef.current;
-        if (parent) {
-          const op = parent.style.opacity;
-          if (op === '0' || parent.style.display === 'none') {
-            animFrameRef.current = requestAnimationFrame(render);
-            return;
-          }
-        }
-      }
+      const now = Date.now();
+      currentTime = (now - startTime) / 50;
 
-      t += 0.016;
-      ctx.clearRect(0, 0, w, h);
-
-      // 1. Cosmic Void with Open Space Clusters inside the portal aperture
+      // Trail decay: subtle transparent erase
       ctx.save();
-      ctx.beginPath();
-      ctx.arc(cx, cy, portalRadius - 0.5, 0, Math.PI * 2);
-      ctx.clip(); // Strictly confine cosmic elements inside the aperture
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.18)';
+      ctx.fillRect(0, 0, cw, ch);
+      ctx.restore();
 
-      // Deep space background gradient
-      const spaceGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, portalRadius);
-      spaceGrad.addColorStop(0.0, '#0c0a24');
-      spaceGrad.addColorStop(0.35, '#070617');
-      spaceGrad.addColorStop(0.70, '#04030d');
-      spaceGrad.addColorStop(1.0, '#000000');
-      ctx.fillStyle = spaceGrad;
-      ctx.fillRect(cx - portalRadius, cy - portalRadius, portalRadius * 2, portalRadius * 2);
+      // Render stars with screen/lighter blending for luminous bloom
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < stars.length; i++) {
+        stars[i].draw();
+      }
+      ctx.restore();
 
-      // A. Swirling Nebula Dust Clouds (Cosmic violet & cyan gas)
-      const nebAngle1 = t * 0.08;
-      const nebX1 = cx + Math.cos(nebAngle1) * (portalRadius * 0.32);
-      const nebY1 = cy + Math.sin(nebAngle1) * (portalRadius * 0.28);
-      const nebGrad1 = ctx.createRadialGradient(nebX1, nebY1, 2, nebX1, nebY1, portalRadius * 0.62);
-      nebGrad1.addColorStop(0.0, 'rgba(139, 92, 246, 0.28)'); // Cosmic violet
-      nebGrad1.addColorStop(0.5, 'rgba(99, 102, 241, 0.12)');
-      nebGrad1.addColorStop(1.0, 'rgba(0, 0, 0, 0.0)');
-      ctx.fillStyle = nebGrad1;
-      ctx.beginPath();
-      ctx.arc(cx, cy, portalRadius, 0, Math.PI * 2);
-      ctx.fill();
-
-      const nebAngle2 = -t * 0.06 + Math.PI;
-      const nebX2 = cx + Math.cos(nebAngle2) * (portalRadius * 0.36);
-      const nebY2 = cy + Math.sin(nebAngle2) * (portalRadius * 0.30);
-      const nebGrad2 = ctx.createRadialGradient(nebX2, nebY2, 2, nebX2, nebY2, portalRadius * 0.55);
-      nebGrad2.addColorStop(0.0, 'rgba(6, 182, 212, 0.22)'); // Celestial cyan
-      nebGrad2.addColorStop(0.5, 'rgba(14, 165, 233, 0.08)');
-      nebGrad2.addColorStop(1.0, 'rgba(0, 0, 0, 0.0)');
-      ctx.fillStyle = nebGrad2;
-      ctx.beginPath();
-      ctx.arc(cx, cy, portalRadius, 0, Math.PI * 2);
-      ctx.fill();
-
-      // B. Twinkling Space Clusters & Stardust Particles
-      for (let i = 0; i < spaceStars.length; i++) {
-        const star = spaceStars[i];
-        // Slow subtle vortex rotation
-        const curTheta = star.baseTheta + t * 0.04;
-        const sx = cx + Math.cos(curTheta) * star.r;
-        const sy = cy + Math.sin(curTheta) * star.r;
-        const twinkle = 0.55 + 0.45 * Math.sin(t * star.twinkleSpeed + star.phase);
-
+      // Draw the central pitch-black Event Horizon void only when not fully expanded
+      if (!stateRef.current.expanse) {
+        const eventHorizonR = maxorbit * 0.32;
         ctx.save();
-        ctx.globalAlpha = twinkle;
-        ctx.fillStyle = star.color;
         ctx.beginPath();
-        ctx.arc(sx, sy, star.size, 0, Math.PI * 2);
+        ctx.arc(centerx, centery, eventHorizonR, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.96)';
+        ctx.shadowColor = 'rgba(0, 0, 0, 1)';
+        ctx.shadowBlur = 12;
         ctx.fill();
 
-        // Subtle glow halo on larger cluster stars
-        if (star.size > 1.3) {
-          ctx.beginPath();
-          ctx.arc(sx, sy, star.size * 2.2, 0, Math.PI * 2);
-          ctx.fillStyle = star.color;
-          ctx.globalAlpha = twinkle * 0.25;
-          ctx.fill();
-        }
+        // Delicate inner accretion edge highlight
+        ctx.beginPath();
+        ctx.arc(centerx, centery, eventHorizonR + 1.2, 0, Math.PI * 2);
+        ctx.lineWidth = 1.4;
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+        ctx.shadowColor = 'rgba(255, 255, 255, 0.8)';
+        ctx.shadowBlur = 6;
+        ctx.stroke();
         ctx.restore();
       }
 
-      // C. 3D Subtle Undulating Particle Waves (Dimensional spatial grid inside the portal)
-      ctx.save();
-      const fov = 170;
-
-      // Group by row to draw faint wavy connective grid strands
-      const rowsMap = {};
-      for (let i = 0; i < waveParticles.length; i++) {
-        const p = waveParticles[i];
-        if (!rowsMap[p.r]) rowsMap[p.r] = [];
-        rowsMap[p.r].push(p);
-      }
-
-      ctx.lineWidth = 0.85;
-      Object.keys(rowsMap).forEach((rKey) => {
-        const rowPts = rowsMap[rKey];
-        if (rowPts.length < 2) return;
-        ctx.beginPath();
-        for (let j = 0; j < rowPts.length; j++) {
-          const p = rowPts[j];
-          const waveZ = Math.sin(p.gx * 0.05 + t * 2.2 + p.phase) * Math.cos(p.gy * 0.05 + t * 1.8) * 18;
-          const waveY = Math.sin(p.gx * 0.04 + t * 1.8 + p.phase) * 5.0;
-          const persp = fov / (fov + waveZ);
-          const px = cx + p.gx * persp;
-          const py = cy + (p.gy + waveY) * persp;
-          if (j === 0) ctx.moveTo(px, py);
-          else ctx.lineTo(px, py);
-        }
-        ctx.strokeStyle = 'rgba(56, 189, 248, 0.12)';
-        ctx.stroke();
-      });
-
-      // Undulating 3D glowing particle nodes
-      for (let i = 0; i < waveParticles.length; i++) {
-        const p = waveParticles[i];
-        // 3D undulating wave dynamics in depth Z and vertical Y
-        const waveZ = Math.sin(p.gx * 0.05 + t * 2.2 + p.phase) * Math.cos(p.gy * 0.05 + t * 1.8) * 18;
-        const waveY = Math.sin(p.gx * 0.04 + t * 1.8 + p.phase) * 5.0;
-
-        // Perspective projection
-        const persp = fov / (fov + waveZ);
-        const px = cx + p.gx * persp;
-        const py = cy + (p.gy + waveY) * persp;
-
-        // Depth-based subtle brightness and radius
-        const pNormZ = (waveZ + 18) / 36; // 0 to 1
-        const alpha = Math.max(0.14, Math.min(0.70, 0.20 + pNormZ * 0.45));
-        const pRadius = Math.max(0.7, (1.1 + pNormZ * 0.6) * persp);
-
-        ctx.globalAlpha = alpha;
-        ctx.fillStyle = p.color;
-        ctx.beginPath();
-        ctx.arc(px, py, pRadius, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Subtle glowing soft aura on cresting wave particles
-        if (pNormZ > 0.65) {
-          ctx.beginPath();
-          ctx.arc(px, py, pRadius * 2.2, 0, Math.PI * 2);
-          ctx.fillStyle = p.color;
-          ctx.globalAlpha = alpha * 0.24;
-          ctx.fill();
-        }
-      }
-      ctx.restore();
-
-      // D. Faint spiral stardust filaments
-      ctx.save();
-      ctx.lineWidth = 1.0;
-      ctx.strokeStyle = 'rgba(167, 139, 250, 0.12)';
-      ctx.beginPath();
-      const armSteps = 24;
-      for (let s = 0; s < armSteps; s++) {
-        const prog = s / armSteps;
-        const armR = prog * (portalRadius * 0.75);
-        const armA = t * 0.15 + prog * Math.PI * 2.2;
-        const ax = cx + Math.cos(armA) * armR;
-        const ay = cy + Math.sin(armA) * armR;
-        if (s === 0) ctx.moveTo(ax, ay);
-        else ctx.lineTo(ax, ay);
-      }
-      ctx.stroke();
-      ctx.restore();
-
-      ctx.restore(); // End clipping inside portal aperture
-
-      // 2. High-energy Fiery Base Ring
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(cx, cy, portalRadius, 0, Math.PI * 2);
-      ctx.lineWidth = 2.5;
-      ctx.strokeStyle = 'rgba(255, 235, 170, 0.95)';
-      ctx.shadowColor = '#F59E0B';
-      ctx.shadowBlur = 8;
-      ctx.stroke();
-
-      // Secondary thin ember line
-      ctx.beginPath();
-      ctx.arc(cx, cy, portalRadius + 1.2, 0, Math.PI * 2);
-      ctx.lineWidth = 1.2;
-      ctx.strokeStyle = 'rgba(245, 158, 11, 0.85)';
-      ctx.shadowColor = '#EA580C';
-      ctx.shadowBlur = 4;
-      ctx.stroke();
-      ctx.restore();
-
-      // 3. Swirling Fiery Sparks (Batched shadow for maximum GPU/CPU efficiency)
-      ctx.save();
-      ctx.shadowColor = '#F59E0B';
-      ctx.shadowBlur = 5;
-
-      for (let i = 0; i < sparks.length; i++) {
-        const s = sparks[i];
-        s.angle += s.speed;
-        s.life += 0.025;
-        if (s.life > 1) {
-          s.life = 0;
-          s.radOffset = (Math.random() - 0.5) * 6;
-          s.emberDist = 0;
-        }
-
-        const currentR = portalRadius + s.radOffset;
-        const px = cx + Math.cos(s.angle) * currentR;
-        const py = cy + Math.sin(s.angle) * currentR;
-
-        // Tangent angle (perpendicular to radial line for spark flight)
-        const tangentAngle = s.angle + Math.PI / 2;
-        const tailX = px - Math.cos(tangentAngle) * s.length;
-        const tailY = py - Math.sin(tangentAngle) * s.length;
-
-        // Draw spark streak
-        ctx.beginPath();
-        ctx.moveTo(tailX, tailY);
-        ctx.lineTo(px, py);
-        ctx.strokeStyle = s.color;
-        ctx.lineWidth = s.width;
-        ctx.lineCap = 'round';
-        ctx.globalAlpha = s.alpha * (0.7 + 0.3 * Math.sin(t * 12 + i));
-        ctx.stroke();
-
-        // 4. Tangentially Spraying Embers
-        if (s.isSpitEmbers) {
-          s.emberDist += s.emberSpeed;
-          const emberAngle = s.angle + 0.15 + (s.emberDist * 0.02);
-          const emberR = currentR + s.emberDist;
-          const ex = cx + Math.cos(emberAngle) * emberR;
-          const ey = cy + Math.sin(emberAngle) * emberR;
-          const emberAlpha = Math.max(0, (1 - s.emberDist / 28) * 0.9);
-
-          if (emberAlpha > 0.05) {
-            ctx.beginPath();
-            ctx.arc(ex, ey, 1.2, 0, Math.PI * 2);
-            ctx.fillStyle = s.color;
-            ctx.globalAlpha = emberAlpha;
-            ctx.fill();
-          }
-        }
-      }
-      ctx.restore();
-
-      animFrameRef.current = requestAnimationFrame(render);
+      animFrameRef.current = requestAnimationFrame(loop);
     };
 
-    render();
+    loop();
 
     return () => {
       if (animFrameRef.current) {
@@ -398,20 +294,13 @@ const DoctorStrangePortal = forwardRef(function DoctorStrangePortal(
     };
   }, [size]);
 
-  // Combine forwarded ref and local container ref
-  const setContainerRef = (node) => {
-    containerRef.current = node;
-    if (typeof forwardedRef === 'function') {
-      forwardedRef(node);
-    } else if (forwardedRef) {
-      forwardedRef.current = node;
-    }
-  };
+  // CSS size is maintained at 900px centered, with zero pixel stretching
+  const canvasDisplaySize = 900;
 
   return (
     <div
-      ref={setContainerRef}
-      className={`ds-portal-wrapper ${className}`}
+      ref={containerRef}
+      className={`blackhole-portal-container ${className}`}
       style={{
         position: 'absolute',
         width: `${size}px`,
@@ -420,6 +309,7 @@ const DoctorStrangePortal = forwardRef(function DoctorStrangePortal(
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
+        overflow: 'visible',
         willChange: 'transform, opacity',
         ...style,
       }}
@@ -427,12 +317,31 @@ const DoctorStrangePortal = forwardRef(function DoctorStrangePortal(
       <canvas
         ref={canvasRef}
         style={{
-          width: `${size}px`,
-          height: `${size}px`,
+          position: 'absolute',
+          left: '50%',
+          top: '50%',
+          transform: 'translate(-50%, -50%)',
+          width: `${canvasDisplaySize}px`,
+          height: `${canvasDisplaySize}px`,
+          pointerEvents: 'none',
           display: 'block',
-          willChange: 'transform',
+          willChange: 'opacity',
         }}
       />
+      {showCenterLabel && (
+        <div
+          style={{
+            position: 'absolute',
+            color: '#666',
+            fontFamily: 'serif',
+            fontSize: '14px',
+            letterSpacing: '2px',
+            pointerEvents: 'none',
+          }}
+        >
+          ENTER
+        </div>
+      )}
     </div>
   );
 });

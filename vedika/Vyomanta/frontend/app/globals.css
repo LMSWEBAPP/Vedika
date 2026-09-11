@@ -48,6 +48,10 @@
   --dim: #475569;
 }
 
+:root {
+  --font-code: 'Zed Mono', 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'SF Mono', Menlo, Monaco, Consolas, monospace;
+}
+
 *, *::before, *::after {
   box-sizing: border-box;
 }
@@ -61,6 +65,34 @@ body {
 body, button, input, textarea, select {
   font-family: var(--font-outfit), 'Segoe UI', sans-serif;
   color: var(--text);
+}
+
+/* ── Zed IDE Terminal & Output Console Global Styling ── */
+.xterm,
+.xterm .xterm-screen,
+.xterm-viewport,
+.xterm-rows {
+  font-family: var(--font-code) !important;
+  letter-spacing: 0px !important;
+}
+
+.xterm-rows span {
+  font-family: var(--font-code) !important;
+  letter-spacing: 0px !important;
+}
+
+.cm-editor,
+.cm-editor *,
+.cm-scroller,
+.cm-content,
+.cm-line,
+.cm-line *,
+.tutor-code-block,
+.tutor-code-block *,
+pre code,
+code {
+  font-family: var(--font-code) !important;
+  letter-spacing: 0px !important;
 }
 
 @keyframes spin {

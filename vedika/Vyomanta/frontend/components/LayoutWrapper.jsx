@@ -56,7 +56,7 @@ export default function LayoutWrapper({ children }) {
     }
 
     const KNOWN_PREFIXES = [
-      '/', '/login', '/login-avatar', '/users', '/admin', '/assignments', '/courses', 
+      '/', '/temp-home', '/login', '/login-avatar', '/users', '/admin', '/assignments', '/courses', 
       '/api', '/jobs', '/labs', '/lesson', '/presentation', '/progress', '/quizzes', 
       '/resources', '/vedika-ai', '/vedika-bot', '/vedika-chamber', '/vedika-labs', 
       '/viva-interview', '/coding-tutor', '/general-tutor', '/code-puzzle', 
@@ -98,7 +98,6 @@ export default function LayoutWrapper({ children }) {
           if (!pathname.startsWith('/admin')) {
             setLoading(true);
             router.replace('/admin');
-            return;
           }
         } else {
           if (pathname.startsWith('/admin')) {
@@ -123,14 +122,14 @@ export default function LayoutWrapper({ children }) {
   }, []);
 
   const KNOWN_ROUTES_LIST = [
-    '/', '/login', '/login-avatar', '/users', '/admin', '/assignments', '/courses', 
+    '/', '/temp-home', '/login', '/login-avatar', '/users', '/admin', '/assignments', '/courses', 
     '/api', '/jobs', '/labs', '/lesson', '/presentation', '/progress', '/quizzes', 
     '/resources', '/vedika-ai', '/vedika-bot', '/vedika-chamber', '/vedika-labs', 
     '/viva-interview', '/coding-tutor', '/general-tutor', '/code-puzzle', 
     '/home-avatar', '/avatar-chamber', '/avatar-blob', '/2d-avatar-testing', '/auth'
   ];
   const isUnknown404 = !KNOWN_ROUTES_LIST.some(r => r === pathname || (r !== '/' && pathname.startsWith(r)));
-  const isFullBleed = pathname === '/home-avatar' || pathname === '/login-avatar' || isUnknown404 || (typeof window !== 'undefined' && window.__IS_NOT_FOUND__);
+  const isFullBleed = pathname === '/' || pathname === '/home-avatar' || pathname === '/login-avatar' || isUnknown404 || (typeof window !== 'undefined' && window.__IS_NOT_FOUND__);
   if (isFullBleed) {
     return <div style={{ minHeight: '100vh', background: 'var(--bg)', color: 'var(--text)' }}>{children}</div>;
   }

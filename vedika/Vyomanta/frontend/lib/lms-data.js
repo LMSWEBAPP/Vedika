@@ -347,7 +347,17 @@ export const TUTOR_SYSTEM = "You are an expert tutor. Teach one concept at a tim
 export const CODING_TUTOR_SYSTEM = "You are Vyomanta's expert coding and programming tutor. You are strictly restricted to responding ONLY to questions related to coding, programming, computer science, software engineering, algorithms, and data structures. If the user asks about any other topic (such as history, geography, sports, pop culture, cooking, music, etc.), you MUST politely but firmly refuse to answer and state that you can only help with programming-related topics. Teach one concept at a time with concrete examples and analogies. If you provide code examples, write them in Python by default and wrap them in triple-backticks with a language tag (e.g. ```python). Adapt your explanation depth and style to the user's selected mode and depth settings. Do NOT greet the user. Do NOT ask questions back. Just teach coding.";
 export const QUIZ_SYSTEM = "You are a quiz generator. Generate only the quiz questions in the specified format. Do not add explanations, introductions, or greetings.";
 export const FLASHCARD_SYSTEM = "You are a flashcard generator. Generate only the flashcards in the specified format. Do not add explanations, introductions, or greetings.";
-export const INFOGRAPHIC_SYSTEM = "You are a visual summariser. Generate only concise bullet-pointed key concepts. Do not add explanations, introductions, or greetings.";
+export const INFOGRAPHIC_SYSTEM = `You are a visual knowledge architect and diagram expert.
+When asked to create an infographic, visual summary, or visual breakdown:
+1. Provide a clean, valid Mermaid.js flowchart enclosed in a \`\`\`mermaid ... \`\`\` code fence.
+2. Underneath, provide 3 to 5 clear, high-impact bulleted takeaway points starting with "-".
+
+RULES FOR MERMAID DIAGRAMS:
+- Start with 'flowchart TD' (Top-to-Bottom) or 'flowchart LR' (Left-to-Right).
+- Always enclose node text labels in double quotes, e.g. A["Introduction"] --> B["Step or Concept"].
+- Avoid special characters like parentheses, brackets, or braces inside node names unless safely enclosed in double quotes.
+- Keep node labels concise (3-6 words per node).
+- Do not add conversational fluff outside the mermaid block and bullet points.`;
 export const SIMPLER_SYSTEM = "You are a simplification expert. Rewrite the given concept using very basic language, short sentences, and everyday analogies. Assume the reader is a complete beginner.";
 export const EXAMPLES_SYSTEM = "You are an examples expert. Generate 3-5 real-world examples or practical applications of the given concept. Make them relatable and concrete.";
 
@@ -404,11 +414,21 @@ Output only the flashcards.`;
 }
 
 export function buildInfographicPrompt(topic, count = 5) {
-  return `Generate ${count} key infographic points about "${topic}".
+  return `Generate an interactive Mermaid.js flowchart diagram and ${count} key takeaway points about "${topic}".
 
-Each point should be a concise, impactful statement capturing an important concept.
+FORMAT YOUR RESPONSE EXACTLY AS FOLLOWS:
+\`\`\`mermaid
+flowchart TD
+  A["${topic}"] --> B["Core Principle"]
+  A --> C["Key Mechanism"]
+  B --> D["Detailed Insight / Impact"]
+  C --> E["Outcome / Practical Application"]
+\`\`\`
 
-Format as a simple list with one point per line, starting with "-".`;
+Key Takeaways:
+- First key insight or concept
+- Second key insight or concept
+- Third key insight or concept`;
 }
 
 // ── Feature prompt builder (on-demand features in chat) ──
@@ -435,9 +455,20 @@ BACK: [definition or explanation]
 
 Explanation:
 ${context}`,
-    infographic: `Based on the following explanation, generate 5 key infographic points.
+    infographic: `Based on the following explanation, generate a dynamic Mermaid.js flowchart diagram and 4-5 key takeaway points.
 
-Each point should be a concise, impactful statement. Format as a simple list with one point per line, starting with "-".
+FORMAT YOUR RESPONSE EXACTLY AS FOLLOWS:
+\`\`\`mermaid
+flowchart TD
+  A["Main Concept"] --> B["Key Component / Mechanism"]
+  B --> C["Processing / Action"]
+  C --> D["Result / Benefit"]
+\`\`\`
+
+Key Takeaways:
+- Key takeaway 1
+- Key takeaway 2
+- Key takeaway 3
 
 Explanation:
 ${context}`,
@@ -490,8 +521,80 @@ export function parseFlashcardsOutput(text) {
   }).filter(Boolean);
 }
 
+export function generateMermaidFromPoints(points, title = "Visual Summary") {
+  if (!points || !points.length) return "";
+  const cleanTitle = (title || "Summary").replace(/["\(\)\[\]\{\}]/g, '').slice(0, 32);
+  let chart = "flowchart TD\n";
+  chart += `  Root["🎯 ${cleanTitle}"]\n`;
+  points.slice(0, 6).forEach((pt, idx) => {
+    let cleanPt = pt.replace(/["\(\)\[\]\{\}]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (cleanPt.length > 45) cleanPt = cleanPt.substring(0, 42) + '...';
+    const id = `Node_${idx + 1}`;
+    chart += `  ${id}["${cleanPt}"]\n`;
+    chart += `  Root --> ${id}\n`;
+  });
+  return chart;
+}
+
 export function parseInfographicOutput(text) {
-  return text.split('\n').map(l => l.replace(/^[\-•*]\s*/, '').trim()).filter(l => l.length > 2);
+  if (!text) return [];
+
+  // 1. Extract mermaid diagram block if present
+  let mermaid = "";
+  const mermaidMatch = text.match(/```(?:mermaid)?\s*([\s\S]*?)```/i);
+  if (mermaidMatch) {
+    const candidate = mermaidMatch[1].trim();
+    if (
+      candidate.startsWith('flowchart') ||
+      candidate.startsWith('graph') ||
+      candidate.startsWith('mindmap') ||
+      candidate.startsWith('sequenceDiagram') ||
+      candidate.startsWith('classDiagram') ||
+      candidate.startsWith('stateDiagram')
+    ) {
+      mermaid = candidate;
+    }
+  }
+
+  // 2. Extract bullet points
+  const textWithoutCode = text.replace(/```[\s\S]*?```/g, '');
+  const lines = textWithoutCode.split('\n');
+  const bulletPoints = [];
+  const genericLines = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const match = trimmed.match(/^(?:[\-•*]|\d+\.)\s+(.+)$/);
+    if (match) {
+      const clean = match[1].trim();
+      if (clean.length > 2 && !clean.toLowerCase().startsWith('key takeaway')) {
+        bulletPoints.push(clean);
+      }
+    } else if (
+      !trimmed.startsWith('#') &&
+      !trimmed.endsWith(':') &&
+      !trimmed.toLowerCase().includes('takeaway') &&
+      !trimmed.toLowerCase().includes('mermaid') &&
+      !trimmed.toLowerCase().startsWith('here is') &&
+      !trimmed.toLowerCase().startsWith('here are') &&
+      trimmed.length > 10
+    ) {
+      genericLines.push(trimmed);
+    }
+  }
+
+  const points = bulletPoints.length > 0 ? bulletPoints : genericLines;
+
+  // If no mermaid diagram was extracted but points exist, synthesize a flowchart
+  if (!mermaid && points.length > 0) {
+    mermaid = generateMermaidFromPoints(points);
+  }
+
+  const result = points.length > 0 ? points : ['Visual overview generated.'];
+  result.points = points;
+  result.mermaid = mermaid;
+  return result;
 }
 
 export function getCourseDetails(course) {

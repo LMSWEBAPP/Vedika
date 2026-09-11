@@ -10,6 +10,7 @@ import { useMediaQuery, isMobileMQ } from '@/lib/useMediaQuery';
 import dynamic from 'next/dynamic';
 import PDFViewerModal from './PDFViewerModal';
 import ZimCarousel3D from './ZimCarousel3D';
+import PracticePlaygroundModal from './PracticePlaygroundModal';
 const Playground = dynamic(() => import('./Playground'), { ssr: false });
 
 const DECK_ROTATIONS = ['4deg', '-2deg', '-9deg', '7deg', '3deg', '-5deg', '6deg'];
@@ -358,11 +359,7 @@ export default function CoursePage() {
   const rPad = isMobile ? 16 : 36;
   const [isPlaygroundOpen, setIsPlaygroundOpen] = useState(false);
 
-  const outerStyle = isPlaygroundOpen && !isMobile
-    ? (isTabletOrSmallDesktop
-      ? { padding: '32px 24px', display: 'flex', flexDirection: 'column', gap: 28, fontFamily: 'var(--font-outfit), sans-serif', width: '100%' }
-      : { padding: '32px 24px', display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: 28, fontFamily: 'var(--font-outfit), sans-serif', width: '100%', maxWidth: '100%' })
-    : { padding: isMobile ? '20px 16px' : '32px 36px', fontFamily: 'var(--font-outfit), sans-serif' };
+  const outerStyle = { padding: isMobile ? '20px 16px' : '32px 36px', fontFamily: 'var(--font-outfit), sans-serif' };
 
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -575,23 +572,15 @@ export default function CoursePage() {
     const done = courseLessons.filter(l => completed[l.id]).length;
     const progressPercent = total > 0 ? Math.round((done / total) * 100) : 0;
 
-    const showSplitLayout = isPlaygroundOpen && !isMobile && !isTabletOrSmallDesktop;
-    const showVerticalSplit = isPlaygroundOpen && (isMobile || isTabletOrSmallDesktop);
-
     return (
       <div style={{
         display: 'flex',
-        flexDirection: showVerticalSplit ? 'column' : 'row',
-        height: showSplitLayout ? '100vh' : 'auto',
-        overflow: showSplitLayout ? 'hidden' : 'visible',
+        flexDirection: 'column',
         width: '100%',
         background: T.bg
       }}>
         <div style={{
-          width: showSplitLayout ? '55%' : '100%',
-          flex: showSplitLayout ? 'none' : 1,
-          height: showSplitLayout ? '100%' : 'auto',
-          overflowY: showSplitLayout ? 'auto' : 'visible',
+          width: '100%',
           padding: isMobile ? '20px 16px' : '32px 36px',
           display: 'flex',
           flexDirection: 'column'
@@ -624,7 +613,14 @@ export default function CoursePage() {
             </button>
 
             <button
-              onClick={() => setIsPlaygroundOpen(!isPlaygroundOpen)}
+              data-practice-trigger="true"
+              onClick={(e) => {
+                if (typeof window !== 'undefined') {
+                  const r = e.currentTarget.getBoundingClientRect();
+                  window.__lastPracticeTriggerRect = { left: r.left, top: r.top, width: r.width, height: r.height };
+                }
+                setIsPlaygroundOpen(!isPlaygroundOpen);
+              }}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -869,50 +865,27 @@ export default function CoursePage() {
               </div>
             </div>
           )}
-          {isPlaygroundOpen && isMobile && (
-            <div style={{ marginTop: 24, height: 400, flexShrink: 0 }}>
-              <Playground initialCode={`# Practice for: ${selectedCourse.title}\n# Write your code here\n\n`} />
-            </div>
-          )}
-          {isPlaygroundOpen && !isMobile && isTabletOrSmallDesktop && (
-            <div style={{ marginTop: 32, height: 500, flexShrink: 0 }}>
-              <Playground initialCode={`# Practice for: ${selectedCourse.title}\n# Write your code here\n\n`} />
-            </div>
-          )}
+          <PracticePlaygroundModal
+            isOpen={isPlaygroundOpen}
+            onClose={() => setIsPlaygroundOpen(false)}
+            title={`Practice: ${selectedCourse.title}`}
+            badge={selectedCourse.category || 'Python'}
+            initialCode={`# Practice for: ${selectedCourse.title}\n# Write your code here\n\n`}
+          />
         </div>
-
-        {showSplitLayout && (
-          <div style={{
-            flex: 1,
-            height: '100%',
-            padding: '32px 24px 32px 0',
-            display: 'flex',
-            flexDirection: 'column'
-          }}>
-            <Playground initialCode={`# Practice for: ${selectedCourse.title}\n# Write your code here\n\n`} />
-          </div>
-        )}
       </div>
     );
   }
 
-  const showSplitLayout = isPlaygroundOpen && !isMobile && !isTabletOrSmallDesktop;
-  const showVerticalSplit = isPlaygroundOpen && (isMobile || isTabletOrSmallDesktop);
-
   return (
     <div style={{
       display: 'flex',
-      flexDirection: showVerticalSplit ? 'column' : 'row',
-      height: showSplitLayout ? '100vh' : 'auto',
-      overflow: showSplitLayout ? 'hidden' : 'visible',
+      flexDirection: 'column',
       width: '100%',
       background: T.bg
     }}>
       <div style={{
-        width: showSplitLayout ? '55%' : '100%',
-        flex: showSplitLayout ? 'none' : 1,
-        height: showSplitLayout ? '100%' : 'auto',
-        overflowY: showSplitLayout ? 'auto' : 'visible',
+        width: '100%',
         padding: isMobile ? '20px 16px' : '32px 36px',
         display: 'flex',
         flexDirection: 'column'
@@ -987,7 +960,14 @@ export default function CoursePage() {
               </div>
 
               <button
-                onClick={() => setIsPlaygroundOpen(!isPlaygroundOpen)}
+                data-practice-trigger="true"
+                onClick={(e) => {
+                  if (typeof window !== 'undefined') {
+                    const r = e.currentTarget.getBoundingClientRect();
+                    window.__lastPracticeTriggerRect = { left: r.left, top: r.top, width: r.width, height: r.height };
+                  }
+                  setIsPlaygroundOpen(!isPlaygroundOpen);
+                }}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -1147,29 +1127,14 @@ export default function CoursePage() {
             </div>
           );
         })()}
-        {isPlaygroundOpen && isMobile && (
-          <div style={{ marginTop: 24, height: 400, flexShrink: 0 }}>
-            <Playground initialCode={`# General Coding Playground\n# Write your code here\n\n`} />
-          </div>
-        )}
-        {isPlaygroundOpen && !isMobile && isTabletOrSmallDesktop && (
-          <div style={{ marginTop: 32, height: 500, flexShrink: 0 }}>
-            <Playground initialCode={`# General Coding Playground\n# Write your code here\n\n`} />
-          </div>
-        )}
+        <PracticePlaygroundModal
+          isOpen={isPlaygroundOpen}
+          onClose={() => setIsPlaygroundOpen(false)}
+          title="Python Practice Playground"
+          badge="Interactive Sandbox"
+          initialCode={`# General Coding Playground\n# Write your code here\n\n`}
+        />
       </div>
-
-      {showSplitLayout && (
-        <div style={{
-          flex: 1,
-          height: '100%',
-          padding: '32px 24px 32px 0',
-          display: 'flex',
-          flexDirection: 'column'
-        }}>
-          <Playground initialCode={`# General Coding Playground\n# Write your code here\n\n`} />
-        </div>
-      )}
 
       {/* Course Completion Certificate Modal */}
       {isCertModalOpen && (

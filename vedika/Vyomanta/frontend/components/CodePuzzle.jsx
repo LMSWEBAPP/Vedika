@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import CodeMirror from '@uiw/react-codemirror';
 import { python } from '@codemirror/lang-python';
 import { html } from '@codemirror/lang-html';
@@ -8,8 +9,10 @@ import { usePyodide } from '@/hooks/usePyodide';
 import {
   Play, Pause, Square, Trash2, CheckCircle, Loader2, Brain, Zap,
   ChevronLeft, ChevronRight, BookOpen, AlertCircle, X,
-  Gamepad2, HelpCircle, ChevronDown, Check, Info, Code, Globe, HelpCircle as HelpIcon, Sun, Moon, ArrowRight
+  Gamepad2, HelpCircle, ChevronDown, Check, Info, Code, Globe, HelpCircle as HelpIcon, Sun, Moon, ArrowRight,
+  Award, Sparkles, GitFork, Layers, Columns
 } from 'lucide-react';
+import CodeFlowchartVisualizer from '@/components/CodeFlowchartVisualizer';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
@@ -35,7 +38,8 @@ class ErrorWidget extends WidgetType {
     div.style.borderLeft = "3px solid #F55B6B";
     div.style.padding = "6px 12px";
     div.style.fontSize = "11.5px";
-    div.style.fontFamily = "monospace";
+    div.style.fontFamily = "var(--font-code, 'Zed Mono', 'JetBrains Mono', 'Fira Code', monospace)";
+    div.style.letterSpacing = "0px";
     div.style.marginTop = "4px";
     div.style.marginBottom = "4px";
     div.style.borderRadius = "0 4px 4px 0";
@@ -261,6 +265,7 @@ const STARTER_HTML = `<!DOCTYPE html>
 </html>`;
 
 export default function CodePuzzle() {
+  const router = useRouter();
   // Category Selector: 'programming' | 'html'
   const [category, setCategory] = useState('programming');
   const [editorTheme, setEditorTheme] = useState('dark');
@@ -300,6 +305,7 @@ export default function CodePuzzle() {
   const [isTracing, setIsTracing] = useState(false);
   const [traceError, setTraceError] = useState(null);
   const [playSpeed, setPlaySpeed] = useState(1500); // 1500ms, 1000ms, 500ms
+  const [vizViewMode, setVizViewMode] = useState('flowchart'); // 'flowchart' | 'memory'
 
 
   // Terminal refs & resize layouts
@@ -405,7 +411,9 @@ export default function CodePuzzle() {
         cursor: '#5B8CF8',
       },
       fontSize: 12.5,
-      fontFamily: 'monospace',
+      fontFamily: "'Zed Mono', 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'SF Mono', Menlo, Monaco, Consolas, monospace",
+      letterSpacing: 0,
+      lineHeight: 1.25,
       convertEol: true
     });
 
@@ -1259,33 +1267,81 @@ export default function CodePuzzle() {
           )}
         </div>
 
-        {/* Dropdown selectors for Faculty Puzzles (Only visible if category === 'programming' and source === 'faculty') */}
-        {category === 'programming' && puzzleSource === 'faculty' && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 11.5, color: '#647298', fontWeight: 600 }}>Predefined Puzzles:</span>
-            <select
-              value={facultyPuzzleIndex}
-              onChange={(e) => setFacultyPuzzleIndex(parseInt(e.target.value))}
-              style={{
-                background: '#131824',
-                color: '#DDE3F2',
-                border: '1px solid rgba(255,255,255,0.1)',
-                borderRadius: 6,
-                padding: '5px 12px',
-                fontSize: 12,
-                fontWeight: 700,
-                cursor: 'pointer',
-                outline: 'none'
-              }}
-            >
-              {FACULTY_PUZZLES.map((p, idx) => (
-                <option key={p.id} value={idx}>
-                  {idx + 1}. {p.title}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
+        {/* Right Header Navigation & Selectors */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {category === 'programming' && puzzleSource === 'faculty' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 11.5, color: '#647298', fontWeight: 600 }}>Predefined Puzzles:</span>
+              <select
+                value={facultyPuzzleIndex}
+                onChange={(e) => setFacultyPuzzleIndex(parseInt(e.target.value))}
+                style={{
+                  background: '#131824',
+                  color: '#DDE3F2',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: 6,
+                  padding: '5px 12px',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  outline: 'none'
+                }}
+              >
+                {FACULTY_PUZZLES.map((p, idx) => (
+                  <option key={p.id} value={idx}>
+                    {idx + 1}. {p.title}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Link to Code with Vedika */}
+          <button
+            onClick={() => router.push('/vedika-ai/code')}
+            style={{
+              background: 'rgba(59, 130, 246, 0.12)',
+              border: '1px solid rgba(59, 130, 246, 0.3)',
+              color: '#60A5FA',
+              borderRadius: 8,
+              padding: '6px 12px',
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              transition: 'all 0.15s'
+            }}
+            title="Switch to Code with Vedika (AI Tutor)"
+          >
+            <Code size={13} />
+            <span>Code with Vedika</span>
+          </button>
+
+          {/* Link to 3D Chamber Hub */}
+          <button
+            onClick={() => router.push('/vedika-ai')}
+            style={{
+              background: 'rgba(255, 255, 255, 0.05)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              color: '#94A3B8',
+              borderRadius: 8,
+              padding: '6px 12px',
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              transition: 'all 0.15s'
+            }}
+            title="Return to Vedika 3D Chamber Hub"
+          >
+            <Sparkles size={13} />
+            <span>3D Chamber</span>
+          </button>
+        </div>
       </div>
 
       {/* --- Main split content area --- */}
@@ -1325,10 +1381,11 @@ export default function CodePuzzle() {
               <div style={{ flex: 1, overflowY: 'auto', background: editorTheme === 'dark' ? '#07080F' : '#FFFFFF' }}>
                 <CodeMirror
                   value={htmlCode}
-                  theme={editorTheme}
+                  height="100%"
+                  theme={editorTheme === 'dark' ? 'dark' : 'light'}
                   extensions={[html()]}
-                  onChange={(value) => handleCodeChange(value)}
-                  style={{ fontSize: 13, fontFamily: 'monospace' }}
+                  onChange={(val) => setHtmlCode(val)}
+                  style={{ fontSize: 13, fontFamily: "var(--font-code, 'Zed Mono', 'JetBrains Mono', 'Fira Code', monospace)", letterSpacing: '0px' }}
                 />
               </div>
             </div>
@@ -1374,7 +1431,7 @@ export default function CodePuzzle() {
                     onCreateEditor={(view) => {
                       editorViewRef.current = view;
                     }}
-                    style={{ fontSize: 13, fontFamily: 'monospace' }}
+                    style={{ fontSize: 13, fontFamily: "var(--font-code, 'Zed Mono', 'JetBrains Mono', 'Fira Code', monospace)", letterSpacing: '0px' }}
                   />
                 </div>
 
@@ -1991,9 +2048,31 @@ export default function CodePuzzle() {
                             </div>
                           </div>
 
-                          <span style={{ fontSize: 10.5, color: '#8892B0', fontWeight: 600, fontFamily: 'monospace', marginLeft: 'auto' }}>
-                            Step {currentStep + 1} of {traceData.length}
-                          </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
+                            <div className="viz-mode-toggle">
+                              <button
+                                type="button"
+                                className={`viz-mode-btn ${vizViewMode === 'flowchart' ? 'active' : ''}`}
+                                onClick={() => setVizViewMode('flowchart')}
+                                title="Flowchart Control Flow Graph (Mermaid.js)"
+                              >
+                                <GitFork size={11} />
+                                <span>Flowchart</span>
+                              </button>
+                              <button
+                                type="button"
+                                className={`viz-mode-btn ${vizViewMode === 'memory' ? 'active' : ''}`}
+                                onClick={() => setVizViewMode('memory')}
+                                title="Variables View"
+                              >
+                                <Layers size={11} />
+                                <span>Variables</span>
+                              </button>
+                            </div>
+                            <span style={{ fontSize: 10.5, color: '#8892B0', fontWeight: 600, fontFamily: 'monospace' }}>
+                              Step {currentStep + 1} of {traceData.length}
+                            </span>
+                          </div>
                         </div>
 
                         {/* Scrubbing slider range */}
@@ -2025,8 +2104,18 @@ export default function CodePuzzle() {
                       </div>
                     )}
 
-                    {/* Memory and Array visualization output */}
-                    {renderVisualizerVariables()}
+                    {/* Visualization output: Mermaid CFG or Memory/Array */}
+                    {vizViewMode === 'flowchart' ? (
+                      <div style={{ marginTop: 12 }}>
+                        <CodeFlowchartVisualizer
+                          code={code}
+                          currentStep={currentStep}
+                          traceData={traceData}
+                        />
+                      </div>
+                    ) : (
+                      renderVisualizerVariables()
+                    )}
                   </div>
                 )}
               </div>

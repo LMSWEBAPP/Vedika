@@ -298,8 +298,7 @@ export class HomeAvatarManager {
       this.canvas.style.pointerEvents = 'none';
     }
 
-    this._initTextures();
-    this._loadModel();
+    this._loadTexturesAndModel();
   }
 
   /**
@@ -375,38 +374,55 @@ export class HomeAvatarManager {
     return this.activeTimeline || null;
   }
 
-  _initTextures() {
-    if (!cachedTextures) {
-      const loader = new THREE.TextureLoader();
-      cachedTextures = HOME_AVATAR_DATA.map((buddy) => {
-        const tex = loader.load(buddy.texture);
-        tex.flipY = false;
-        tex.colorSpace = THREE.SRGBColorSpace;
-        return tex;
+  _loadTexturesAndModel() {
+    const textureLoader = new THREE.TextureLoader();
+    const gltfLoader = new GLTFLoader();
+
+    const loadTexture = (buddy) =>
+      new Promise((resolve) => {
+        textureLoader.load(
+          buddy.texture,
+          (tex) => {
+            tex.flipY = false;
+            tex.colorSpace = THREE.SRGBColorSpace;
+            tex.needsUpdate = true;
+            resolve(tex);
+          },
+          undefined,
+          () => resolve(null)
+        );
       });
-    }
-    this.textures = cachedTextures;
-  }
 
-  _loadModel() {
-    if (cachedMasterGltf) {
-      this._instantiateAvatars(cachedMasterGltf);
-      return;
-    }
+    const loadGLTF = () =>
+      new Promise((resolve) => {
+        if (cachedMasterGltf) {
+          resolve(cachedMasterGltf);
+          return;
+        }
+        gltfLoader.load(
+          '/Physics-avatar-opt.glb',
+          (gltf) => {
+            cachedMasterGltf = gltf;
+            resolve(gltf);
+          },
+          undefined,
+          (err) => {
+            console.warn('Failed to load avatar GLB:', err);
+            resolve(null);
+          }
+        );
+      });
 
-    const loader = new GLTFLoader();
-    loader.load(
-      '/Physics-avatar-opt.glb',
-      (gltf) => {
-        if (this.isDisposed) return;
-        cachedMasterGltf = gltf;
-        this._instantiateAvatars(gltf);
-      },
-      undefined,
-      (err) => {
-        console.warn('Failed to load avatar GLB:', err);
-      }
-    );
+    const texturesPromise = cachedTextures
+      ? Promise.resolve(cachedTextures)
+      : Promise.all(HOME_AVATAR_DATA.map(loadTexture));
+
+    Promise.all([texturesPromise, loadGLTF()]).then(([textures, gltf]) => {
+      if (this.isDisposed || !gltf) return;
+      cachedTextures = textures;
+      this.textures = textures;
+      this._instantiateAvatars(gltf);
+    });
   }
 
   _instantiateAvatars(gltf) {
@@ -438,11 +454,11 @@ export class HomeAvatarManager {
         clone.scale.setScalar(avatarScale / maxDim);
       }
 
-      // Material setup
+      // Material setup - curated vibrant initial color prevents any pitch-black flash
       clone.traverse((child) => {
         if (child.isMesh && child.material) {
           child.material = child.material.clone();
-          if (this.textures[idx]) {
+          if (this.textures && this.textures[idx]) {
             child.material.map = this.textures[idx];
           }
           child.material.color.set('#FFFFFF');
@@ -533,6 +549,7 @@ export class HomeAvatarManager {
         isSettled: false,
         settleTimestamp: 0,
         baseRotY: buddy.baseRotY || 0,
+        currentBaseRotY: buddy.baseRotY || 0,
         currentGaze: { x: 0, y: 0, z: 0 },
         targetGaze: { x: 0, y: 0, z: 0 },
         nextGlanceTime: 0,
@@ -540,9 +557,21 @@ export class HomeAvatarManager {
         lastBlinkTime: Math.random() * 3,
         baseScale: 1.0,
         mouthOpen: 0,
+        speechMotion: { bob: 0, nod: 0, roll: 0, yaw: 0, stretch: 1.0, squash: 1.0 },
         trail: null,
       });
     });
+
+    if (this.sceneInstance?.renderer && this.sceneInstance?.roomScene && this.camera) {
+      try {
+        this.sceneInstance.renderer.compile(this.sceneInstance.roomScene, this.camera);
+      } catch (e) {}
+    }
+    if (this.sceneInstance?.avatarRenderer && this.scene && this.camera) {
+      try {
+        this.sceneInstance.avatarRenderer.compile(this.scene, this.camera);
+      } catch (e) {}
+    }
 
     this.isReady = true;
     if (this.onReady) this.onReady();
@@ -827,7 +856,9 @@ export class HomeAvatarManager {
           const dir = vec.sub(this.camera.position).normalize();
           const distance = (depthZ - this.camera.position.z) / dir.z;
           const worldPos = this.camera.position.clone().add(dir.multiplyScalar(distance));
-          return worldPos;
+          if (worldPos && isFinite(worldPos.x) && isFinite(worldPos.y) && isFinite(worldPos.z)) {
+            return worldPos;
+          }
         }
       } catch (e) {
         // Fallback below
@@ -849,7 +880,10 @@ export class HomeAvatarManager {
     const avatar = this.avatars[0];
     if (!avatar) return;
 
-    const origin = this.getWordOrigin('center', -0.55);
+    let origin = this.getWordOrigin('center', -0.55);
+    if (!origin || !Number.isFinite(origin.x) || !Number.isFinite(origin.y) || !Number.isFinite(origin.z)) {
+      origin = new THREE.Vector3(-4.4, 1.68, -0.55);
+    }
     const target = avatar.landingTarget;
     const g = avatar.group;
 
@@ -857,11 +891,16 @@ export class HomeAvatarManager {
     this.sceneInstance?.updatePocketPosition(origin);
 
     g.visible = true;
+    avatar.mesh.traverse((c) => { if (c.isMesh) c.visible = true; });
+    if (avatar.faceMesh) avatar.faceMesh.visible = true;
+    if (avatar.shadowMesh) avatar.shadowMesh.visible = true;
+
     // Avatar starts inside the wall pocket, body below the pocket seam
     g.position.set(origin.x, origin.y - 0.28, -0.62);
     g.scale.set(0.48, 0.48, 0.48);
     avatar.isSettled = false;
     avatar.targetGaze = { x: 0, y: 0, z: 0 };
+    avatar.currentGaze = { x: 0, y: 0, z: 0 };
 
     if (avatar.trail) avatar.trail.stop();
 
@@ -914,9 +953,12 @@ export class HomeAvatarManager {
 
     // Physics-accurate 3-bounce landing
     this._addLandingBounce(tl, g, target, 0.94, () => {
+      g.position.copy(target);
+      g.scale.set(1, 1, 1);
       avatar.isSettled = true;
       avatar.settleTimestamp = this.time;
       avatar.targetGaze = { x: 0, y: 0, z: 0 };
+      avatar.currentGaze = { x: 0, y: 0, z: 0 };
       avatar.nextGlanceTime = this.time + 3.6;
       if (avatar.trail) avatar.trail.stop();
     });
@@ -945,19 +987,31 @@ export class HomeAvatarManager {
     const belle = this.avatars[1];
     const moana = this.avatars[2];
 
-    const originBelle = this.getWordOrigin('left', -1.2);
+    let originBelle = this.getWordOrigin('left', -1.2);
+    if (!originBelle || !Number.isFinite(originBelle.x) || !Number.isFinite(originBelle.y) || !Number.isFinite(originBelle.z)) {
+      originBelle = new THREE.Vector3(-5.4, 1.68, -1.2);
+    }
     const targetBelle = belle.landingTarget;
     const gBelle = belle.group;
 
-    const originMoana = this.getWordOrigin('right', -1.2);
+    let originMoana = this.getWordOrigin('right', -1.2);
+    if (!originMoana || !Number.isFinite(originMoana.x) || !Number.isFinite(originMoana.y) || !Number.isFinite(originMoana.z)) {
+      originMoana = new THREE.Vector3(-3.0, 1.68, -1.2);
+    }
     const targetMoana = moana.landingTarget;
     const gMoana = moana.group;
 
     // ── BELLE (Avatar 2 - Pink) ── emerges first from Left Aperture ──
     gBelle.visible = true;
+    belle.mesh.traverse((c) => { if (c.isMesh) c.visible = true; });
+    if (belle.faceMesh) belle.faceMesh.visible = true;
+    if (belle.shadowMesh) belle.shadowMesh.visible = true;
+
     gBelle.position.set(originBelle.x, originBelle.y - 0.06, -0.28);
     gBelle.scale.set(0.18, 0.18, 0.18);
     belle.isSettled = false;
+    belle.targetGaze = { x: 0, y: 0, z: 0 };
+    belle.currentGaze = { x: 0, y: 0, z: 0 };
     if (belle.trail) belle.trail.stop();
 
     const belleTl = gsap.timeline({ delay: 0.0 });
@@ -981,9 +1035,12 @@ export class HomeAvatarManager {
 
     // Belle 3-bounce landing
     this._addLandingBounce(belleTl, gBelle, targetBelle, 0.94, () => {
+      gBelle.position.copy(targetBelle);
+      gBelle.scale.set(1, 1, 1);
       belle.isSettled = true;
       belle.settleTimestamp = this.time;
       belle.targetGaze = { x: 0, y: 0, z: 0 };
+      belle.currentGaze = { x: 0, y: 0, z: 0 };
       belle.nextGlanceTime = this.time + 3.8;
       if (belle.trail) belle.trail.stop();
     });
@@ -992,9 +1049,15 @@ export class HomeAvatarManager {
 
     // ── MOANA (Avatar 3 - Red) ── 0.35s stagger from Right Aperture ──
     gMoana.visible = true;
+    moana.mesh.traverse((c) => { if (c.isMesh) c.visible = true; });
+    if (moana.faceMesh) moana.faceMesh.visible = true;
+    if (moana.shadowMesh) moana.shadowMesh.visible = true;
+
     gMoana.position.set(originMoana.x, originMoana.y - 0.06, -0.28);
     gMoana.scale.set(0.18, 0.18, 0.18);
     moana.isSettled = false;
+    moana.targetGaze = { x: 0, y: 0, z: 0 };
+    moana.currentGaze = { x: 0, y: 0, z: 0 };
     if (moana.trail) moana.trail.stop();
 
     const moanaTl = gsap.timeline({ delay: 0.35 });
@@ -1018,9 +1081,12 @@ export class HomeAvatarManager {
 
     // Moana 3-bounce landing
     this._addLandingBounce(moanaTl, gMoana, targetMoana, 0.94, () => {
+      gMoana.position.copy(targetMoana);
+      gMoana.scale.set(1, 1, 1);
       moana.isSettled = true;
       moana.settleTimestamp = this.time;
       moana.targetGaze = { x: 0, y: 0, z: 0 };
+      moana.currentGaze = { x: 0, y: 0, z: 0 };
       moana.nextGlanceTime = this.time + 3.6;
       if (moana.trail) moana.trail.stop();
     });
@@ -1047,11 +1113,18 @@ export class HomeAvatarManager {
     const avatar = this.avatars[3];
     if (!avatar) return;
 
-    const origin = this.getWordOrigin('right', -1.2);
+    let origin = this.getWordOrigin('right', -1.2);
+    if (!origin || !isFinite(origin.x) || !isFinite(origin.y) || !isFinite(origin.z)) {
+      origin = new THREE.Vector3(-3.0, 1.68, -1.2);
+    }
     const target = avatar.landingTarget;
     const g = avatar.group;
 
     g.visible = true;
+    avatar.mesh.traverse((c) => { if (c.isMesh) c.visible = true; });
+    if (avatar.faceMesh) avatar.faceMesh.visible = true;
+    if (avatar.shadowMesh) avatar.shadowMesh.visible = true;
+
     g.position.set(origin.x, origin.y - 0.06, -0.28);
     g.scale.set(0.18, 0.18, 0.18);
     avatar.isSettled = false;
@@ -1082,7 +1155,6 @@ export class HomeAvatarManager {
     // Physics-accurate 3-bounce landing (Bhageera lands heavy/exhausted)
     // touchdown at 0.94s, fully settled at 0.94 + 1.04 = 1.98s
     this._addLandingBounce(tl, g, target, 0.94, () => {
-      avatar.isSettled = true;
       if (avatar.trail) avatar.trail.stop();
     });
 
@@ -1091,48 +1163,38 @@ export class HomeAvatarManager {
       this.playDialogue(3, '/audio/home/bhageera_journey.wav');
     }, null, 2.05);
 
-    // Mark settled for idle-bob after dialogue starts
+    // Energetic perk-up 360-spin hop chained directly into timeline
+    const hopT0 = 4.20;
+    // Wind-up squat
+    tl.to(g.scale, { x: 1.18, y: 0.76, z: 1.18, duration: 0.16, ease: 'power2.in' }, hopT0);
+    // Leap + spin
+    tl.to(g.position, { y: target.y + 0.90, duration: 0.36, ease: 'power2.out' }, hopT0 + 0.16);
+    tl.to(g.rotation, { y: g.rotation.y + Math.PI * 2, duration: 0.65, ease: 'power1.inOut' }, hopT0 + 0.16);
+    tl.to(g.scale,    { x: 0.92, y: 1.16, z: 0.92, duration: 0.22, ease: 'sine.out' }, hopT0 + 0.16);
+
+    // Perk-up landing
+    tl.to(g.position, { y: target.y, duration: 0.30, ease: 'power2.in' }, hopT0 + 0.52);
+    tl.to(g.scale,    { x: 1.12, y: 0.86, z: 1.12, duration: 0.10, ease: 'power2.out' }, hopT0 + 0.52);
+
+    // Final scale settle — mark settled only after perk-up is fully done
+    tl.to(g.scale, {
+      x: 1.0, y: 1.0, z: 1.0,
+      duration: 0.26,
+      ease: 'sine.out',
+      onComplete: () => {
+        avatar.isSettled = true;
+        avatar.settleTimestamp = this.time;
+        avatar.targetGaze = { x: 0, y: 0, z: 0 };
+        avatar.nextGlanceTime = this.time + 3.5;
+        this.cursorTrackingEnabled = true;
+      },
+    }, hopT0 + 0.82);
+
     tl.call(() => {
-      avatar.settleTimestamp = this.time;
-      avatar.targetGaze = { x: 0, y: 0, z: 0 };
-    }, null, 2.08);
-
-    // Energetic perk-up 360-spin hop ~2.2s after settling
-    tl.call(() => {
-      const perkTl = gsap.timeline();
-
-      // Wind-up squat
-      perkTl.to(g.scale, { x: 1.18, y: 0.76, z: 1.18, duration: 0.16, ease: 'power2.in' });
-
-      // Leap + spin
-      perkTl.to(g.position, { y: target.y + 0.90, duration: 0.36, ease: 'power2.out' }, 0.16);
-      perkTl.to(g.rotation, { y: g.rotation.y + Math.PI * 2, duration: 0.65, ease: 'power1.inOut' }, 0.16);
-      perkTl.to(g.scale,    { x: 0.92, y: 1.16, z: 0.92, duration: 0.22, ease: 'sine.out' }, 0.16);
-
-      // Perk-up landing — no extra audio, bounce audio from _addLandingBounce is already done
-      perkTl.to(g.position, { y: target.y, duration: 0.30, ease: 'power2.in' }, 0.52);
-      perkTl.to(g.scale,    { x: 1.12, y: 0.86, z: 1.12, duration: 0.10, ease: 'power2.out' }, 0.52);
-
-      // Final scale settle — clean sine, no elastic bouncing
-      perkTl.to(g.scale, {
-        x: 1.0, y: 1.0, z: 1.0,
-        duration: 0.26,
-        ease: 'sine.out',
-        onComplete: () => {
-          avatar.isSettled = true;
-          avatar.settleTimestamp = this.time;
-          avatar.targetGaze = { x: 0, y: 0, z: 0 };
-          avatar.nextGlanceTime = this.time + 3.5;
-        },
-      }, 0.82);
-
-      setTimeout(() => {
-        this.playDialogue(3, '/audio/home/bhageera_howareyou.wav', () => {
-          this.cursorTrackingEnabled = true;
-          if (onComplete) onComplete();
-        });
-      }, 900);
-    }, null, 4.20);
+      this.playDialogue(3, '/audio/home/bhageera_howareyou.wav', () => {
+        if (onComplete) onComplete();
+      });
+    }, null, hopT0 + 1.10);
 
     return tl;
   }
@@ -1180,13 +1242,19 @@ export class HomeAvatarManager {
    * Helper to pre-settle avatars up to a specific step index for testing/debugging.
    * stepIndex 0: all hidden (ready for step 1)
    * stepIndex 1: Mowgli settled on rug (ready for step 2)
-   * stepIndex 2: Mowgli, Belle, Moana settled on rug (ready for step 3)
+   * stepIndex 2: Mowgli, Belle settled on rug
+   * stepIndex 3: Mowgli, Belle, Moana settled on rug
+   * stepIndex 4: All 4 companions settled on rug
    */
   settleAvatarsUpTo(stepIndex) {
     this.resetAll();
-    for (let i = 0; i < stepIndex && i < this.avatars.length; i++) {
+    const count = Math.min(stepIndex, this.avatars.length);
+    for (let i = 0; i < count; i++) {
       const av = this.avatars[i];
       av.group.visible = true;
+      av.mesh.traverse((c) => { if (c.isMesh) c.visible = true; });
+      if (av.faceMesh) av.faceMesh.visible = true;
+      if (av.shadowMesh) av.shadowMesh.visible = true;
       av.group.position.set(av.landingTarget.x, av.landingTarget.y, av.landingTarget.z);
       av.group.scale.set(1, 1, 1);
       av.group.rotation.set(0, 0, 0);
@@ -1307,7 +1375,11 @@ export class HomeAvatarManager {
    * 7. Calls onComplete to initiate warm transition screen to /avatar-chamber.
    * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    */
-  triggerFullDoorDeparture(onComplete = null) {
+  triggerFullDoorDeparture(audioSrc = null, onComplete = null) {
+    if (typeof audioSrc === 'function') {
+      onComplete = audioSrc;
+      audioSrc = null;
+    }
     if (this.activeTimeline) {
       this.activeTimeline.kill();
       this.activeTimeline = null;
@@ -1323,8 +1395,12 @@ export class HomeAvatarManager {
       return;
     }
 
-    // Mark all avatars as in motion
+    // Ensure all 4 companions are visible and active
     this.avatars.forEach((av) => {
+      av.group.visible = true;
+      av.mesh.traverse((c) => { if (c.isMesh) c.visible = true; });
+      if (av.faceMesh) av.faceMesh.visible = true;
+      if (av.shadowMesh) av.shadowMesh.visible = true;
       av.isSettled = false;
       if (av.trail) av.trail.stop();
     });
@@ -1338,38 +1414,44 @@ export class HomeAvatarManager {
     const doorHole = { x: 4.10, y: this.rugY + 1.15, z: -3.80 };
     const doorThreshold = { x: 4.10, y: this.rugY, z: 0.40 };
 
-    // ── PHASE 1: Bhageera turns and slides smoothly across floor to spot 'B' & opens door ──
+    // ── PHASE 1: Bhageera turns and slides smoothly across floor to Spot B & speaks page tour dialogue ──
     tl.to(bhageera.group.rotation, {
       y: Math.PI * 0.45,
-      duration: 0.22,
+      duration: 0.20,
       ease: 'power2.out',
     }, 0);
 
+    // Slide across the floor to Spot B
     tl.to(bhageera.group.position, {
       x: spotB.x,
       y: spotB.y,
       z: spotB.z,
-      duration: 1.15,
+      duration: 1.18,
       ease: 'power2.inOut',
-    }, 0.12);
+    }, 0.08);
 
-    // Door swings open as Bhageera approaches threshold
+    // DURING THAT SLIDE: Bhageera speaks the tour dialogue for that page!
+    const tourAudio = audioSrc || '/audio/home/tour/tour_courses.wav';
+    tl.call(() => {
+      this.playDialogue(3, tourAudio);
+    }, null, 0.06);
+
+    // Door swings open wide as Bhageera approaches the threshold
     tl.call(() => {
       this.sceneInstance?.openDoor(1.1);
-    }, null, 0.65);
+    }, null, 0.58);
 
-    // Bhageera arrives at spot B and turns to face left (towards companions), waiting for them
+    // Bhageera arrives at Spot B and turns to face left (towards companions), waiting for them
     tl.to(bhageera.group.rotation, {
       y: -Math.PI * 0.48,
       duration: 0.30,
       ease: 'power2.out',
-    }, 1.20);
+    }, 1.22);
 
-    // Helper to animate an avatar hopping along waypoints, then floating into the cosmic space portal and shrinking tiny
+    // Helper to animate an avatar hopping along waypoints into the cosmic portal
     const animateHoppingExit = (avatar, waypoints, startTime) => {
       const g = avatar.group;
 
-      // Turn towards the doorway
       tl.to(g.rotation, {
         y: Math.PI * 0.44,
         duration: 0.20,
@@ -1379,11 +1461,8 @@ export class HomeAvatarManager {
       let currentTime = startTime + 0.10;
       const hopDuration = 0.46;
 
-      // Hop sequentially through each intermediate waypoint towards the threshold
       for (let i = 0; i < waypoints.length; i++) {
         const pt = waypoints[i];
-
-        // Horizontal translation
         tl.to(g.position, {
           x: pt.x,
           z: pt.z,
@@ -1391,7 +1470,6 @@ export class HomeAvatarManager {
           ease: 'power1.inOut',
         }, currentTime);
 
-        // Parabolic vertical hop
         tl.to(g.position, {
           y: this.rugY + 0.58,
           duration: hopDuration * 0.5,
@@ -1406,11 +1484,10 @@ export class HomeAvatarManager {
         currentTime += hopDuration;
       }
 
-      // Final Cosmic Portal Entry: Float into the cosmic space shader portal and shrink tiny into the distance!
       const portalEntryDuration = 1.18;
       tl.call(() => { g.renderOrder = 20; }, null, currentTime);
 
-      // Phase A: Step through the arched door threshold into the cosmic portal
+      // Step through threshold into cosmic portal
       tl.to(g.position, {
         x: doorHole.x,
         y: this.rugY + 0.70,
@@ -1427,7 +1504,7 @@ export class HomeAvatarManager {
         ease: 'power1.in',
       }, currentTime);
 
-      // Phase B: Float deep into the swirling cosmic nebula and shrink tiny into deep space
+      // Float deep into the cosmic space shader portal
       tl.to(g.position, {
         y: doorHole.y,
         z: doorHole.z,
@@ -1456,8 +1533,7 @@ export class HomeAvatarManager {
       return currentTime + portalEntryDuration;
     };
 
-    // ── PHASE 2: Moana, Belle, Mowgli hop ONE AFTER THE OTHER with consistent spacing, floating into space ──
-    // Moana hops first from rug (x: -0.25, z: 2.28)
+    // ── PHASE 2: Moana, Belle, Mowgli hop sequentially into space while Bhageera waits at Spot B ──
     const moanaWaypoints = [
       { x: 1.85, z: 1.65 },
       { x: 3.15, z: 1.05 },
@@ -1465,16 +1541,14 @@ export class HomeAvatarManager {
     ];
     const moanaExitTime = animateHoppingExit(moana, moanaWaypoints, 1.25);
 
-    // Belle starts hopping after Moana, reaching where Moana was, maintaining gap
     const belleWaypoints = [
       { x: 0.55, z: 1.85 },
       { x: 1.95, z: 1.45 },
       { x: 3.15, z: 1.05 },
       doorThreshold,
     ];
-    const belleExitTime = animateHoppingExit(belle, belleWaypoints, 2.10);
+    const belleExitTime = animateHoppingExit(belle, belleWaypoints, 2.05);
 
-    // Mowgli starts hopping after Belle, reaching where Belle was, maintaining gap
     const mowgliWaypoints = [
       { x: -0.90, z: 1.90 },
       { x: 0.55, z: 1.65 },
@@ -1482,212 +1556,29 @@ export class HomeAvatarManager {
       { x: 3.15, z: 0.95 },
       doorThreshold,
     ];
-    const mowgliExitTime = animateHoppingExit(mowgli, mowgliWaypoints, 2.95);
+    const mowgliExitTime = animateHoppingExit(mowgli, mowgliWaypoints, 2.85);
 
-    // ── PHASE 3: Bhageera turns to User, speaks with Gemini Fenrir voice, then exits through door ──
-    // Starts right after Mowgli clears into the doorway
-    const bhageeraStartTime = mowgliExitTime + 0.15;
+    // ── PHASE 3: Bhageera follows into the space portal ──
+    const bhageeraExitStart = mowgliExitTime + 0.15;
 
-    // Prominent angle pointing from Spot B (x: 5.42, z: 0.82) to the center of the screen
-    const bhageeraLookAtUserAngle = -0.58;
-
-    // Bhageera stays firmly at Spot B position and turns on the spot to face the user in the center of the screen
-    tl.to(bhageera.group.rotation, {
-      y: bhageeraLookAtUserAngle,
-      duration: 0.35,
-      ease: 'power2.out',
-    }, bhageeraStartTime);
-
-    // Bhageera speaks "Let's step into the knowledge world!" with exact Gemini Fenrir voice
-    tl.call(() => {
-      this.playDialogue(3, '/audio/home/bhageera_knowledge_world.wav');
-    }, null, bhageeraStartTime + 0.35);
-
-    // ── Subtle and Gentle Excited Bounces on the spot as Bhageera speaks ──
-    // Gentle, charming, light hops filled with cheerful mascot excitement
-    const bounceStart = bhageeraStartTime + 0.38;
-
-    // ── 1. Phrase: "Let's..." — soft subtle anticipation & gentle first bounce ──
-    tl.to(bhageera.group.scale, {
-      x: 1.03,
-      y: 0.94,
-      z: 1.03,
-      duration: 0.08,
-      ease: 'power1.in',
-    }, bounceStart);
-    tl.to(bhageera.group.position, {
-      y: spotB.y + 0.13,
-      duration: 0.16,
-      ease: 'power2.out',
-    }, bounceStart + 0.08);
-    tl.to(bhageera.group.scale, {
-      x: 0.97,
-      y: 1.06,
-      z: 0.97,
-      duration: 0.12,
-      ease: 'sine.out',
-    }, bounceStart + 0.08);
-    tl.to(bhageera.group.rotation, {
-      z: -0.03,
-      duration: 0.16,
-      ease: 'sine.inOut',
-    }, bounceStart + 0.08);
-
-    // Land bounce 1
-    tl.to(bhageera.group.position, {
-      y: spotB.y,
-      duration: 0.14,
-      ease: 'power2.in',
-    }, bounceStart + 0.24);
-    tl.to(bhageera.group.scale, {
-      x: 1.03,
-      y: 0.95,
-      z: 1.03,
-      duration: 0.10,
-      ease: 'power2.out',
-    }, bounceStart + 0.24);
-    tl.to(bhageera.group.rotation, {
-      z: 0.0,
-      duration: 0.12,
-      ease: 'sine.out',
-    }, bounceStart + 0.24);
-
-    // ── 2. Phrase: "...step into the..." — cheerful light spring hop with subtle tilt ──
-    const b2Start = bounceStart + 0.38;
-    tl.to(bhageera.group.position, {
-      y: spotB.y + 0.11,
-      duration: 0.15,
-      ease: 'power2.out',
-    }, b2Start);
-    tl.to(bhageera.group.scale, {
-      x: 0.98,
-      y: 1.05,
-      z: 0.98,
-      duration: 0.11,
-      ease: 'sine.out',
-    }, b2Start);
-    tl.to(bhageera.group.rotation, {
-      z: 0.03,
-      duration: 0.15,
-      ease: 'sine.inOut',
-    }, b2Start);
-
-    // Land bounce 2
-    tl.to(bhageera.group.position, {
-      y: spotB.y,
-      duration: 0.13,
-      ease: 'power2.in',
-    }, b2Start + 0.15);
-    tl.to(bhageera.group.scale, {
-      x: 1.02,
-      y: 0.96,
-      z: 1.02,
-      duration: 0.10,
-      ease: 'power2.out',
-    }, b2Start + 0.15);
-    tl.to(bhageera.group.rotation, {
-      z: 0.0,
-      duration: 0.12,
-      ease: 'sine.out',
-    }, b2Start + 0.15);
-
-    // ── 3. Phrase: "...knowledge..." — gentle excited peak hop ──
-    const b3Start = b2Start + 0.30;
-    tl.to(bhageera.group.scale, {
-      x: 1.04,
-      y: 0.93,
-      z: 1.04,
-      duration: 0.08,
-      ease: 'power1.in',
-    }, b3Start);
-    tl.to(bhageera.group.position, {
-      y: spotB.y + 0.15,
-      duration: 0.18,
-      ease: 'power2.out',
-    }, b3Start + 0.08);
-    tl.to(bhageera.group.scale, {
-      x: 0.96,
-      y: 1.07,
-      z: 0.96,
-      duration: 0.14,
-      ease: 'sine.out',
-    }, b3Start + 0.08);
-    tl.to(bhageera.group.rotation, {
-      x: -0.04,
-      duration: 0.18,
-      ease: 'power1.out',
-    }, b3Start + 0.08);
-
-    // Land bounce 3
-    tl.to(bhageera.group.position, {
-      y: spotB.y,
-      duration: 0.15,
-      ease: 'power2.in',
-    }, b3Start + 0.26);
-    tl.to(bhageera.group.scale, {
-      x: 1.03,
-      y: 0.95,
-      z: 1.03,
-      duration: 0.12,
-      ease: 'power2.out',
-    }, b3Start + 0.26);
-    tl.to(bhageera.group.rotation, {
-      x: 0.0,
-      duration: 0.14,
-      ease: 'sine.out',
-    }, b3Start + 0.26);
-
-    // ── 4. Phrase: "...world!" — soft rebound hop & calm settle ──
-    const b4Start = b3Start + 0.42;
-    tl.to(bhageera.group.position, {
-      y: spotB.y + 0.08,
-      duration: 0.14,
-      ease: 'power2.out',
-    }, b4Start);
-    tl.to(bhageera.group.scale, {
-      x: 0.98,
-      y: 1.04,
-      z: 0.98,
-      duration: 0.10,
-      ease: 'sine.out',
-    }, b4Start);
-
-    // Land bounce 4 & settle cleanly back to baseline scale
-    tl.to(bhageera.group.position, {
-      y: spotB.y,
-      duration: 0.14,
-      ease: 'power2.in',
-    }, b4Start + 0.14);
-    tl.to(bhageera.group.scale, {
-      x: 1.0,
-      y: 1.0,
-      z: 1.0,
-      duration: 0.20,
-      ease: 'sine.out',
-    }, b4Start + 0.14);
-
-    // Full audio clip length is 2.88s; allow speech to resonate completely before turning
-    const speechEnd = bhageeraStartTime + 0.35 + 2.88;
-
-    // After speaking, Bhageera turns towards the open door
+    // Turn towards doorway
     tl.to(bhageera.group.rotation, {
       y: -Math.PI * 0.44,
-      duration: 0.30,
+      duration: 0.28,
       ease: 'power2.out',
-    }, speechEnd);
+    }, bhageeraExitStart);
 
-    // ── PHASE 4: Bhageera enters the cosmic space shader portal, shrinking tiny into the distance ──
-    const bExitTime = speechEnd + 0.30;
-    tl.call(() => { bhageera.group.renderOrder = 20; }, null, bExitTime);
+    // Step into the portal threshold
+    const bEntryTime = bhageeraExitStart + 0.30;
+    tl.call(() => { bhageera.group.renderOrder = 20; }, null, bEntryTime);
 
-    // Phase A: Leap into the portal threshold
     tl.to(bhageera.group.position, {
       x: doorHole.x,
       y: this.rugY + 0.70,
       z: -0.20,
       duration: 0.40,
       ease: 'power1.out',
-    }, bExitTime);
+    }, bEntryTime);
 
     tl.to(bhageera.group.scale, {
       x: 0.65,
@@ -1695,15 +1586,15 @@ export class HomeAvatarManager {
       z: 0.65,
       duration: 0.40,
       ease: 'power1.in',
-    }, bExitTime);
+    }, bEntryTime);
 
-    // Phase B: Float deep into the cosmic space nebula, becoming tiny into deep space
+    // Float deep into the cosmic space nebula and shrink into space
     tl.to(bhageera.group.position, {
       y: doorHole.y,
       z: doorHole.z,
       duration: 0.80,
       ease: 'power2.in',
-    }, bExitTime + 0.40);
+    }, bEntryTime + 0.40);
 
     tl.to(bhageera.group.scale, {
       x: 0.012,
@@ -1711,7 +1602,7 @@ export class HomeAvatarManager {
       z: 0.012,
       duration: 0.80,
       ease: 'power2.in',
-    }, bExitTime + 0.40);
+    }, bEntryTime + 0.40);
 
     tl.to(bhageera.group.rotation, {
       y: bhageera.group.rotation.y - Math.PI * 0.75,
@@ -1722,7 +1613,7 @@ export class HomeAvatarManager {
         bhageera.group.visible = false;
         if (onComplete) onComplete();
       },
-    }, bExitTime + 0.40);
+    }, bEntryTime + 0.40);
 
     return tl;
   }
@@ -1775,7 +1666,21 @@ export class HomeAvatarManager {
 
       const g = avatar.group;
 
-
+      if (avatar.currentBaseRotY === undefined || !Number.isFinite(avatar.currentBaseRotY)) {
+        avatar.currentBaseRotY = avatar.baseRotY || 0;
+      }
+      if (!avatar.currentGaze) {
+        avatar.currentGaze = { x: 0, y: 0, z: 0 };
+      }
+      if (!avatar.targetGaze) {
+        avatar.targetGaze = { x: 0, y: 0, z: 0 };
+      }
+      if (!Number.isFinite(avatar.currentGaze.x)) avatar.currentGaze.x = 0;
+      if (!Number.isFinite(avatar.currentGaze.y)) avatar.currentGaze.y = 0;
+      if (!Number.isFinite(avatar.currentGaze.z)) avatar.currentGaze.z = 0;
+      if (!Number.isFinite(avatar.targetGaze.x)) avatar.targetGaze.x = 0;
+      if (!Number.isFinite(avatar.targetGaze.y)) avatar.targetGaze.y = 0;
+      if (!Number.isFinite(avatar.targetGaze.z)) avatar.targetGaze.z = 0;
 
       // ── 2. Speaking Body Movements (Expressive Nods, Tilts, Bobs, Squash & Stretch) ──
       const breathPhase = this.time * 2.2 + idx * 0.8;
@@ -1811,15 +1716,20 @@ export class HomeAvatarManager {
       avatar.speechMotion.stretch = THREE.MathUtils.lerp(avatar.speechMotion.stretch, isSpeaking ? talkStretch : 1.0, blendRate);
       avatar.speechMotion.squash = THREE.MathUtils.lerp(avatar.speechMotion.squash, isSpeaking ? talkSquash : 1.0, blendRate);
 
-      // Apply vertical bob
-      g.position.y = avatar.landingTarget.y + avatar.speechMotion.bob;
+      // Lock settled avatars strictly to rug position + speech bob
+      g.position.x = avatar.landingTarget.x;
+      g.position.z = avatar.landingTarget.z;
+      const bob = Number.isFinite(avatar.speechMotion.bob) ? avatar.speechMotion.bob : 0;
+      g.position.y = avatar.landingTarget.y + bob;
 
       // Apply body squash & stretch
       const baseScale = avatar.baseScale || 1.0;
+      const squash = Number.isFinite(avatar.speechMotion.squash) ? avatar.speechMotion.squash : 1.0;
+      const stretch = Number.isFinite(avatar.speechMotion.stretch) ? avatar.speechMotion.stretch : 1.0;
       g.scale.set(
-        baseScale * avatar.speechMotion.squash,
-        baseScale * avatar.speechMotion.stretch,
-        baseScale * avatar.speechMotion.squash
+        baseScale * squash,
+        baseScale * stretch,
+        baseScale * squash
       );
 
       // ── 3. Intelligent Social Gaze & Glancing Behavior ──
@@ -1919,8 +1829,10 @@ export class HomeAvatarManager {
 
       // Social gaze uses fast lerp rate; random glancing uses slow dreamy rate
       const gazeRate = isSpeaking ? 0.28 : (isLookingAtSpeaker || isLookingAtHovered) ? 0.14 : 0.06;
-      avatar.currentGaze.x = THREE.MathUtils.lerp(avatar.currentGaze.x, isSpeaking ? 0.0 : (avatar.targetGaze.x + cursorX), gazeRate);
-      avatar.currentGaze.y = THREE.MathUtils.lerp(avatar.currentGaze.y, isSpeaking ? 0.0 : (avatar.targetGaze.y + cursorY), gazeRate);
+      const targetGazeX = Number.isFinite(avatar.targetGaze.x) ? avatar.targetGaze.x : 0;
+      const targetGazeY = Number.isFinite(avatar.targetGaze.y) ? avatar.targetGaze.y : 0;
+      avatar.currentGaze.x = THREE.MathUtils.lerp(avatar.currentGaze.x, isSpeaking ? 0.0 : (targetGazeX + cursorX), gazeRate);
+      avatar.currentGaze.y = THREE.MathUtils.lerp(avatar.currentGaze.y, isSpeaking ? 0.0 : (targetGazeY + cursorY), gazeRate);
       avatar.currentGaze.z = THREE.MathUtils.lerp(avatar.currentGaze.z, 0.0, 0.20);
 
       // Body also slightly turns toward speaker (half amplitude of gaze)
@@ -1947,14 +1859,18 @@ export class HomeAvatarManager {
         }
       }
 
-      if (avatar.currentBaseRotY === undefined) avatar.currentBaseRotY = avatar.baseRotY || 0;
       const bodyTurnRate = isSpeaking ? 0.28 : (isLookingAtSpeaker || isLookingAtHovered) ? 0.12 : 0.08;
-      avatar.currentBaseRotY = THREE.MathUtils.lerp(avatar.currentBaseRotY, desiredBaseRotY, bodyTurnRate);
+      if (Number.isFinite(desiredBaseRotY)) {
+        avatar.currentBaseRotY = THREE.MathUtils.lerp(avatar.currentBaseRotY, desiredBaseRotY, bodyTurnRate);
+      }
 
       // Apply total rotation: base pointing to center screen + gaze + speech gesture
-      g.rotation.y = avatar.currentBaseRotY + avatar.currentGaze.x + avatar.speechMotion.yaw;
-      g.rotation.x = avatar.currentGaze.y + avatar.speechMotion.nod;
-      g.rotation.z = avatar.currentGaze.z + avatar.speechMotion.roll;
+      const rotY = avatar.currentBaseRotY + avatar.currentGaze.x + (avatar.speechMotion?.yaw || 0);
+      const rotX = avatar.currentGaze.y + (avatar.speechMotion?.nod || 0);
+      const rotZ = avatar.currentGaze.z + (avatar.speechMotion?.roll || 0);
+      if (Number.isFinite(rotY)) g.rotation.y = rotY;
+      if (Number.isFinite(rotX)) g.rotation.x = rotX;
+      if (Number.isFinite(rotZ)) g.rotation.z = rotZ;
     });
   }
 

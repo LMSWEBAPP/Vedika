@@ -10,8 +10,9 @@ import {
   Code2, Loader2, ChevronRight, Lock, FlipHorizontal,
   Paperclip, Mic, Image, HelpCircle, Send, AlignLeft, ChevronLeft,
   BookOpen, BarChart3, Home, Zap, Brain, Award, FileText, FolderOpen, Briefcase,
-  Trash, X, Puzzle
+  Trash, X, Puzzle, Minus, Maximize2, Terminal
 } from 'lucide-react';
+import './PracticePlaygroundModal.css';
 import {
   T, geminiCall,
   classifyIntent, evaluateMath, getGreetingResponse, getThanksResponse,
@@ -23,12 +24,12 @@ import {
   MAX_TOKENS, getTheme, setTheme
 } from '@/lib/lms-data';
 import VoiceAgentView from '@/components/voice-tutor/VoiceAgentView';
+import MermaidDiagram from '@/components/MermaidDiagram';
 import { getJwtToken } from '@/lib/jwtCache';
 import MobileNav from '@/components/MobileNav';
 import { useMediaQuery, isMobileMQ } from '@/lib/useMediaQuery';
 import dynamic from 'next/dynamic';
-
-const Playground = dynamic(() => import('./Playground'), { ssr: false });
+import PracticePlaygroundModal from './PracticePlaygroundModal';
 
 const MODES = ['Beginner', 'Exam', 'Interview', 'Revision'];
 const LENGTHS = ['Short', 'Medium', 'Deep'];
@@ -416,7 +417,7 @@ export default function CodingTutor() {
                         highlightActiveLine: false,
                         highlightActiveLineGutter: false,
                       }}
-                      style={{ fontSize: 13, fontFamily: 'monospace', borderRadius: 8, overflow: 'hidden' }}
+                      style={{ fontSize: 13, fontFamily: "var(--font-code, 'Zed Mono', 'JetBrains Mono', 'Fira Code', monospace)", letterSpacing: '0px', borderRadius: 8, overflow: 'hidden' }}
                     />
                   ) : (
                     <pre className={className} {...props} style={{ margin: 0, padding: 0 }}>
@@ -424,7 +425,14 @@ export default function CodingTutor() {
                     </pre>
                   )}
                   <button
-                    onClick={() => handleVisualizeCode(codeVal, explanation)}
+                    data-practice-trigger="true"
+                    onClick={(e) => {
+                      if (typeof window !== 'undefined') {
+                        const r = e.currentTarget.getBoundingClientRect();
+                        window.__lastPracticeTriggerRect = { left: r.left, top: r.top, width: r.width, height: r.height };
+                      }
+                      handleVisualizeCode(codeVal, explanation);
+                    }}
                     style={{
                       position: 'absolute',
                       top: 8,
@@ -913,8 +921,9 @@ export default function CodingTutor() {
           features.flashcards = { cards: parsed, currentIdx: 0, flipped: false };
         } else if (intent.feature === 'infographic') {
           const parsed = parseInfographicOutput(text);
-          if (parsed.length === 0) throw new Error('I can only generate infographics on programming-related topics.');
-          features.infographic = { points: parsed };
+          const pts = parsed.points || parsed;
+          if (pts.length === 0) throw new Error('I can only generate infographics on programming-related topics.');
+          features.infographic = { points: pts, mermaid: parsed.mermaid || '' };
         } else if (intent.feature === 'simpler') {
           features.simpler = { text };
         } else if (intent.feature === 'examples') {
@@ -1077,7 +1086,10 @@ export default function CodingTutor() {
         const f = { ...m.features };
         if (type === 'quiz') f.quiz = { questions: parseQuizOutput(text), currentIdx: 0, currentAnswer: null };
         else if (type === 'flashcards') f.flashcards = { cards: parseFlashcardsOutput(text), currentIdx: 0, flipped: false };
-        else if (type === 'infographic') f.infographic = { points: parseInfographicOutput(text) };
+        else if (type === 'infographic') {
+          const parsed = parseInfographicOutput(text);
+          f.infographic = { points: parsed.points || parsed, mermaid: parsed.mermaid || '' };
+        }
         else if (type === 'simpler') f.simpler = { text };
         else if (type === 'examples') f.examples = { text };
         return { ...m, features: f, activeFeature: type };
@@ -1324,7 +1336,14 @@ export default function CodingTutor() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
 
                 <button
-                  onClick={() => setIsPlaygroundOpen(!isPlaygroundOpen)}
+                  data-practice-trigger="true"
+                  onClick={(e) => {
+                    if (typeof window !== 'undefined') {
+                      const r = e.currentTarget.getBoundingClientRect();
+                      window.__lastPracticeTriggerRect = { left: r.left, top: r.top, width: r.width, height: r.height };
+                    }
+                    setIsPlaygroundOpen(!isPlaygroundOpen);
+                  }}
                   style={{
                     background: isPlaygroundOpen ? `${T.accent}15` : 'transparent',
                     border: `1px solid ${isPlaygroundOpen ? T.accent : T.border}`,
@@ -1344,6 +1363,30 @@ export default function CodingTutor() {
                 >
                   <Zap size={13} fill={isPlaygroundOpen ? T.accent : 'none'} />
                   {isPlaygroundOpen ? 'Close Sandbox' : 'Open Sandbox'}
+                </button>
+
+                {/* Link to Code Puzzles */}
+                <button
+                  onClick={() => router.push('/vedika-ai/puzzle')}
+                  style={{
+                    background: 'rgba(239, 68, 68, 0.1)',
+                    border: '1px solid rgba(239, 68, 68, 0.28)',
+                    color: '#F87171',
+                    padding: '6px 14px',
+                    borderRadius: 8,
+                    fontSize: 12.5,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    transition: 'all 0.15s',
+                    fontFamily: 'inherit'
+                  }}
+                  title="Explore Code Puzzles & Algorithmic Challenges"
+                >
+                  <Puzzle size={13} />
+                  Code Puzzles
                 </button>
 
                 <div style={{ display: 'flex', background: T.s2, borderRadius: 18, padding: 2, border: `1px solid ${T.border}` }}>
@@ -1612,33 +1655,16 @@ export default function CodingTutor() {
                               )}
 
                               {msg.activeFeature === 'infographic' && (
-                                msg.features?.infographic?.points?.length > 0 ? (
-                                  <>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-                                      <span style={{ fontSize: 12, color: T.muted }}>Concept Breakdown</span>
-                                      <button onClick={() => handleGenerateFeature(mi, 'infographic')}
-                                        style={{ background: 'none', border: `1px solid ${T.border}`, color: T.muted, borderRadius: 6, padding: '3px 10px', fontSize: 11, cursor: 'pointer' }}>
-                                        Regenerate
-                                      </button>
-                                    </div>
-                                    <div style={{ display: 'grid', gridTemplateColumns: fCol, gap: 10 }}>
-                                      {msg.features.infographic.points.map((pt, i) => {
-                                        const colors = [T.accent, T.green, T.purple, T.amber, T.red];
-                                        const icons = ['🎯', '📌', '⚡', '🔑', '🌟', '💎', '🧩', '🚀'];
-                                        const c = colors[i % colors.length];
-                                        return (
-                                          <div key={i} style={{ background: T.s3, border: `1px solid ${c}25`, borderRadius: 10, padding: '14px', position: 'relative', overflow: 'hidden' }}>
-                                            <div style={{ position: 'absolute', top: -10, right: -10, width: 50, height: 50, borderRadius: '50%', background: `${c}08` }} />
-                                            <div style={{ fontSize: 20, marginBottom: 6 }}>{icons[i % icons.length]}</div>
-                                            <div style={{ color: T.text, fontSize: 13, lineHeight: 1.5, fontWeight: 500 }}>{pt}</div>
-                                            <div style={{ position: 'absolute', bottom: 0, left: 0, height: 2, width: '100%', background: `linear-gradient(90deg,${c},transparent)` }} />
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                  </>
+                                (msg.features?.infographic?.points?.length > 0 || msg.features?.infographic?.mermaid) ? (
+                                  <div style={{ marginTop: 8 }}>
+                                    <MermaidDiagram
+                                      chart={msg.features.infographic.mermaid}
+                                      points={msg.features.infographic.points}
+                                      onRegenerate={() => handleGenerateFeature(mi, 'infographic')}
+                                    />
+                                  </div>
                                 ) : (
-                                  <div style={{ textAlign: 'center', padding: '20px 0', color: T.muted }}>
+                                  <div style={{ textAlign: 'center', padding: '24px 0', color: T.muted }}>
                                     <Loader2 size={18} style={{ animation: 'spin 1s linear infinite', margin: '0 auto 10px' }} />
                                     Generating Visual Summary...
                                   </div>
@@ -1945,89 +1971,21 @@ export default function CodingTutor() {
         )}
       </div>
 
-          {/* Floating Sandbox Modal Overlay */}
-          {isPlaygroundOpen && (
-            <div style={{
-              position: 'fixed',
-              top: 0,
-              left: 0,
-              width: '100vw',
-              height: '100vh',
-              background: 'rgba(4, 5, 8, 0.7)',
-              backdropFilter: 'blur(8px)',
-              zIndex: 1000,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: isMobile ? '10px' : '40px'
-            }}>
-              {/* Floating Window Container */}
-              <div style={{
-                width: '100%',
-                maxWidth: '1440px',
-                height: '100%',
-                background: '#06080C',
-                border: '1px solid rgba(255, 255, 255, 0.08)',
-                borderRadius: 16,
-                display: 'flex',
-                flexDirection: 'column',
-                overflow: 'hidden',
-                boxShadow: '0 24px 48px -12px rgba(0, 0, 0, 0.5)'
-              }}>
-                {/* Header */}
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '12px 18px',
-                  background: '#080A0E',
-                  borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-                  flexShrink: 0
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: T.amber }} />
-                    <span style={{ fontSize: 11.5, fontWeight: 700, color: '#F8FAFC', letterSpacing: '0.05em', textTransform: 'uppercase', fontFamily: 'monospace' }}>
-                      Interactive Code Tutor Sandbox
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => setIsPlaygroundOpen(false)}
-                    style={{
-                      background: 'rgba(255, 255, 255, 0.05)',
-                      border: '1px solid rgba(255, 255, 255, 0.08)',
-                      color: '#8892B0',
-                      borderRadius: '50%',
-                      width: 26,
-                      height: 26,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s'
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.color = '#F55B6B'; e.currentTarget.style.background = 'rgba(245, 91, 107, 0.1)'; }}
-                    onMouseLeave={e => { e.currentTarget.style.color = '#8892B0'; e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'; }}
-                  >
-                    <X size={13} />
-                  </button>
-                </div>
-                
-                {/* Playground Canvas Body */}
-                <div style={{ flex: 1, overflow: 'hidden' }}>
-                  <Playground 
-                    initialCode={`# Python Coding Sandbox\n# Write python code here and run it!\n\ndef greet(name):\n    print(f"Hello, {name}!")\n\ngreet("Seshu")\n`} 
-                    codeOverride={codeOverride}
-                    explanationOverride={explanationOverride}
-                    onTraceComplete={() => {
-                      setCodeOverride(null);
-                      setExplanationOverride(null);
-                    }}
-                    onCodeChange={setCurrentSandboxCode}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
+          {/* Interactive Code Tutor Sandbox & Execution Visualizer Modal */}
+          <PracticePlaygroundModal
+            isOpen={isPlaygroundOpen}
+            onClose={() => setIsPlaygroundOpen(false)}
+            title="Code with Vedika — Execution Visualizer"
+            badge="Python Sandbox"
+            initialCode={`# Python Coding Sandbox\n# Write python code here and run it!\n\ndef greet(name):\n    print(f"Hello, {name}!")\n\ngreet("Vedika")\n`}
+            codeOverride={codeOverride}
+            explanationOverride={explanationOverride}
+            onTraceComplete={() => {
+              setCodeOverride(null);
+              setExplanationOverride(null);
+            }}
+            onCodeChange={setCurrentSandboxCode}
+          />
 
         </div>
       </div>

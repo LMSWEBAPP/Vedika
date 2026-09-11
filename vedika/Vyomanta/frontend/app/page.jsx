@@ -1,9 +1,10 @@
-'use client';
+import HomeAvatarPage from './home-avatar/home-avatar';
 
-import { useState } from 'react';
-import Dashboard from '@/components/Dashboard';
+export const metadata = {
+  title: 'Vedika AI Tutor - Interactive 3D World',
+  description: 'Explore the 3D Vedika AI Tutor architectural room with interactive opening arched door and companions.',
+};
 
-export default function HomePage() {
-  const [completed, setCompleted] = useState({});
-  return <Dashboard completed={completed} />;
+export default function Page() {
+  return <HomeAvatarPage />;
 }

@@ -145,7 +145,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  filter: drop-shadow(0 0 16px rgba(245, 158, 11, 0.4));
+  overflow: visible;
 }
 
 /* ── 4 Hovering Avatars Positioned Exactly Above Their Pedestals ─── */

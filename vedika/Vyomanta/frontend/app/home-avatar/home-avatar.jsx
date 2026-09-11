@@ -19,9 +19,83 @@ import {
   Pause,
   SkipBack,
   SkipForward,
+  Award,
+  FileText,
+  Briefcase,
+  FolderOpen,
 } from 'lucide-react';
 import { HomeAvatarScene } from './engine/HomeAvatarScene';
 import './home-avatar.css';
+
+export const COURSES_DROPDOWN_ITEMS = [
+  {
+    id: 'explore-courses',
+    label: 'Explore Courses',
+    route: '/courses?tab=explore',
+    Icon: BookOpen,
+    audio: '/audio/home/tour/tour_courses.wav',
+    dialogue: "Let’s take the user on a little tour of the courses page! ✨",
+  },
+  {
+    id: 'quizzes',
+    label: 'Quizzes',
+    route: '/courses?tab=quizzes',
+    Icon: Award,
+    audio: '/audio/home/tour/tour_quizzes.wav',
+    dialogue: "Alright, tour guides let’s show the user what’s waiting on theQuizzes page! 🚀",
+  },
+  {
+    id: 'assignments',
+    label: 'Assignments',
+    route: '/courses?tab=assignments',
+    Icon: FileText,
+    audio: '/audio/home/tour/tour_assignments.wav',
+    dialogue: "Let’s give the user a quick peek around the assignment page! 👀✨",
+  },
+  {
+    id: 'resource-hub',
+    label: 'Resource Hub',
+    route: '/courses?tab=resources',
+    Icon: FolderOpen,
+    audio: '/audio/home/tour/tour_courses.wav',
+    dialogue: "Let’s take the user on a little tour of the courses page! ✨",
+  },
+];
+
+export const TOUR_NAV_ITEMS = [
+  {
+    id: 'vedika-ai',
+    label: 'Vedika AI',
+    route: '/vedika-ai',
+    Icon: Sparkles,
+    audio: '/audio/home/tour/tour_vedika_ai.wav',
+    dialogue: "Come along! Let’s show the user around the vedika AI page. 🌟",
+  },
+  {
+    id: 'vedika-labs',
+    label: 'Virtual Labs',
+    route: '/vedika-labs',
+    Icon: FlaskConical,
+    audio: '/audio/home/tour/tour_vedika_labs.wav',
+    dialogue: "Ready for a little adventure? Let’s explore the  vedika labs page together! 🪐",
+  },
+  {
+    id: 'progress',
+    label: 'Progress',
+    route: '/progress',
+    Icon: BarChart3,
+    audio: '/audio/home/tour/tour_progress.wav',
+    dialogue: "Everyone on board! The progress page tour is about to begin. 🎒🚀",
+  },
+  {
+    id: 'jobs',
+    label: 'Jobs',
+    route: '/jobs',
+    Icon: Briefcase,
+    audio: '/audio/home/tour/tour_jobs.wav',
+    dialogue: "Lets have a look! what do we have in Jobs page?",
+  },
+];
 
 /* ── 4-Point Golden Sparkle Beside VEDIKA ── */
 function GoldSparkleStar({ size = 26, className = '' }) {
@@ -71,6 +145,32 @@ export default function HomeAvatarPage() {
   const [isReady, setIsReady] = useState(false);
   const [isDoorOpen, setIsDoorOpen] = useState(true);
   const [isThemeDark, setIsThemeDark] = useState(true);
+  const [transitionDestTitle, setTransitionDestTitle] = useState('Courses');
+  const [currentUser, setCurrentUser] = useState(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('frappe_user');
+      if (stored) {
+        try {
+          setCurrentUser(JSON.parse(stored));
+        } catch (e) {}
+      }
+      const currentTheme = localStorage.getItem('theme') || 'dark';
+      setIsThemeDark(currentTheme === 'dark');
+      document.documentElement.setAttribute('data-theme', currentTheme);
+      document.body.style.backgroundColor = currentTheme === 'dark' ? '#07080F' : '#F9FAFB';
+    }
+  }, []);
+
+  const handleToggleTheme = () => {
+    const next = !isThemeDark;
+    setIsThemeDark(next);
+    const themeStr = next ? 'dark' : 'light';
+    localStorage.setItem('theme', themeStr);
+    document.documentElement.setAttribute('data-theme', themeStr);
+    document.body.style.backgroundColor = next ? '#07080F' : '#F9FAFB';
+  };
 
   // Scroll Steps: 0 = Intro/Hidden, 1 = Mowgli, 2 = Belle & Moana, 3 = Bhageera
   const [scrollStep, setScrollStep] = useState(0);
@@ -102,7 +202,8 @@ export default function HomeAvatarPage() {
   // Animation Playback & Inspection State
   const [isPaused, setIsPaused] = useState(false);
   const [animSpeed, setAnimSpeed] = useState(1.0);
-  const [isInspectorOpen, setIsInspectorOpen] = useState(true);
+  const [isInspectorOpen, setIsInspectorOpen] = useState(false);
+  const [coursesDropdownOpen, setCoursesDropdownOpen] = useState(false);
   const [activeTime, setActiveTime] = useState(0.0);
   const [isDeparting, setIsDeparting] = useState(false);
   const [showTransitionOverlay, setShowTransitionOverlay] = useState(false);
@@ -622,22 +723,34 @@ export default function HomeAvatarPage() {
     }
   };
 
-  const handleStepInside = () => {
-    if (isDeparting || scrollStepRef.current < 3) return;
+  const handleNavTour = (e, item) => {
+    e.preventDefault();
+    if (isDeparting) return;
     setIsDeparting(true);
     unlockAudio();
 
+    // If companions haven't gathered on the rug yet, settle all 4 companions immediately
+    if (scrollStepRef.current < 3) {
+      if (sceneRef.current) {
+        sceneRef.current.settleAvatarsUpTo(4);
+      }
+      setScrollStep(3);
+      scrollStepRef.current = 3;
+    }
+
+    setTransitionDestTitle(item.label);
+
     if (sceneRef.current) {
-      sceneRef.current.triggerFullDoorDeparture(() => {
+      sceneRef.current.triggerFullDoorDeparture(item.audio, () => {
         setShowTransitionOverlay(true);
         setTimeout(() => {
-          router.push('/avatar-chamber');
-        }, 1400);
+          router.push(item.route);
+        }, 1200);
       });
     } else {
       setShowTransitionOverlay(true);
       setTimeout(() => {
-        router.push('/avatar-chamber');
+        router.push(item.route);
       }, 1000);
     }
   };
@@ -650,9 +763,9 @@ export default function HomeAvatarPage() {
       {/* ── 1b. Foreground 3D Canvas (Avatars Popping Over Text) ── */}
       <canvas ref={avatarCanvasRef} className="ha-canvas ha-canvas-avatar" />
 
-      {/* ── 2. Top Navigation Bar (Exact Replica of Reference Image) ── */}
+      {/* ── 2. Top Navigation Bar (With Interactive Companion Tour Guides) ── */}
       <nav className="ha-nav">
-        <div className="ha-nav-left">
+        <a href="/" className="ha-nav-left" style={{ textDecoration: 'none' }}>
           <div className="ha-nav-logo-box">
             <Zap size={20} />
           </div>
@@ -660,40 +773,88 @@ export default function HomeAvatarPage() {
             <span className="ha-nav-brand-title">VEDIKA</span>
             <span className="ha-nav-brand-sub">Learning Platform</span>
           </div>
-        </div>
+        </a>
 
         <div className="ha-nav-links">
-          <a href="/courses" className="ha-nav-link">
-            <BookOpen size={16} />
-            <span>Courses</span>
-          </a>
-          <a href="/avatar-chamber" className="ha-nav-link">
-            <Sparkles size={16} />
-            <span>Vedika AI</span>
-          </a>
-          <a href="/vedika-labs" className="ha-nav-link">
-            <FlaskConical size={16} />
-            <span>Virtual Labs</span>
-          </a>
-          <a href="/progress" className="ha-nav-link">
-            <BarChart3 size={16} />
-            <span>Progress</span>
-          </a>
+          {/* Courses with Dropdown */}
+          <div
+            className="ha-nav-dropdown-wrapper"
+            onMouseEnter={() => setCoursesDropdownOpen(true)}
+            onMouseLeave={() => setCoursesDropdownOpen(false)}
+          >
+            <button
+              type="button"
+              className={`ha-nav-dropdown-trigger ${coursesDropdownOpen ? 'ha-nav-dropdown-open' : ''}`}
+              onClick={() => setCoursesDropdownOpen((prev) => !prev)}
+            >
+              <BookOpen size={15} />
+              <span>Courses</span>
+              <ChevronDown
+                size={13}
+                style={{
+                  transform: coursesDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                  transition: 'transform 0.2s ease',
+                }}
+              />
+            </button>
+
+            {coursesDropdownOpen && (
+              <div className="ha-nav-dropdown-menu">
+                {COURSES_DROPDOWN_ITEMS.map((subItem) => {
+                  const SubIcon = subItem.Icon;
+                  return (
+                    <button
+                      key={subItem.id}
+                      type="button"
+                      className="ha-nav-dropdown-item"
+                      onClick={(e) => {
+                        setCoursesDropdownOpen(false);
+                        handleNavTour(e, subItem);
+                      }}
+                      title={subItem.dialogue}
+                    >
+                      <SubIcon size={14} />
+                      <span>{subItem.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Core Navigation Items */}
+          {TOUR_NAV_ITEMS.map((item) => {
+            const NavIcon = item.Icon;
+            return (
+              <a
+                key={item.id}
+                href={item.route}
+                className="ha-nav-link"
+                onClick={(e) => handleNavTour(e, item)}
+                title={item.dialogue}
+              >
+                <NavIcon size={15} />
+                <span>{item.label}</span>
+              </a>
+            );
+          })}
         </div>
 
         <div className="ha-nav-right">
           <button
             type="button"
             className="ha-nav-theme-btn"
-            onClick={() => setIsThemeDark(!isThemeDark)}
+            onClick={handleToggleTheme}
             aria-label="Toggle Theme"
           >
             {isThemeDark ? <Sun size={17} /> : <Moon size={17} />}
           </button>
 
           <div className="ha-nav-user-pill">
-            <div className="ha-nav-avatar-circle">AM</div>
-            <span>Aarav Mehta</span>
+            <div className="ha-nav-avatar-circle">
+              {currentUser?.full_name ? currentUser.full_name.substring(0, 2).toUpperCase() : 'AM'}
+            </div>
+            <span>{currentUser?.full_name || 'Aarav Mehta'}</span>
             <ChevronDown size={14} />
           </div>
         </div>
@@ -794,17 +955,6 @@ export default function HomeAvatarPage() {
         >
           <DoorOpen size={14} />
           <span>{isDoorOpen ? 'Close Door' : 'Open Door'}</span>
-        </button>
-
-        <button
-          type="button"
-          className={`ha-dock-btn ${scrollStep === 3 ? 'ha-dock-btn-ready' : 'ha-dock-btn-disabled'}`}
-          onClick={handleStepInside}
-          disabled={scrollStep < 3 || isDeparting}
-          title={scrollStep === 3 ? 'Step through the arched door into the Knowledge World' : 'Gather all 4 companions on the rug first'}
-        >
-          <Sparkles size={14} />
-          <span>Step Inside →</span>
         </button>
       </aside>
 
@@ -950,7 +1100,7 @@ export default function HomeAvatarPage() {
           <div className="ha-door-transition-sparkle">
             <GoldSparkleStar size={52} />
           </div>
-          <h2 className="ha-door-transition-title">Entering the Knowledge World</h2>
+          <h2 className="ha-door-transition-title">Entering {transitionDestTitle}</h2>
           <p className="ha-door-transition-sub">Your companions are waiting for you inside...</p>
         </div>
       </div>
