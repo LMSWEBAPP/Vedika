@@ -43,7 +43,7 @@ export async function POST(request) {
 
   try {
     const provider = createGoogleGenerativeAI({ apiKey });
-    const model = provider.languageModel('gemini-2.5-flash');
+    const model = provider.languageModel(process.env.GEMINI_MODEL || 'gemini-3.6-flash');
 
     const fullMessages = [
       ...(history || []).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.content })),

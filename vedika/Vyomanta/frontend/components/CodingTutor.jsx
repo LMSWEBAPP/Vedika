@@ -1034,8 +1034,13 @@ export default function CodingTutor() {
           streamElRef.current.textContent = match ? match[1] : displayStream;
         }
       }
+
+      if (fullText.startsWith('[Error:')) {
+        const cleanErr = fullText.replace(/^\[Error:\s*/i, '').replace(/\]\s*$/, '');
+        throw new Error(cleanErr);
+      }
       if (!fullText.trim()) {
-        throw new Error('Gemini returned an empty response. If you asked an off-topic question, please note I can only help with programming-related topics.');
+        throw new Error('The AI Tutor could not generate a response. Please check your connection or try again.');
       }
 
       const analyticsRegex = /<analytics>([\s\S]*?)<\/analytics>/i;

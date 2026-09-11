@@ -664,8 +664,13 @@ export default function GeneralTutor() {
           streamElRef.current.textContent = fullText;
         }
       }
+
+      if (fullText.startsWith('[Error:')) {
+        const cleanErr = fullText.replace(/^\[Error:\s*/i, '').replace(/\]\s*$/, '');
+        throw new Error(cleanErr);
+      }
       if (!fullText.trim()) {
-        throw new Error('Gemini returned an empty response — the content may have been blocked by safety filters. Try rephrasing your question.');
+        throw new Error('Gemini returned an empty response. Please try rephrasing or sending your message again.');
       }
       const aiMsg = { id: (Date.now() + 1).toString(36), role: 'ai', content: fullText, features: {} };
       const next = [...msgsWithUser, aiMsg];

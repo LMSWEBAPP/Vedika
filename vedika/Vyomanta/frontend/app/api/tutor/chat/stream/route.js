@@ -41,13 +41,18 @@ export async function POST(request) {
 
     let courseId = bodyCourseId;
     if (!courseId || courseId === 'general' || courseId === 'null') {
-      const [enrollments] = await pool.query(
-        'SELECT course FROM test.`tabLMS Enrollment` WHERE member = ? LIMIT 1',
-        [userId]
-      );
-      if (enrollments.length > 0) {
-        courseId = enrollments[0].course;
-      } else {
+      try {
+        const [enrollments] = await pool.query(
+          'SELECT course FROM test.`tabLMS Enrollment` WHERE member = ? LIMIT 1',
+          [userId]
+        );
+        if (enrollments && enrollments.length > 0) {
+          courseId = enrollments[0].course;
+        } else {
+          courseId = 'a-guide-to-frappe-learning';
+        }
+      } catch (dbErr) {
+        console.warn('[TutorStream] DB enrollment query skipped:', dbErr?.message);
         courseId = 'a-guide-to-frappe-learning';
       }
     }
@@ -139,7 +144,7 @@ export async function POST(request) {
 
     // 4. Stream response using Vercel AI SDK
     const provider = createGoogleGenerativeAI({ apiKey });
-    const model = provider.languageModel('gemini-2.5-flash');
+    const model = provider.languageModel(process.env.GEMINI_MODEL || 'gemini-3.6-flash');
 
     const fullMessages = [
       ...(history || []).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.content })),

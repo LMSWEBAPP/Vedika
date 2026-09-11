@@ -1,13 +1,18 @@
 export function getAllKeys() {
   const keys = [];
+  const clean = (val) => {
+    if (!val) return null;
+    const s = String(val).trim().replace(/^["']|["']$/g, '').trim();
+    return s.length > 0 ? s : null;
+  };
   
   // Primary key
-  const mainKey = process.env.GEMINI_API_KEY;
+  const mainKey = clean(process.env.GEMINI_API_KEY);
   if (mainKey) keys.push(mainKey);
 
   // Additional rotated keys
   for (let i = 1; ; i++) {
-    const k = process.env[`GEMINI_API_KEY_${i}`];
+    const k = clean(process.env[`GEMINI_API_KEY_${i}`]);
     if (k) keys.push(k);
     else break;
   }
