@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   CheckCircle, Circle, Clock, Play, GraduationCap, ChevronRight, ChevronLeft, ArrowLeft, Users, Tag, BookOpen, Terminal, X, Award, Search, Grid, Layers
 } from 'lucide-react';
@@ -10,7 +10,9 @@ import { useMediaQuery, isMobileMQ } from '@/lib/useMediaQuery';
 import dynamic from 'next/dynamic';
 import PDFViewerModal from './PDFViewerModal';
 import ZimCarousel3D from './ZimCarousel3D';
+import PacmanPagination from './PacmanPagination';
 import PracticePlaygroundModal from './PracticePlaygroundModal';
+import { getSubjectArtwork } from '@/lib/artwork';
 const Playground = dynamic(() => import('./Playground'), { ssr: false });
 
 const DECK_ROTATIONS = ['4deg', '-2deg', '-9deg', '7deg', '3deg', '-5deg', '6deg'];
@@ -22,6 +24,23 @@ const DEFAULT_THUMBNAILS = [
   'https://images.unsplash.com/photo-1542831371-29b0f74f9713?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=600',
   'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=600'
 ];
+
+const CATEGORY_IMAGES = {
+  'Web Development': 'https://images.unsplash.com/photo-1547658719-da2b51169166?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=600',
+  'Frontend': 'https://images.unsplash.com/photo-1507238691740-187a5b1d37b8?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=600',
+  'Framework': 'https://images.unsplash.com/photo-1633356122544-f134324a6cee?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=600',
+  'Programming': 'https://images.unsplash.com/photo-1515879218367-8466d910aaa4?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=600',
+  'Python Programming': 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=600',
+  'Data Structures & Algorithms': 'https://images.unsplash.com/photo-1555949963-ff9fe0c870eb?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=600',
+  'Design': 'https://images.unsplash.com/photo-1561070791-2526d30994b5?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=600',
+  'Business': 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=600',
+  'Finance': 'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=600',
+  'Personal Development': 'https://images.unsplash.com/photo-1499750310107-5fef28a66643?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=600',
+  'Data Science': 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=600',
+  'Artificial Intelligence': 'https://images.unsplash.com/photo-1677442136019-21780efad99a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=600',
+  'Cybersecurity': 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=600',
+  'Cloud Computing': 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=600'
+};
 
 function InteractiveParticles() {
   const canvasRef = useRef(null);
@@ -206,149 +225,439 @@ function InteractiveParticles() {
   );
 }
 
-function CourseDeckWidget({ courses, handleSelectCourse, handleEnrollFromCard, enrolledCourseIds, isMobile }) {
+function CourseDeckWidget({
+  mode = 'courses', // 'categories' | 'courses'
+  items,
+  activeDrilldownCategory,
+  onSelectCategory,
+  onBackToCategories,
+  handleSelectCourse,
+  handleEnrollFromCard,
+  enrolledCourseIds = [],
+  isMobile
+}) {
   const [activeIdx, setActiveIdx] = useState(0);
-  const [animatingIdx, setAnimatingIdx] = useState(null);
+  const [coursePage, setCoursePage] = useState(1);
+  const COURSES_PER_PAGE = 3;
 
   useEffect(() => {
     setActiveIdx(0);
-  }, [courses.length]);
+  }, [items?.length, mode, activeDrilldownCategory]);
 
-  if (!courses || courses.length === 0) return null;
+  useEffect(() => {
+    setCoursePage(1);
+  }, [items?.length, activeDrilldownCategory]);
 
-  const currentCourse = courses[activeIdx] || courses[0];
-  const total = courses.length;
+  if (!items || items.length === 0) return null;
 
-  const handleNext = () => {
-    setActiveIdx((prev) => (prev + 1) % total);
-  };
+  const currentItem = items[activeIdx] || items[0];
 
-  const handlePrev = () => {
-    setActiveIdx((prev) => (prev - 1 + total) % total);
-  };
+  if (mode === 'categories') {
+    return (
+      <div style={{
+        background: 'transparent',
+        border: 'none',
+        borderRadius: 0,
+        padding: isMobile ? '12px 0' : '20px 0',
+        marginBottom: 32,
+        position: 'relative',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        width: '100%',
+        gap: isMobile ? 18 : 26
+      }}>
+        {/* Category Carousel Title Pill */}
+        <div style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 8,
+          background: `${T.accent}14`,
+          border: `1px solid ${T.accent}30`,
+          color: T.accent,
+          padding: '6px 14px',
+          borderRadius: 20,
+          fontSize: 12,
+          fontWeight: 700,
+          letterSpacing: '0.04em',
+          textTransform: 'uppercase'
+        }}>
+          <span>📂 Course Categories</span>
+          <span style={{ opacity: 0.5 }}>•</span>
+          <span>{items.length} {items.length === 1 ? 'Category' : 'Categories'} Available</span>
+        </div>
 
-  const totalLessons = currentCourse.lessonsCount || 0;
-  const isEnrolled = enrolledCourseIds.includes(currentCourse.id);
-  const totalMins = totalLessons * 10;
-  const hours = Math.floor(totalMins / 60);
-  const mins = totalMins % 60;
-  const durationStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
-  const level = currentCourse.title?.toLowerCase().includes('advanced') || currentCourse.title?.toLowerCase().includes('expert') ? 'Advanced' : (currentCourse.title?.toLowerCase().includes('intermediate') ? 'Intermediate' : 'Beginner');
+        {/* Centered ZIM 3D Cylindrical Carousel for Categories */}
+        <div style={{
+          width: '100%',
+          maxWidth: 880,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          minHeight: isMobile ? 270 : 330,
+          margin: '0 auto'
+        }}>
+          <ZimCarousel3D
+            courses={items}
+            activeIdx={activeIdx}
+            onActiveIdxChange={setActiveIdx}
+            onSelectCourse={(catItem) => onSelectCategory && onSelectCategory(catItem.title)}
+            isMobile={isMobile}
+          />
+        </div>
+
+        {/* Active Category Details Centered Below the Carousel */}
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          textAlign: 'center',
+          gap: 12,
+          maxWidth: 720,
+          width: '100%',
+          margin: '0 auto'
+        }}>
+          <h2 style={{ fontSize: isMobile ? 22 : 30, fontWeight: 900, color: T.text, margin: 0, lineHeight: 1.2, letterSpacing: '-0.03em' }}>
+            {currentItem.title}
+          </h2>
+
+          <p style={{ fontSize: isMobile ? 13.5 : 15, color: T.muted, margin: 0, lineHeight: 1.6, maxWidth: 640 }}>
+            {currentItem.tagline || `Explore all specialized courses under ${currentItem.title}. Select this category to browse the complete curriculum.`}
+          </p>
+
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center' }}>
+            <span style={{ fontSize: 11.5, color: T.purple, background: `${T.purple}15`, padding: '3px 10px', borderRadius: 6, fontWeight: 700 }}>
+              {currentItem.badge}
+            </span>
+            <span style={{ fontSize: 12, color: T.muted, fontWeight: 600 }}>
+              📚 {currentItem.totalLessons || 0} lessons total
+            </span>
+            {currentItem.instructorsCount > 0 && (
+              <span style={{ fontSize: 12, color: T.muted, fontWeight: 600 }}>
+                👤 {currentItem.instructorsCount} {currentItem.instructorsCount === 1 ? 'Instructor' : 'Instructors'}
+              </span>
+            )}
+          </div>
+
+          {/* Action Row */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, marginTop: 6 }}>
+            <button
+              onClick={() => onSelectCategory && onSelectCategory(currentItem.title)}
+              style={{
+                background: T.accent,
+                color: '#FFFFFF',
+                border: 'none',
+                padding: '11px 28px',
+                borderRadius: 12,
+                fontSize: 13.5,
+                fontWeight: 800,
+                cursor: 'pointer',
+                boxShadow: '0 4px 16px rgba(59, 130, 246, 0.35)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                transition: 'all 0.15s ease'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.03)'}
+              onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+            >
+              Explore {currentItem.title} Courses <ChevronRight size={16} />
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Course mode (when a category is selected or searching)
+  const totalPages = Math.max(1, Math.ceil((items?.length || 0) / COURSES_PER_PAGE));
+  const currentCourses = (items || []).slice((coursePage - 1) * COURSES_PER_PAGE, coursePage * COURSES_PER_PAGE);
 
   return (
     <div style={{
       background: 'transparent',
       border: 'none',
       borderRadius: 0,
-      padding: isMobile ? '12px 0' : '20px 0',
-      marginBottom: 32,
+      padding: isMobile ? '12px 0' : '16px 0',
+      marginBottom: 24,
       position: 'relative',
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
       width: '100%',
-      gap: isMobile ? 18 : 26
+      gap: isMobile ? 16 : 20
     }}>
-      {/* Centered ZIM 3D Cylindrical Carousel (Dex / Carousel3D) */}
-      <div style={{
-        width: '100%',
-        maxWidth: 880,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        minHeight: isMobile ? 270 : 330,
-        margin: '0 auto'
-      }}>
-        <ZimCarousel3D
-          courses={courses}
-          activeIdx={activeIdx}
-          onActiveIdxChange={setActiveIdx}
-          onSelectCourse={handleSelectCourse}
-          isMobile={isMobile}
-        />
-      </div>
-
-      {/* Active Course Details Centered Below the Carousel */}
-      <div style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        textAlign: 'center',
-        gap: 12,
-        maxWidth: 720,
-        width: '100%',
-        margin: '0 auto'
-      }}>
-        <h2 style={{ fontSize: isMobile ? 22 : 30, fontWeight: 900, color: T.text, margin: 0, lineHeight: 1.2, letterSpacing: '-0.03em' }}>
-          {currentCourse.title}
-        </h2>
-
-        <p style={{ fontSize: isMobile ? 13.5 : 15, color: T.muted, margin: 0, lineHeight: 1.6, maxWidth: 640 }}>
-          {currentCourse.tagline || 'Master essential skills through structured modules, interactive coding exercises, and real-time AI viva assessments.'}
-        </p>
-
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center' }}>
-          <span style={{ fontSize: 11.5, color: T.purple, background: `${T.purple}15`, padding: '3px 10px', borderRadius: 6, fontWeight: 700 }}>
-            {level}
-          </span>
-          <span style={{ fontSize: 12, color: T.muted, fontWeight: 600 }}>
-            ⏱️ {durationStr} total
-          </span>
-          <span style={{ fontSize: 12, color: T.muted, fontWeight: 600 }}>
-            📚 {totalLessons} lessons
-          </span>
-          <span style={{ fontSize: 12, color: T.muted, fontWeight: 600 }}>
-            👤 By {currentCourse.instructor || 'Vedika Instructors'}
-          </span>
-        </div>
-
-        {/* Action Row */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, marginTop: 6 }}>
+      {/* Top Breadcrumb & Return Bar when inside a category */}
+      {activeDrilldownCategory && (
+        <div style={{
+          width: '100%',
+          maxWidth: 1120,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '10px 18px',
+          background: T.s2,
+          border: `1px solid ${T.border}`,
+          borderRadius: 14,
+          flexWrap: 'wrap',
+          gap: 10
+        }}>
           <button
-            onClick={() => handleSelectCourse(currentCourse)}
+            onClick={onBackToCategories}
             style={{
-              background: T.accent,
-              color: '#FFFFFF',
-              border: 'none',
-              padding: '11px 26px',
-              borderRadius: 12,
-              fontSize: 13.5,
-              fontWeight: 800,
-              cursor: 'pointer',
-              boxShadow: '0 4px 16px rgba(59, 130, 246, 0.3)',
-              display: 'flex',
+              display: 'inline-flex',
               alignItems: 'center',
               gap: 8,
-              transition: 'transform 0.15s ease'
+              background: `${T.accent}14`,
+              border: `1px solid ${T.accent}40`,
+              color: T.accent,
+              padding: '6px 14px',
+              borderRadius: 8,
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: 'pointer',
+              transition: 'all 0.15s'
             }}
-            onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.03)'}
-            onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+            onMouseEnter={(e) => e.currentTarget.style.background = `${T.accent}24`}
+            onMouseLeave={(e) => e.currentTarget.style.background = `${T.accent}14`}
           >
-            View Syllabus <ChevronRight size={16} />
+            <ArrowLeft size={16} /> Back to All Categories
           </button>
 
-          {!isEnrolled && (
-            <button
-              onClick={(e) => handleEnrollFromCard(currentCourse.id, e)}
-              style={{
-                background: T.s2,
-                color: T.text,
-                border: `1px solid ${T.border}`,
-                padding: '11px 22px',
-                borderRadius: 12,
-                fontSize: 13.5,
-                fontWeight: 700,
-                cursor: 'pointer',
-                transition: 'all 0.15s ease'
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.borderColor = T.accent}
-              onMouseLeave={(e) => e.currentTarget.style.borderColor = T.border}
-            >
-              Quick Enroll
-            </button>
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 13, color: T.muted }}>
+              Categories <span style={{ opacity: 0.5 }}>›</span> <strong style={{ color: T.text }}>{activeDrilldownCategory}</strong>
+            </span>
+            <span style={{
+              fontSize: 11.5,
+              background: `${T.purple}18`,
+              color: T.purple,
+              padding: '3px 10px',
+              borderRadius: 12,
+              fontWeight: 700
+            }}>
+              {items.length} {items.length === 1 ? 'Course' : 'Courses'}
+            </span>
+          </div>
         </div>
+      )}
+
+      {/* Exactly 3 courses shown at a time */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
+        gap: 18,
+        width: '100%',
+        maxWidth: 1120,
+        margin: '0 auto',
+        alignItems: 'stretch'
+      }}>
+        {currentCourses.map((c) => {
+          const totalLessons = c.lessonsCount || (c.lessons ? c.lessons.length : 0);
+          const isEnrolled = enrolledCourseIds.includes(c.id);
+          const totalMins = totalLessons * 10;
+          const hours = Math.floor(totalMins / 60);
+          const mins = totalMins % 60;
+          const durationStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+          const level = c.title?.toLowerCase().includes('advanced') || c.title?.toLowerCase().includes('expert')
+            ? 'Advanced'
+            : (c.title?.toLowerCase().includes('intermediate') ? 'Intermediate' : 'Beginner');
+          const thumb = c.thumbnail || c.image || getSubjectArtwork(c.category) || DEFAULT_THUMBNAILS[0];
+
+          return (
+            <div
+              key={c.id}
+              style={{
+                background: T.s1,
+                border: `1px solid ${T.border}`,
+                borderRadius: 16,
+                padding: 16,
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                boxShadow: '0 8px 24px rgba(0, 0, 0, 0.2)',
+                transition: 'all 0.2s ease',
+                cursor: 'pointer'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = `${T.accent}60`;
+                e.currentTarget.style.transform = 'translateY(-4px)';
+                e.currentTarget.style.boxShadow = '0 12px 28px rgba(0, 0, 0, 0.35)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = T.border;
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 8px 24px rgba(0, 0, 0, 0.2)';
+              }}
+              onClick={() => handleSelectCourse(c)}
+            >
+              <div>
+                {/* Course Thumbnail */}
+                <div style={{
+                  position: 'relative',
+                  width: '100%',
+                  height: 135,
+                  borderRadius: 12,
+                  overflow: 'hidden',
+                  marginBottom: 12
+                }}>
+                  <img
+                    src={thumb}
+                    alt={c.title}
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover'
+                    }}
+                  />
+                  <div style={{
+                    position: 'absolute',
+                    top: 8,
+                    right: 8,
+                    background: 'rgba(0,0,0,0.7)',
+                    backdropFilter: 'blur(6px)',
+                    padding: '3px 8px',
+                    borderRadius: 6,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: '#FFF'
+                  }}>
+                    {level}
+                  </div>
+                </div>
+
+                {/* Category & Instructor */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
+                  <span style={{
+                    fontSize: 11,
+                    color: T.purple,
+                    background: `${T.purple}16`,
+                    padding: '2px 8px',
+                    borderRadius: 6,
+                    fontWeight: 700
+                  }}>
+                    {c.category || 'General'}
+                  </span>
+                  <span style={{ fontSize: 11.5, color: T.muted }}>
+                    By {c.instructor || 'Vedika'}
+                  </span>
+                </div>
+
+                {/* Course Title */}
+                <h3 style={{
+                  fontSize: 15.5,
+                  fontWeight: 800,
+                  color: T.text,
+                  margin: '0 0 6px 0',
+                  lineHeight: 1.3,
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical',
+                  overflow: 'hidden'
+                }}>
+                  {c.title}
+                </h3>
+
+                {/* Course Tagline */}
+                <p style={{
+                  fontSize: 12.5,
+                  color: T.muted,
+                  margin: '0 0 12px 0',
+                  lineHeight: 1.45,
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical',
+                  overflow: 'hidden'
+                }}>
+                  {c.tagline || 'Master core subject concepts with interactive modules, coding labs, and AI mentorship.'}
+                </p>
+              </div>
+
+              {/* Card Footer: Metadata & Action Button */}
+              <div>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  paddingTop: 10,
+                  borderTop: `1px solid ${T.border}`,
+                  marginBottom: 12,
+                  fontSize: 11.5,
+                  color: T.muted
+                }}>
+                  <span>📚 {totalLessons} lessons</span>
+                  <span>⏱️ {durationStr}</span>
+                </div>
+
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleSelectCourse(c);
+                    }}
+                    style={{
+                      flex: 1,
+                      background: isEnrolled ? `${T.accent}20` : T.accent,
+                      color: isEnrolled ? T.accent : '#FFFFFF',
+                      border: isEnrolled ? `1px solid ${T.accent}50` : 'none',
+                      padding: '9px 12px',
+                      borderRadius: 10,
+                      fontSize: 12.5,
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      boxShadow: isEnrolled ? 'none' : '0 4px 14px rgba(59, 130, 246, 0.3)',
+                      transition: 'transform 0.15s ease'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
+                    onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                  >
+                    {isEnrolled ? 'Open Course' : 'View Syllabus'} <ChevronRight size={14} />
+                  </button>
+
+                  {!isEnrolled && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleEnrollFromCard(c.id, e);
+                      }}
+                      style={{
+                        background: T.s2,
+                        color: T.text,
+                        border: `1px solid ${T.border}`,
+                        padding: '9px 14px',
+                        borderRadius: 10,
+                        fontSize: 12.5,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.borderColor = T.accent}
+                      onMouseLeave={(e) => e.currentTarget.style.borderColor = T.border}
+                    >
+                      Enroll
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
+
+      {/* Pacman Pagination: rendered only when items > 3 */}
+      {totalPages > 1 && (
+        <div style={{ marginTop: 14 }}>
+          <PacmanPagination
+            currentPage={coursePage}
+            totalPages={totalPages}
+            onPageChange={setCoursePage}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -374,6 +683,7 @@ export default function CoursePage() {
 
   // Category, Search, Carousel & Modal States
   const [selectedCategory, setSelectedCategory] = useState('All');
+  const [activeDrilldownCategory, setActiveDrilldownCategory] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState('deck'); // 'deck' or 'grid'
   const [isCertModalOpen, setIsCertModalOpen] = useState(false);
@@ -381,6 +691,56 @@ export default function CoursePage() {
   const [selectedPdfResource, setSelectedPdfResource] = useState(null);
   const carouselRef = useRef(null);
   const categoriesContainerRef = useRef(null);
+
+  // Group published courses into category cards for the initial Category Carousel
+  const categoryDeckItems = useMemo(() => {
+    const map = new Map();
+    courses.forEach((c) => {
+      let locallyDeleted = [];
+      try { locallyDeleted = JSON.parse(localStorage.getItem('locally_deleted_courses') || '[]').map(String); } catch (e) { }
+      if (locallyDeleted.includes(String(c.id))) return;
+
+      const cat = (c.category || 'General').trim();
+      if (!map.has(cat)) {
+        map.set(cat, []);
+      }
+      map.get(cat).push(c);
+    });
+
+    const list = [];
+    let idx = 0;
+    map.forEach((catCourses, catName) => {
+      const totalLessons = catCourses.reduce((sum, c) => sum + (c.lessonsCount || (c.lessons ? c.lessons.length : 0)), 0);
+      const instructors = new Set(catCourses.map(c => c.instructor).filter(Boolean));
+      const thumb = catCourses.find(c => c.image)?.image || getSubjectArtwork(catName);
+
+      list.push({
+        id: `cat-${catName}`,
+        title: catName,
+        category: 'Category',
+        badge: `${catCourses.length} ${catCourses.length === 1 ? 'Course' : 'Courses'}`,
+        thumbnail: thumb,
+        courses: catCourses,
+        totalLessons,
+        instructorsCount: instructors.size,
+        tagline: `Explore ${catCourses.length} ${catCourses.length === 1 ? 'specialized course' : 'specialized courses'} in ${catName} with comprehensive modules and hands-on practice.`
+      });
+      idx++;
+    });
+    return list;
+  }, [courses]);
+
+  // Dynamic unique categories list for pill navigation
+  const allCategories = useMemo(() => {
+    const set = new Set();
+    courses.forEach(c => {
+      let locallyDeleted = [];
+      try { locallyDeleted = JSON.parse(localStorage.getItem('locally_deleted_courses') || '[]').map(String); } catch (e) { }
+      if (locallyDeleted.includes(String(c.id))) return;
+      if (c.category) set.add(c.category.trim());
+    });
+    return ['All', ...Array.from(set)];
+  }, [courses]);
 
   const handleScrollCarousel = (dir) => {
     if (!carouselRef.current) return;
@@ -419,11 +779,23 @@ export default function CoursePage() {
     async function loadData() {
       try {
         const [list, enrollments] = await Promise.all([
-          getCourses(),
+          getCourses({ forceRefresh: true }),
           email ? getStudentEnrollments(email) : Promise.resolve([])
         ]);
-        // Students only see Published courses
-        const published = list.filter(c => c.status === 'Published');
+        let locallyDeleted = [];
+        try {
+          locallyDeleted = JSON.parse(localStorage.getItem('locally_deleted_courses') || '[]').map(String);
+        } catch (e) {}
+
+        // Students see Published courses and newly created local courses
+        const isCourseVisible = (c) => {
+          if (!c) return false;
+          if (locallyDeleted.includes(String(c.id))) return false;
+          if (c.status === 'Published' || c.status === 'published' || !c.status) return true;
+          if (/^\d{10,}$/.test(String(c.id)) || String(c.id).startsWith('local_') || String(c.id).startsWith('course_') || String(c.id).startsWith('ch_')) return true;
+          return false;
+        };
+        const published = list.filter(isCourseVisible);
         setCourses(published);
         setEnrolledCourseIds(enrollments || []);
 
@@ -431,7 +803,7 @@ export default function CoursePage() {
         if (typeof window !== 'undefined') {
           const lastCourseId = localStorage.getItem('selected_course_id');
           if (lastCourseId) {
-            const found = published.find(c => c.id === lastCourseId);
+            const found = published.find(c => String(c.id) === String(lastCourseId));
             if (found) {
               handleSelectCourse(found);
             }
@@ -445,6 +817,14 @@ export default function CoursePage() {
     }
 
     loadData();
+
+    // Listen for cross-tab or cross-component course updates
+    const handleCoursesUpdated = () => {
+      loadData();
+    };
+    window.addEventListener('courses_updated', handleCoursesUpdated);
+    window.addEventListener('storage', handleCoursesUpdated);
+    window.addEventListener('focus', handleCoursesUpdated);
 
     let key = 'completed_lessons';
     if (email) {
@@ -474,6 +854,12 @@ export default function CoursePage() {
         }
       }).catch(err => console.error("Error synchronizing progress:", err));
     }
+
+    return () => {
+      window.removeEventListener('courses_updated', handleCoursesUpdated);
+      window.removeEventListener('storage', handleCoursesUpdated);
+      window.removeEventListener('focus', handleCoursesUpdated);
+    };
   }, []);
 
   async function handleSelectCourse(course) {
@@ -573,17 +959,27 @@ export default function CoursePage() {
     const progressPercent = total > 0 ? Math.round((done / total) * 100) : 0;
 
     return (
-      <div style={{
-        display: 'flex',
-        flexDirection: 'column',
-        width: '100%',
-        background: T.bg
-      }}>
+      <div
+        className="no-scrollbar"
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          width: '100%',
+          height: '100%',
+          maxHeight: '100%',
+          overflowY: isEnrolled ? 'auto' : 'hidden',
+          background: T.bg,
+          boxSizing: 'border-box'
+        }}
+      >
         <div style={{
           width: '100%',
-          padding: isMobile ? '20px 16px' : '32px 36px',
+          maxWidth: 1200,
+          margin: '0 auto',
+          padding: isMobile ? '20px 16px' : '28px 36px',
           display: 'flex',
-          flexDirection: 'column'
+          flexDirection: 'column',
+          boxSizing: 'border-box'
         }} className="no-scrollbar">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
             {/* Back button */}
@@ -1031,26 +1427,36 @@ export default function CoursePage() {
             }}
             className="no-scrollbar"
           >
-            {['All', 'Programming', 'Web Development', 'Design', 'Business', 'Personal Development', 'Data Science', 'Artificial Intelligence', 'Cybersecurity', 'Cloud Computing'].map(cat => (
-              <button
-                key={cat}
-                onClick={() => setSelectedCategory(cat)}
-                style={{
-                  background: selectedCategory === cat ? T.accent : T.s2,
-                  color: selectedCategory === cat ? '#fff' : T.text,
-                  border: selectedCategory === cat ? `1px solid ${T.accent}` : `1px solid ${T.border}`,
-                  padding: '6px 16px',
-                  borderRadius: 20,
-                  fontSize: 12.5,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                  transition: 'all 0.15s'
-                }}
-              >
-                {cat}
-              </button>
-            ))}
+            {allCategories.map(cat => {
+              const isSelected = (!activeDrilldownCategory && selectedCategory === cat) || (activeDrilldownCategory === cat);
+              return (
+                <button
+                  key={cat}
+                  onClick={() => {
+                    setSelectedCategory(cat);
+                    if (cat === 'All') {
+                      setActiveDrilldownCategory(null);
+                    } else {
+                      setActiveDrilldownCategory(cat);
+                    }
+                  }}
+                  style={{
+                    background: isSelected ? T.accent : T.s2,
+                    color: isSelected ? '#fff' : T.text,
+                    border: isSelected ? `1px solid ${T.accent}` : `1px solid ${T.border}`,
+                    padding: '6px 16px',
+                    borderRadius: 20,
+                    fontSize: 12.5,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                    transition: 'all 0.15s'
+                  }}
+                >
+                  {cat}
+                </button>
+              );
+            })}
           </div>
 
           <button
@@ -1076,49 +1482,125 @@ export default function CoursePage() {
           </button>
         </div>
 
-        {/* Filtered Courses List Preparation */}
+        {/* Dynamic Category / Course Carousel Drilldown Presentation */}
         {(() => {
-          const filteredCourses = courses.filter(c => {
-            let locallyDeleted = [];
-            try { locallyDeleted = JSON.parse(localStorage.getItem('locally_deleted_courses') || '[]'); } catch (e) { }
-            if (locallyDeleted.includes(c.id)) return false;
-
-            const matchesCategory = selectedCategory === 'All' || c.category === selectedCategory;
-
+          // If searching: show filtered courses directly matching search query
+          if (searchQuery.trim()) {
             const q = searchQuery.toLowerCase().trim();
-            const matchesSearch = !q || (
-              c.title?.toLowerCase().includes(q) ||
-              c.category?.toLowerCase().includes(q) ||
-              c.instructor?.toLowerCase().includes(q) ||
-              c.tagline?.toLowerCase().includes(q)
+            const searchResults = courses.filter(c => {
+              let locallyDeleted = [];
+              try { locallyDeleted = JSON.parse(localStorage.getItem('locally_deleted_courses') || '[]').map(String); } catch (e) { }
+              if (locallyDeleted.includes(String(c.id))) return false;
+
+              return (
+                c.title?.toLowerCase().includes(q) ||
+                c.category?.toLowerCase().includes(q) ||
+                c.instructor?.toLowerCase().includes(q) ||
+                c.tagline?.toLowerCase().includes(q)
+              );
+            });
+
+            if (searchResults.length === 0) {
+              return (
+                <div style={{ background: T.s1, border: `1px solid ${T.border}`, borderRadius: 16, padding: '48px 20px', textAlign: 'center', marginBottom: 24 }}>
+                  <div style={{ fontSize: 40, marginBottom: 12 }}>🔍</div>
+                  <h3 style={{ color: T.text, fontSize: 16, fontWeight: 600, margin: '0 0 6px 0' }}>No matching courses found</h3>
+                  <p style={{ color: T.muted, fontSize: 13, maxWidth: 360, margin: '0 auto 16px auto' }}>
+                    No courses match "{searchQuery}".
+                  </p>
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    style={{ background: T.accent, color: '#fff', border: 'none', padding: '8px 18px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+                  >
+                    Clear Search
+                  </button>
+                </div>
+              );
+            }
+
+            return (
+              <div>
+                <CourseDeckWidget
+                  mode="courses"
+                  items={searchResults}
+                  handleSelectCourse={handleSelectCourse}
+                  handleEnrollFromCard={handleEnrollFromCard}
+                  enrolledCourseIds={enrolledCourseIds}
+                  isMobile={isMobile}
+                />
+              </div>
             );
+          }
 
-            return matchesCategory && matchesSearch;
-          });
+          // If student has selected a specific category: show that category's courses carousel with breadcrumbs
+          if (activeDrilldownCategory) {
+            const categoryCourses = courses.filter(c => {
+              let locallyDeleted = [];
+              try { locallyDeleted = JSON.parse(localStorage.getItem('locally_deleted_courses') || '[]').map(String); } catch (e) { }
+              if (locallyDeleted.includes(String(c.id))) return false;
 
-          if (filteredCourses.length === 0) {
+              return (c.category || 'General').trim().toLowerCase() === activeDrilldownCategory.trim().toLowerCase();
+            });
+
+            if (categoryCourses.length === 0) {
+              return (
+                <div style={{ background: T.s1, border: `1px solid ${T.border}`, borderRadius: 16, padding: '48px 20px', textAlign: 'center', marginBottom: 24 }}>
+                  <div style={{ fontSize: 40, marginBottom: 12 }}>📁</div>
+                  <h3 style={{ color: T.text, fontSize: 16, fontWeight: 600, margin: '0 0 6px 0' }}>No courses in {activeDrilldownCategory} yet</h3>
+                  <p style={{ color: T.muted, fontSize: 13, maxWidth: 360, margin: '0 auto 16px auto' }}>
+                    No published courses are currently assigned to this category.
+                  </p>
+                  <button
+                    onClick={() => { setActiveDrilldownCategory(null); setSelectedCategory('All'); }}
+                    style={{ background: T.accent, color: '#fff', border: 'none', padding: '8px 18px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+                  >
+                    ← Back to All Categories
+                  </button>
+                </div>
+              );
+            }
+
+            return (
+              <div>
+                <CourseDeckWidget
+                  mode="courses"
+                  items={categoryCourses}
+                  activeDrilldownCategory={activeDrilldownCategory}
+                  onBackToCategories={() => {
+                    setActiveDrilldownCategory(null);
+                    setSelectedCategory('All');
+                  }}
+                  handleSelectCourse={handleSelectCourse}
+                  handleEnrollFromCard={handleEnrollFromCard}
+                  enrolledCourseIds={enrolledCourseIds}
+                  isMobile={isMobile}
+                />
+              </div>
+            );
+          }
+
+          // Initial Landing: Show Category Carousel (grouped categories with ZimCarousel3D)
+          if (categoryDeckItems.length === 0) {
             return (
               <div style={{ background: T.s1, border: `1px solid ${T.border}`, borderRadius: 16, padding: '48px 20px', textAlign: 'center', marginBottom: 24 }}>
-                <div style={{ fontSize: 40, marginBottom: 12 }}>🔍</div>
-                <h3 style={{ color: T.text, fontSize: 16, fontWeight: 600, margin: '0 0 6px 0' }}>No matching courses found</h3>
+                <div style={{ fontSize: 40, marginBottom: 12 }}>📚</div>
+                <h3 style={{ color: T.text, fontSize: 16, fontWeight: 600, margin: '0 0 6px 0' }}>No categories available</h3>
                 <p style={{ color: T.muted, fontSize: 13, maxWidth: 360, margin: '0 auto 16px auto' }}>
-                  No published courses match "{searchQuery}" under category "{selectedCategory}".
+                  There are currently no published courses or categories to display.
                 </p>
-                <button
-                  onClick={() => { setSearchQuery(''); setSelectedCategory('All'); }}
-                  style={{ background: T.accent, color: '#fff', border: 'none', padding: '8px 18px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
-                >
-                  Clear Filters
-                </button>
               </div>
             );
           }
 
           return (
             <div>
-              {/* Interactive Stacked Course Deck Widget (CodePen Style Animation) */}
               <CourseDeckWidget
-                courses={filteredCourses}
+                mode="categories"
+                items={categoryDeckItems}
+                onSelectCategory={(catName) => {
+                  setActiveDrilldownCategory(catName);
+                  setSelectedCategory(catName);
+                }}
                 handleSelectCourse={handleSelectCourse}
                 handleEnrollFromCard={handleEnrollFromCard}
                 enrolledCourseIds={enrolledCourseIds}

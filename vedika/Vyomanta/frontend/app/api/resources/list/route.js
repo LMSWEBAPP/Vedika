@@ -36,7 +36,44 @@ export async function GET(request) {
       sql += ' ORDER BY created_at DESC';
     }
 
-    const [rows] = await pool.query(sql, params);
+    let rows = [];
+    try {
+      const [dbRows] = await pool.query(sql, params);
+      rows = dbRows;
+    } catch (dbErr) {
+      console.warn('[Resources API] MySQL query failed, using local fallback dataset:', dbErr.message);
+      const fs = await import('fs/promises');
+      const path = await import('path');
+      const fallbackPath = path.join(process.cwd(), 'data', 'resources_fallback.json');
+      try {
+        const fileData = await fs.readFile(fallbackPath, 'utf8');
+        let allResources = JSON.parse(fileData);
+
+        // Filter fallback data
+        if (category && category !== 'all') {
+          allResources = allResources.filter(r => (r.category || '').toLowerCase() === category.toLowerCase());
+        }
+        if (subcategory && subcategory !== 'all') {
+          allResources = allResources.filter(r => (r.subcategory || '').toLowerCase() === subcategory.toLowerCase());
+        }
+        if (search) {
+          const s = search.toLowerCase();
+          allResources = allResources.filter(r => (r.name || '').toLowerCase().includes(s));
+        }
+
+        if (sortBy === 'title') {
+          allResources.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        } else {
+          allResources.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+        }
+
+        rows = allResources;
+      } catch (fileErr) {
+        console.error('[Resources API] Fallback file read error:', fileErr);
+        rows = [];
+      }
+    }
+
     return NextResponse.json(rows);
   } catch (error) {
     console.error('Error fetching resources list:', error);

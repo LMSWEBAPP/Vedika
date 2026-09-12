@@ -1,10 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Award, Clock, FileText, CheckCircle, X, ChevronRight, HelpCircle, ArrowLeft } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { Award, Clock, FileText, CheckCircle, X, ChevronRight, HelpCircle, ArrowLeft, Search } from 'lucide-react';
 import { T } from '@/lib/lms-data';
 import { useMediaQuery, isMobileMQ } from '@/lib/useMediaQuery';
 import { getQuizzes, getQuizSubmissions, submitQuizResponse, getCourses } from '@/lib/frappe';
+import { getSubjectArtwork } from '@/lib/artwork';
+import CategoryShowcaseCarousel from '@/components/CategoryShowcaseCarousel';
+import PacmanPagination from '@/components/PacmanPagination';
 
 export default function StudentQuizzesPage() {
   const isMobile = useMediaQuery(isMobileMQ);
@@ -16,13 +19,22 @@ export default function StudentQuizzesPage() {
   const [loading, setLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState(null);
 
-  // Active Quiz Modal
   const [selectedQuiz, setSelectedQuiz] = useState(null);
   const [isAttempting, setIsAttempting] = useState(false);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [quizScore, setQuizScore] = useState(null);
+
+  // Category, Search & Pacman Pagination States
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 3;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedCategory, searchQuery]);
 
   useEffect(() => {
     const stored = localStorage.getItem('frappe_user');
@@ -155,136 +167,359 @@ export default function StudentQuizzesPage() {
     };
   };
 
-  const containerPadding = isMobile ? '70px 16px 32px 16px' : '40px';
-  const gridColumns = isMobile ? '1fr' : 'repeat(auto-fill, minmax(350px, 1fr))';
+  // Helper to resolve quiz category
+  const getQuizCategory = (quiz) => {
+    if (quiz.category) return quiz.category;
+    const match = courses.find(c => String(c.id) === String(quiz.course));
+    return match?.category || 'General';
+  };
+
+  // Category showcase deck items
+  const categoryShowcaseItems = useMemo(() => {
+    const map = new Map();
+    quizzes.forEach((q) => {
+      const cat = getQuizCategory(q);
+      if (!map.has(cat)) map.set(cat, { quizzes: [], courseIds: new Set() });
+      const entry = map.get(cat);
+      entry.quizzes.push(q);
+      if (q.course) entry.courseIds.add(String(q.course));
+    });
+    return Array.from(map.entries()).map(([cat, val]) => ({
+      category: cat,
+      count: val.quizzes.length,
+      coursesCount: val.courseIds.size,
+      artwork: getSubjectArtwork(cat),
+      quizzes: val.quizzes
+    }));
+  }, [quizzes, courses]);
+
+  const categories = useMemo(() => {
+    return ['All', ...categoryShowcaseItems.map(c => c.category)];
+  }, [categoryShowcaseItems]);
+
+  const filteredQuizzes = useMemo(() => {
+    return quizzes.filter(q => {
+      const cat = getQuizCategory(q);
+      if (selectedCategory && cat.toLowerCase() !== selectedCategory.toLowerCase()) {
+        return false;
+      }
+      if (searchQuery.trim()) {
+        const query = searchQuery.toLowerCase().trim();
+        const titleMatch = q.title?.toLowerCase().includes(query);
+        const courseMatch = getCourseName(q.course)?.toLowerCase().includes(query);
+        const catMatch = cat.toLowerCase().includes(query);
+        if (!titleMatch && !courseMatch && !catMatch) return false;
+      }
+      return true;
+    });
+  }, [quizzes, selectedCategory, searchQuery, courses]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredQuizzes.length / ITEMS_PER_PAGE));
+  const paginatedQuizzes = filteredQuizzes.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
+  const containerPadding = isMobile ? '20px 16px' : '24px 32px';
 
   return (
-    <div style={{
-      padding: containerPadding,
-      maxWidth: 1200,
-      margin: '0 auto',
-      fontFamily: 'var(--font-outfit), sans-serif',
-      color: T.text
-    }}>
-      {/* Header */}
-      <div style={{ marginBottom: 28 }}>
-        <h1 style={{ color: T.text, fontSize: isMobile ? 22 : 28, fontWeight: 700, margin: 0, letterSpacing: '-0.04em' }}>
-          Course Quizzes
-        </h1>
-        <p style={{ color: T.muted, fontSize: 13.5, margin: '4px 0 0' }}>
-          Attempt quizzes to validate your understanding and complete curriculum certifications.
-        </p>
-      </div>
-
-      {loading ? (
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 240 }}>
-          <div style={{
-            width: 32, height: 32, borderRadius: '50%',
-            border: '2px solid rgba(155, 110, 248, 0.2)', borderTopColor: T.purple,
-            animation: 'spin 1s linear infinite'
-          }} />
-        </div>
-      ) : quizzes.length === 0 ? (
+    <div
+      className="no-scrollbar"
+      style={{
+        padding: containerPadding,
+        maxWidth: 1200,
+        margin: '0 auto',
+        height: '100%',
+        maxHeight: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        overflow: 'hidden',
+        fontFamily: 'var(--font-outfit), sans-serif',
+        color: T.text,
+        boxSizing: 'border-box'
+      }}
+    >
+      {/* STAGE 1: CATEGORY CAROUSEL (When no category is selected) */}
+      {!selectedCategory ? (
         <div style={{
-          background: T.s1, border: `1px solid ${T.border}`, borderRadius: 14,
-          padding: '64px 20px', display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center', textAlign: 'center', minHeight: 300
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: '100%',
+          overflow: 'hidden',
+          textAlign: 'center'
         }}>
-          <Award size={48} color={T.muted} style={{ marginBottom: 16 }} />
-          <h3 style={{ color: T.text, fontSize: 16, margin: '0 0 6px 0' }}>No Quizzes Available</h3>
-          <p style={{ color: T.muted, fontSize: 13, maxWidth: 300, margin: 0 }}>
-            There are no course quizzes assigned to your curriculum at this moment.
-          </p>
+          <div style={{ marginBottom: 16 }}>
+            <h1 style={{ color: T.text, fontSize: isMobile ? 22 : 30, fontWeight: 800, margin: 0, letterSpacing: '-0.04em' }}>
+              Course Quizzes
+            </h1>
+            <p style={{ color: T.muted, fontSize: 14, margin: '6px 0 0' }}>
+              Select a subject domain to enter quizzes and test your knowledge.
+            </p>
+          </div>
+
+          <CategoryShowcaseCarousel
+            items={categoryShowcaseItems}
+            itemTypeLabel="Quizzes"
+            onSelectCategory={(cat) => {
+              setSelectedCategory(cat);
+              setCurrentPage(1);
+            }}
+          />
         </div>
       ) : (
+        /* STAGE 2: QUIZZES INSIDE SELECTED CATEGORY (Zero Scrolling) */
         <div style={{
-          display: 'grid',
-          gridTemplateColumns: gridColumns,
-          gap: 20
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+          width: '100%',
+          height: '100%',
+          overflow: 'hidden'
         }}>
-          {quizzes.map((quiz) => {
-            const quizStatus = getQuizStatus(quiz.id);
-            return (
-              <div
-                key={quiz.id}
-                style={{
-                  background: T.s1,
-                  border: `1px solid ${T.border}`,
-                  borderRadius: 12,
-                  padding: 20,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'space-between',
-                  transition: 'all 0.2s',
+          {/* Top Drilldown Header */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            marginBottom: 16,
+            padding: '10px 16px',
+            background: T.s1,
+            border: `1px solid ${T.border}`,
+            borderRadius: 12,
+            flexWrap: isMobile ? 'wrap' : 'nowrap'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <button
+                onClick={() => {
+                  setSelectedCategory(null);
+                  setCurrentPage(1);
+                  setSearchQuery('');
                 }}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  background: `${T.purple}18`,
+                  border: `1px solid ${T.purple}40`,
+                  color: T.purple,
+                  padding: '6px 14px',
+                  borderRadius: 8,
+                  fontSize: 12.5,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = `${T.purple}30`}
+                onMouseLeave={(e) => e.currentTarget.style.background = `${T.purple}18`}
               >
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 8 }}>
-                    <h3 style={{ color: T.text, fontSize: 15.5, fontWeight: 700, margin: 0, lineHeight: 1.3 }}>
-                      {quiz.title}
-                    </h3>
-                  </div>
+                <ArrowLeft size={15} /> Back to Categories
+              </button>
 
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
-                    <span style={{ fontSize: 9.5, background: `${T.purple}15`, border: `1px solid ${T.purple}25`, color: T.purple, padding: '2px 8px', borderRadius: 4 }}>
-                      {getCourseName(quiz.course)}
-                    </span>
-                  </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 14.5, fontWeight: 700, color: T.text }}>
+                  📂 {selectedCategory}
+                </span>
+                <span style={{
+                  fontSize: 11,
+                  background: `${T.purple}20`,
+                  color: T.purple,
+                  padding: '2px 8px',
+                  borderRadius: 10,
+                  fontWeight: 700
+                }}>
+                  {filteredQuizzes.length} {filteredQuizzes.length === 1 ? 'Quiz' : 'Quizzes'}
+                </span>
+              </div>
+            </div>
 
-                  <div style={{ display: 'flex', gap: 16, fontSize: 12.5, color: T.muted, marginBottom: 16 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <Clock size={13} />
-                      <span>{quiz.duration || '10 mins'}</span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <FileText size={13} />
-                      <span>{quiz.questions?.length || 0} Questions</span>
-                    </div>
-                  </div>
-                </div>
+            {/* In-category Search */}
+            <div style={{ position: 'relative', width: isMobile ? '100%' : 240 }}>
+              <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: T.muted }} />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={`Search ${selectedCategory}...`}
+                style={{
+                  width: '100%',
+                  padding: '7px 28px 7px 32px',
+                  borderRadius: 8,
+                  background: T.s2,
+                  border: `1px solid ${T.border}`,
+                  color: T.text,
+                  fontSize: 12.5,
+                  outline: 'none'
+                }}
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: T.muted, cursor: 'pointer' }}
+                >
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+          </div>
 
-                <div style={{ borderTop: `1px solid ${T.border}`, paddingTop: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  {/* Status Indicator */}
-                  <div>
-                    {quizStatus.status === 'Passed' && (
-                      <span style={{ fontSize: 11.5, color: T.green, display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600 }}>
-                        <CheckCircle size={13} /> Passed ({quizStatus.percentage}%)
-                      </span>
-                    )}
-                    {quizStatus.status === 'Failed' && (
-                      <span style={{ fontSize: 11.5, color: T.red, fontWeight: 600 }}>
-                        Failed ({quizStatus.percentage}%)
-                      </span>
-                    )}
-                    {quizStatus.status === 'Not Attempted' && (
-                      <span style={{ fontSize: 11.5, color: T.muted }}>
-                        Not Attempted
-                      </span>
-                    )}
-                  </div>
-
-                  <button
-                    onClick={() => handleStartAttempt(quiz)}
+          {/* Cards Grid or Empty State */}
+          {loading ? (
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 220 }}>
+              <div style={{ width: 30, height: 30, borderRadius: '50%', border: '2px solid rgba(155, 110, 248, 0.2)', borderTopColor: T.purple, animation: 'spin 1s linear infinite' }} />
+            </div>
+          ) : filteredQuizzes.length === 0 ? (
+            <div style={{ background: T.s1, border: `1px solid ${T.border}`, borderRadius: 12, padding: '36px 20px', textAlign: 'center' }}>
+              <Award size={40} color={T.muted} style={{ marginBottom: 12 }} />
+              <h4 style={{ color: T.text, fontSize: 15, margin: '0 0 6px 0' }}>No Quizzes Found</h4>
+              <p style={{ color: T.muted, fontSize: 12.5, margin: 0 }}>No quizzes match your search query in {selectedCategory}.</p>
+            </div>
+          ) : (
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
+              gap: 16,
+              alignItems: 'stretch'
+            }}>
+              {paginatedQuizzes.map((quiz) => {
+                const quizStatus = getQuizStatus(quiz.id);
+                return (
+                  <div
+                    key={quiz.id}
                     style={{
-                      background: quizStatus.status === 'Passed' ? T.s2 : T.purple,
-                      color: quizStatus.status === 'Passed' ? T.text : '#fff',
-                      border: quizStatus.status === 'Passed' ? `1px solid ${T.border}` : 'none',
-                      padding: '7px 14px',
-                      borderRadius: 8,
-                      fontSize: 12,
-                      fontWeight: 600,
-                      cursor: 'pointer',
+                      background: T.s1,
+                      border: `1px solid ${T.border}`,
+                      borderRadius: 14,
+                      padding: 18,
                       display: 'flex',
-                      alignItems: 'center',
-                      gap: 4
+                      flexDirection: 'column',
+                      justifyContent: 'space-between',
+                      height: 250,
+                      boxShadow: '0 4px 14px rgba(0, 0, 0, 0.15)',
+                      transition: 'border-color 0.2s, transform 0.2s'
                     }}
                   >
-                    {quizStatus.status === 'Passed' ? 'Re-attempt' : 'Start Quiz'} <ChevronRight size={13} />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
+                    <div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                        <span style={{
+                          fontSize: 9.5,
+                          background: `${T.purple}18`,
+                          border: `1px solid ${T.purple}30`,
+                          color: T.purple,
+                          padding: '2.5px 8px',
+                          borderRadius: 4,
+                          fontWeight: 600,
+                          maxWidth: 160,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap'
+                        }}>
+                          📚 {getCourseName(quiz.course)}
+                        </span>
+                        {quiz.chapter && (
+                          <span style={{
+                            fontSize: 9.5,
+                            background: 'rgba(56, 189, 248, 0.12)',
+                            color: '#38bdf8',
+                            padding: '2.5px 8px',
+                            borderRadius: 4
+                          }}>
+                            Ch: {quiz.chapter}
+                          </span>
+                        )}
+                      </div>
+
+                      <h3 style={{
+                        color: T.text,
+                        fontSize: 14.5,
+                        fontWeight: 700,
+                        margin: '0 0 10px 0',
+                        lineHeight: 1.35,
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden'
+                      }}>
+                        {quiz.title}
+                      </h3>
+
+                      <div style={{ display: 'flex', gap: 12, fontSize: 12, color: T.muted, marginBottom: 8 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <Clock size={12} />
+                          <span>{quiz.duration || '10 mins'}</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <HelpCircle size={12} />
+                          <span>{quiz.questions?.length || 5} Questions</span>
+                        </div>
+                      </div>
+
+                      <div style={{ fontSize: 11.5, color: T.muted }}>
+                        Pass Score: <strong style={{ color: T.text }}>{quiz.passing_percentage || 70}%</strong>
+                      </div>
+                    </div>
+
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      borderTop: `1px solid ${T.border}`,
+                      paddingTop: 12,
+                      marginTop: 8
+                    }}>
+                      <div>
+                        {quizStatus.status === 'Passed' && (
+                          <span style={{ fontSize: 11.5, color: T.green, display: 'flex', alignItems: 'center', gap: 4, fontWeight: 700 }}>
+                            <CheckCircle size={13} /> {quizStatus.percentage}%
+                          </span>
+                        )}
+                        {quizStatus.status === 'Failed' && (
+                          <span style={{ fontSize: 11.5, color: T.red, fontWeight: 700 }}>
+                            Failed ({quizStatus.percentage}%)
+                          </span>
+                        )}
+                        {quizStatus.status === 'Not Attempted' && (
+                          <span style={{ fontSize: 11.5, color: T.muted }}>
+                            Not Attempted
+                          </span>
+                        )}
+                      </div>
+
+                      <button
+                        onClick={() => handleStartAttempt(quiz)}
+                        style={{
+                          background: quizStatus.status === 'Passed' ? T.s2 : T.purple,
+                          color: quizStatus.status === 'Passed' ? T.text : '#fff',
+                          border: quizStatus.status === 'Passed' ? `1px solid ${T.border}` : 'none',
+                          padding: '6px 14px',
+                          borderRadius: 8,
+                          fontSize: 12,
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4
+                        }}
+                      >
+                        {quizStatus.status === 'Passed' ? 'Re-take' : 'Start Quiz'} <ChevronRight size={13} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Pacman Pagination */}
+          {filteredQuizzes.length > 0 && (
+            <div style={{ marginTop: 12 }}>
+              <PacmanPagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={setCurrentPage}
+              />
+            </div>
+          )}
         </div>
       )}
 

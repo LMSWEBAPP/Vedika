@@ -12755,3 +12755,27 @@ Traceback (most recent call last):
     
 KeyboardInterrupt
 
+
+--- Crash Log [Fri Sep 11 21:20:08 2026] ---
+Traceback (most recent call last):
+  File "C:\Users\25002\Desktop\V0.1\Vedika\main.py", line 309, in game_loop
+    def game_loop(self):
+    
+KeyboardInterrupt
+
+
+--- Crash Log [Fri Sep 11 21:20:10 2026] ---
+Traceback (most recent call last):
+  File "C:\Users\25002\Desktop\V0.1\Vedika\main.py", line 309, in game_loop
+    def game_loop(self):
+    
+KeyboardInterrupt
+
+
+--- Crash Log [Fri Sep 11 21:20:14 2026] ---
+Traceback (most recent call last):
+  File "C:\Users\25002\Desktop\V0.1\Vedika\main.py", line 309, in game_loop
+    def game_loop(self):
+    
+KeyboardInterrupt
+

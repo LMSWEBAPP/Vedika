@@ -1,0 +1,158 @@
+.showcase-carousel-container {
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto 36px auto;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  user-select: none;
+}
+
+.showcase-stage {
+  width: 100%;
+  height: 290px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  perspective: 1000px;
+  overflow: hidden;
+}
+
+.showcase-card {
+  position: absolute;
+  width: 270px;
+  height: 240px;
+  border-radius: 18px;
+  overflow: hidden;
+  cursor: pointer;
+  background: var(--s1, #131B2E);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+  transition: transform 0.45s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.45s ease, filter 0.45s ease;
+  display: flex;
+  flex-direction: column;
+}
+
+.showcase-card.is-active {
+  border-color: rgba(124, 58, 237, 0.6);
+  box-shadow: 0 16px 40px rgba(124, 58, 237, 0.35), 0 0 20px rgba(124, 58, 237, 0.2);
+  cursor: default;
+}
+
+.showcase-card-img-wrapper {
+  position: relative;
+  width: 100%;
+  height: 140px;
+  overflow: hidden;
+}
+
+.showcase-card-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.5s ease;
+}
+
+.showcase-card:hover .showcase-card-img {
+  transform: scale(1.06);
+}
+
+.showcase-card-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(8px);
+  color: #F8FAFC;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.showcase-card-body {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  justifyContent: space-between;
+  flex: 1;
+  background: linear-gradient(180deg, rgba(255,255,255,0.03) 0%, rgba(0,0,0,0.4) 100%);
+}
+
+.showcase-card-title {
+  font-size: 15.5px;
+  font-weight: 800;
+  color: var(--text, #F8FAFC);
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: -0.02em;
+}
+
+.showcase-card-subtitle {
+  font-size: 12px;
+  color: var(--muted, #94A3B8);
+  margin-top: 4px;
+}
+
+.showcase-nav-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(19, 27, 46, 0.85);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #F8FAFC;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 20;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+}
+
+.showcase-nav-btn:hover {
+  background: var(--purple, #7C3AED);
+  border-color: var(--purple, #7C3AED);
+  transform: translateY(-50%) scale(1.08);
+}
+
+.showcase-nav-prev {
+  left: 10px;
+}
+
+.showcase-nav-next {
+  right: 10px;
+}
+
+.showcase-dots {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.showcase-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 0;
+}
+
+.showcase-dot.is-active {
+  width: 24px;
+  border-radius: 12px;
+  background: var(--purple, #7C3AED);
+}

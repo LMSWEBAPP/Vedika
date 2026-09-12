@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, X, GraduationCap, ClipboardList, CheckCircle, FileText, Star, User, Check, AlertCircle, Loader2, Brain } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { FileText, Clock, CheckCircle, X, ChevronRight, HelpCircle, ArrowLeft, Send, AlertCircle, Filter, Plus, Edit2, Trash2, Award, Folder } from 'lucide-react';
 import { T } from '@/lib/lms-data';
 import { useMediaQuery, isMobileMQ } from '@/lib/useMediaQuery';
-import { getAssignments, createAssignment, updateAssignment, deleteAssignment, getCourses, getAssignmentSubmissions, gradeAssignmentSubmission } from '@/lib/frappe';
+import { getAssignments, createAssignment, updateAssignment, deleteAssignment, getCourses, getCourseSyllabus, getAssignmentSubmissions, gradeAssignmentSubmission, parseQuestionsList } from '@/lib/frappe';
+import { getCourseDetails } from '@/lib/lms-data';
 
 export default function AdminAssignmentsPage() {
   const isMobile = useMediaQuery(isMobileMQ);
@@ -14,8 +15,16 @@ export default function AdminAssignmentsPage() {
   const [courses, setCourses] = useState([]);
   const [submissions, setSubmissions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [evaluatingId, setEvaluatingId] = useState(null);
   const [activeTab, setActiveTab] = useState('list'); // 'list' or 'submissions'
+  
+  // Category & Filter States
+  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [filterCourse, setFilterCourse] = useState('all');
+  const [filterChapter, setFilterChapter] = useState('all');
+
+  // Chapter loading state for modal
+  const [courseChapters, setCourseChapters] = useState([]);
+  const [loadingChapters, setLoadingChapters] = useState(false);
   
   // Modals
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -24,6 +33,9 @@ export default function AdminAssignmentsPage() {
     id: '',
     title: '',
     course: '',
+    courseTitle: '',
+    chapter: '',
+    chapterTitle: '',
     type: 'Text',
     question: '',
     show_answer: false,
@@ -83,13 +95,63 @@ export default function AdminAssignmentsPage() {
     }
   };
 
-  const handleOpenCreateModal = () => {
+  const handleCourseSelect = async (val) => {
+    if (val === 'CUSTOM') {
+      setCourseChapters([]);
+      setCurrentAssignment(prev => ({
+        ...prev,
+        course: 'CUSTOM',
+        courseTitle: 'Custom Course',
+        chapter: '',
+        chapterTitle: '',
+        custom_course_title: prev.custom_course_title || 'Custom Module Topic'
+      }));
+      return;
+    }
+
+    const matchedCourse = courses.find(c => String(c.id) === String(val));
+    const cTitle = matchedCourse ? matchedCourse.title : val;
+    setLoadingChapters(true);
+    let modules = [];
+    try {
+      const syl = await getCourseSyllabus(val);
+      modules = syl?.modules || [];
+    } catch (_) {}
+    setCourseChapters(modules);
+    setLoadingChapters(false);
+
+    setCurrentAssignment(prev => ({
+      ...prev,
+      course: val,
+      courseTitle: cTitle,
+      chapter: modules[0]?.id || '',
+      chapterTitle: modules[0]?.title || '',
+      custom_course_title: ''
+    }));
+  };
+
+  const handleOpenCreateModal = async () => {
     setModalMode('create');
-    const defaultCourseId = courses[0]?.id || '';
+    const defaultCourse = courses[0] || { id: '1', title: 'Python Fundamentals' };
+    const defaultCourseId = defaultCourse.id;
+    const defaultCourseTitle = defaultCourse.title;
+
+    setLoadingChapters(true);
+    let modules = [];
+    try {
+      const syl = await getCourseSyllabus(defaultCourseId);
+      modules = syl?.modules || [];
+    } catch (_) {}
+    setCourseChapters(modules);
+    setLoadingChapters(false);
+
     setCurrentAssignment({
       id: '',
       title: '',
       course: defaultCourseId,
+      courseTitle: defaultCourseTitle,
+      chapter: modules[0]?.id || '',
+      chapterTitle: modules[0]?.title || '',
       custom_course_title: '',
       type: 'Text',
       question: '',
@@ -107,11 +169,27 @@ export default function AdminAssignmentsPage() {
     setIsModalOpen(true);
   };
 
-  const handleOpenEditModal = (ass, e) => {
+  const handleOpenEditModal = async (ass, e) => {
     e.stopPropagation();
     setModalMode('edit');
+
+    let modules = [];
+    if (ass.course && ass.course !== 'CUSTOM') {
+      setLoadingChapters(true);
+      try {
+        const syl = await getCourseSyllabus(ass.course);
+        modules = syl?.modules || [];
+      } catch (_) {}
+      setLoadingChapters(false);
+    }
+    setCourseChapters(modules);
+
     setCurrentAssignment({
       ...ass,
+      course: ass.course || '',
+      courseTitle: ass.courseTitle || '',
+      chapter: ass.chapter || (modules[0]?.id || ''),
+      chapterTitle: ass.chapterTitle || (modules[0]?.title || ''),
       custom_course_title: ass.custom_course_title || '',
       questions: Array.isArray(ass.questions) && ass.questions.length > 0
         ? ass.questions.map(q => ({ ...q }))
@@ -169,38 +247,63 @@ export default function AdminAssignmentsPage() {
     });
   };
 
+  const [saving, setSaving] = useState(false);
+
   const handleDeleteAssignment = async (id, e) => {
     e.stopPropagation();
     if (confirm('Are you sure you want to delete this assignment?')) {
-      const success = await deleteAssignment(id);
-      if (success) {
-        const fresh = await getAssignments();
-        setAssignments(fresh);
-        updateChecklist(fresh);
+      try {
+        const success = await deleteAssignment(id);
+        if (success) {
+          const fresh = await getAssignments();
+          setAssignments(fresh);
+          updateChecklist(fresh);
+        }
+      } catch (err) {
+        console.warn("Notice: Delete assignment fallback handled:", err);
       }
     }
   };
 
   const handleSaveAssignmentSubmit = async (e) => {
     e.preventDefault();
-    if (!currentAssignment.title.trim()) return;
+    if (!currentAssignment.title.trim() || saving) return;
 
-    const payload = {
-      ...currentAssignment,
-      questions: (currentAssignment.questions || []).filter(q => q.prompt && q.prompt.trim()),
-      evaluation_criteria: (currentAssignment.evaluation_criteria || []).filter(c => c.trim())
-    };
+    try {
+      setSaving(true);
+      let cTitle = currentAssignment.courseTitle;
+      if (!cTitle) {
+        const match = courses.find(c => String(c.id) === String(currentAssignment.course));
+        cTitle = match ? match.title : (currentAssignment.custom_course_title || 'General Course');
+      }
 
-    if (modalMode === 'create') {
-      await createAssignment(payload);
-    } else {
-      await updateAssignment(currentAssignment.id, payload);
+      const payload = {
+        ...currentAssignment,
+        courseTitle: cTitle,
+        chapter: currentAssignment.chapter || 'General',
+        chapterTitle: currentAssignment.chapterTitle || 'General',
+        questions: (currentAssignment.questions || []).filter(q => q.prompt && q.prompt.trim()),
+        evaluation_criteria: (currentAssignment.evaluation_criteria || []).filter(c => c.trim())
+      };
+
+      if (modalMode === 'create') {
+        await createAssignment(payload);
+      } else {
+        await updateAssignment(currentAssignment.id, payload);
+      }
+
+      const fresh = await getAssignments();
+      setAssignments(fresh);
+      updateChecklist(fresh);
+      setIsModalOpen(false);
+    } catch (err) {
+      console.warn("Notice: Saved assignment locally with error handled:", err);
+      const fresh = await getAssignments();
+      setAssignments(fresh);
+      setIsModalOpen(false);
+    } finally {
+      setSaving(false);
     }
-
-    const fresh = await getAssignments();
-    setAssignments(fresh);
-    updateChecklist(fresh);
-    setIsModalOpen(false);
   };
 
   const handleOpenGradingModal = (sub) => {
@@ -270,6 +373,35 @@ export default function AdminAssignmentsPage() {
     if (match) return match.title;
     return courseId || 'Unassigned Course';
   };
+
+  const categories = useMemo(() => {
+    const set = new Set();
+    courses.forEach(c => { if (c.category) set.add(c.category.trim()); });
+    assignments.forEach(a => { if (a.category) set.add(a.category.trim()); });
+    return ['All', ...Array.from(set)];
+  }, [courses, assignments]);
+
+  const getAssignmentCategory = (ass) => {
+    if (ass.category) return ass.category;
+    const match = courses.find(c => String(c.id) === String(ass.course));
+    return match?.category || 'General';
+  };
+
+  const filteredAssignments = assignments.filter(ass => {
+    if (selectedCategory !== 'All' && getAssignmentCategory(ass).toLowerCase() !== selectedCategory.toLowerCase()) return false;
+    if (filterCourse !== 'all' && String(ass.course) !== String(filterCourse)) return false;
+    if (filterChapter !== 'all' && String(ass.chapter) !== String(filterChapter)) return false;
+    return true;
+  });
+
+  const availableFilterChapters = Array.from(
+    new Map(
+      assignments
+        .filter(a => filterCourse === 'all' || String(a.course) === String(filterCourse))
+        .filter(a => a.chapter)
+        .map(a => [a.chapter, a.chapterTitle || a.chapter])
+    ).entries()
+  );
 
   const containerPadding = isMobile ? '70px 16px 32px 16px' : '40px';
 
@@ -423,100 +555,264 @@ export default function AdminAssignmentsPage() {
             </button>
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(360px, 1fr))', gap: 20 }}>
-            {assignments.map(ass => (
-              <div
-                key={ass.id}
-                style={{
-                  background: T.s1,
-                  border: `1px solid ${T.border}`,
-                  borderRadius: 12,
-                  padding: 20,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'space-between'
-                }}
-              >
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 8 }}>
-                    <h3 style={{ color: T.text, fontSize: 15.5, fontWeight: 700, margin: 0, lineHeight: 1.3 }}>
-                      {ass.title}
-                    </h3>
-                    
-                    <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                      <button
-                        onClick={(e) => handleOpenEditModal(ass, e)}
-                        style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: T.muted, padding: 3, borderRadius: 4 }}
-                        onMouseEnter={(e) => e.currentTarget.style.color = T.purple}
-                        onMouseLeave={(e) => e.currentTarget.style.color = T.muted}
-                      >
-                        <Edit2 size={13} />
-                      </button>
-                      <button
-                        onClick={(e) => handleDeleteAssignment(ass.id, e)}
-                        style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: T.muted, padding: 3, borderRadius: 4 }}
-                        onMouseEnter={(e) => e.currentTarget.style.color = T.red}
-                        onMouseLeave={(e) => e.currentTarget.style.color = T.muted}
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
-                  </div>
+          <div>
+            {/* Category Clubbing Pills */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              overflowX: 'auto',
+              padding: '4px 0 16px',
+              marginBottom: 16
+            }} className="no-scrollbar">
+              {categories.map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => setSelectedCategory(cat)}
+                  style={{
+                    background: selectedCategory === cat ? T.purple : T.s2,
+                    color: selectedCategory === cat ? '#fff' : T.text,
+                    border: selectedCategory === cat ? `1px solid ${T.purple}` : `1px solid ${T.border}`,
+                    padding: '6px 14px',
+                    borderRadius: 20,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                    transition: 'all 0.15s'
+                  }}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
 
-                  <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginBottom: 12 }}>
-                    <span
-                      title={getCourseTitle(ass.course, ass.custom_course_title)}
-                      style={{
-                        fontSize: 9.5,
-                        background: `${T.purple}15`,
-                        border: `1px solid ${T.purple}25`,
-                        color: T.purple,
-                        padding: '3px 8px',
-                        borderRadius: 4,
-                        maxWidth: 200,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                        display: 'inline-block'
-                      }}
-                    >
-                      {getCourseTitle(ass.course, ass.custom_course_title)}
-                    </span>
-                    <span style={{ fontSize: 9.5, background: `${T.accent}15`, border: `1px solid ${T.accent}25`, color: T.accent, padding: '3px 8px', borderRadius: 4, whiteSpace: 'nowrap' }}>
-                      Format: {ass.type}
-                    </span>
-                    {ass.questions?.length > 1 && (
-                      <span style={{ fontSize: 9.5, background: `${T.green}15`, border: `1px solid ${T.green}25`, color: T.green, padding: '3px 8px', borderRadius: 4, whiteSpace: 'nowrap' }}>
-                        {ass.questions.length} Questions
-                      </span>
-                    )}
-                  </div>
-
-                  {ass.questions && ass.questions.length > 1 ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 14 }}>
-                      {ass.questions.map((q, qIdx) => (
-                        <div key={qIdx} style={{ fontSize: 12, color: T.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          <span style={{ fontWeight: 600, color: T.purple }}>Q{qIdx + 1}:</span> {q.prompt?.replace(/<[^>]*>/g, '')}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    ass.question && (
-                      <div
-                        style={{ color: T.muted, fontSize: 12.5, lineHeight: 1.5, marginBottom: 14, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}
-                        dangerouslySetInnerHTML={{ __html: ass.question }}
-                      />
-                    )
-                  )}
-                </div>
-
-                <div style={{ borderTop: `1px solid ${T.border}`, paddingTop: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 11, color: T.muted }}>
-                    {ass.show_answer ? 'Sample solution visible' : 'Hidden solution'}
-                  </span>
-                </div>
+            {/* Filter Bar */}
+            <div style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+              marginBottom: 20,
+              padding: '12px 16px',
+              background: T.s1,
+              border: `1px solid ${T.border}`,
+              borderRadius: 10
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Filter size={15} color={T.purple} />
+                <span style={{ fontSize: 13, fontWeight: 600, color: T.text }}>Filter Assignments:</span>
               </div>
-            ))}
+
+              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
+                {/* Course Filter */}
+                <select
+                  value={filterCourse}
+                  onChange={(e) => {
+                    setFilterCourse(e.target.value);
+                    setFilterChapter('all');
+                  }}
+                  style={{
+                    background: T.s2,
+                    border: `1px solid ${T.border}`,
+                    borderRadius: 6,
+                    color: T.text,
+                    fontSize: 12.5,
+                    padding: '6px 10px',
+                    outline: 'none'
+                  }}
+                >
+                  <option value="all">All Courses</option>
+                  {courses.map(c => (
+                    <option key={c.id} value={c.id}>{c.title}</option>
+                  ))}
+                </select>
+
+                {/* Chapter Filter */}
+                <select
+                  value={filterChapter}
+                  onChange={(e) => setFilterChapter(e.target.value)}
+                  style={{
+                    background: T.s2,
+                    border: `1px solid ${T.border}`,
+                    borderRadius: 6,
+                    color: T.text,
+                    fontSize: 12.5,
+                    padding: '6px 10px',
+                    outline: 'none'
+                  }}
+                >
+                  <option value="all">All Chapters</option>
+                  {availableFilterChapters.map(([chId, chTitle]) => (
+                    <option key={chId} value={chId}>{chTitle}</option>
+                  ))}
+                </select>
+
+                {(filterCourse !== 'all' || filterChapter !== 'all') && (
+                  <button
+                    onClick={() => {
+                      setFilterCourse('all');
+                      setFilterChapter('all');
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: T.purple,
+                      fontSize: 12,
+                      cursor: 'pointer',
+                      padding: '4px 6px',
+                      textDecoration: 'underline'
+                    }}
+                  >
+                    Reset filters
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {filteredAssignments.length === 0 ? (
+              <div style={{
+                background: T.s1,
+                border: `1px solid ${T.border}`,
+                borderRadius: 14,
+                padding: '40px 20px',
+                textAlign: 'center'
+              }}>
+                <FileText size={32} color={T.muted} style={{ marginBottom: 12 }} />
+                <h4 style={{ color: T.text, fontSize: 14, margin: '0 0 6px' }}>No assignments match your filter</h4>
+                <p style={{ color: T.muted, fontSize: 12.5, margin: 0 }}>Try clearing the filter to view all course assignments.</p>
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(360px, 1fr))', gap: 20 }}>
+                {filteredAssignments.map(ass => (
+                  <div
+                    key={ass.id}
+                    style={{
+                      background: T.s1,
+                      border: `1px solid ${T.border}`,
+                      borderRadius: 12,
+                      padding: 20,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'space-between'
+                    }}
+                  >
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 8 }}>
+                        <h3 style={{ color: T.text, fontSize: 15.5, fontWeight: 700, margin: 0, lineHeight: 1.3 }}>
+                          {ass.title}
+                        </h3>
+                        
+                        <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                          <button
+                            onClick={(e) => handleOpenEditModal(ass, e)}
+                            style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: T.muted, padding: 3, borderRadius: 4 }}
+                            onMouseEnter={(e) => e.currentTarget.style.color = T.purple}
+                            onMouseLeave={(e) => e.currentTarget.style.color = T.muted}
+                          >
+                            <Edit2 size={13} />
+                          </button>
+                          <button
+                            onClick={(e) => handleDeleteAssignment(ass.id, e)}
+                            style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: T.muted, padding: 3, borderRadius: 4 }}
+                            onMouseEnter={(e) => e.currentTarget.style.color = T.red}
+                            onMouseLeave={(e) => e.currentTarget.style.color = T.muted}
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+                        <span
+                          style={{
+                            fontSize: 9.5,
+                            background: `${T.accent}14`,
+                            border: `1px solid ${T.accent}30`,
+                            color: T.accent,
+                            padding: '3px 8px',
+                            borderRadius: 4,
+                            fontWeight: 700,
+                            whiteSpace: 'nowrap',
+                            display: 'inline-block'
+                          }}
+                        >
+                          📂 {getAssignmentCategory(ass)}
+                        </span>
+                        <span
+                          title={getCourseTitle(ass.course, ass.custom_course_title)}
+                          style={{
+                            fontSize: 9.5,
+                            background: `${T.purple}15`,
+                            border: `1px solid ${T.purple}25`,
+                            color: T.purple,
+                            padding: '3px 8px',
+                            borderRadius: 4,
+                            maxWidth: 160,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            display: 'inline-block'
+                          }}
+                        >
+                          📚 {getCourseTitle(ass.course, ass.custom_course_title)}
+                        </span>
+                        <span
+                          title={ass.chapterTitle || ass.chapter || 'General'}
+                          style={{
+                            fontSize: 9.5,
+                            background: 'rgba(56, 189, 248, 0.12)',
+                            border: '1px solid rgba(56, 189, 248, 0.25)',
+                            color: '#38bdf8',
+                            padding: '3px 8px',
+                            borderRadius: 4,
+                            maxWidth: 160,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            display: 'inline-block'
+                          }}
+                        >
+                          🔖 Chapter: {ass.chapterTitle || ass.chapter || 'General'}
+                        </span>
+                        <span style={{ fontSize: 9.5, background: `${T.accent}15`, border: `1px solid ${T.accent}25`, color: T.accent, padding: '3px 8px', borderRadius: 4, whiteSpace: 'nowrap' }}>
+                          Format: {ass.type}
+                        </span>
+                        {ass.questions?.length > 1 && (
+                          <span style={{ fontSize: 9.5, background: `${T.green}15`, border: `1px solid ${T.green}25`, color: T.green, padding: '3px 8px', borderRadius: 4, whiteSpace: 'nowrap' }}>
+                            {ass.questions.length} Questions
+                          </span>
+                        )}
+                      </div>
+
+                      {ass.questions && ass.questions.length > 1 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 14 }}>
+                          {ass.questions.map((q, qIdx) => (
+                            <div key={qIdx} style={{ fontSize: 12, color: T.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              <span style={{ fontWeight: 600, color: T.purple }}>Q{qIdx + 1}:</span> {q.prompt?.replace(/<[^>]*>/g, '')}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        ass.question && (
+                          <div
+                            style={{ color: T.muted, fontSize: 12.5, lineHeight: 1.5, marginBottom: 14, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}
+                            dangerouslySetInnerHTML={{ __html: ass.question }}
+                          />
+                        )
+                      )}
+                    </div>
+
+                    <div style={{ borderTop: `1px solid ${T.border}`, paddingTop: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: 11, color: T.muted }}>
+                        {ass.show_answer ? 'Sample solution visible' : 'Hidden solution'}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )
       ) : (
@@ -752,20 +1048,13 @@ export default function AdminAssignmentsPage() {
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
                 {/* Course Select */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <label style={{ fontSize: 12, fontWeight: 600, color: T.text }}>Course Curriculum</label>
                   <select
                     value={currentAssignment.custom_course_title ? 'CUSTOM' : currentAssignment.course}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (val === 'CUSTOM') {
-                        setCurrentAssignment({ ...currentAssignment, course: 'CUSTOM', custom_course_title: currentAssignment.custom_course_title || 'Custom Module Topic' });
-                      } else {
-                        setCurrentAssignment({ ...currentAssignment, course: val, custom_course_title: '' });
-                      }
-                    }}
+                    onChange={(e) => handleCourseSelect(e.target.value)}
                     style={{
                       background: T.s2,
                       border: `1px solid ${T.border}`,
@@ -784,12 +1073,21 @@ export default function AdminAssignmentsPage() {
                   </select>
                 </div>
 
-                {/* Assignment Type */}
+                {/* Chapter Select */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: T.text }}>Response Mode</label>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: T.text }}>Course Chapter</label>
                   <select
-                    value={currentAssignment.type}
-                    onChange={(e) => setCurrentAssignment({ ...currentAssignment, type: e.target.value })}
+                    value={currentAssignment.chapter || ''}
+                    disabled={currentAssignment.course === 'CUSTOM'}
+                    onChange={(e) => {
+                      const selId = e.target.value;
+                      const matched = courseChapters.find(m => String(m.id) === String(selId));
+                      setCurrentAssignment(prev => ({
+                        ...prev,
+                        chapter: selId,
+                        chapterTitle: matched ? matched.title : (selId || 'General')
+                      }));
+                    }}
                     style={{
                       background: T.s2,
                       border: `1px solid ${T.border}`,
@@ -798,16 +1096,46 @@ export default function AdminAssignmentsPage() {
                       color: T.text,
                       fontSize: 13,
                       outline: 'none',
-                      fontFamily: 'inherit'
+                      fontFamily: 'inherit',
+                      opacity: currentAssignment.course === 'CUSTOM' ? 0.6 : 1
                     }}
                   >
-                    <option value="Text">Online Text editor</option>
-                    <option value="PDF">PDF File Attachment</option>
-                    <option value="Document">Word Document</option>
-                    <option value="URL">Submission URL link</option>
-                    <option value="Image">Screenshots / Image</option>
+                    {loadingChapters ? (
+                      <option value="">Loading chapters...</option>
+                    ) : courseChapters.length > 0 ? (
+                      courseChapters.map(m => (
+                        <option key={m.id} value={m.id}>{m.title || `Chapter ${m.id}`}</option>
+                      ))
+                    ) : (
+                      <option value="General">General / Introduction</option>
+                    )}
                   </select>
                 </div>
+              </div>
+
+              {/* Assignment Type */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: T.text }}>Response Mode</label>
+                <select
+                  value={currentAssignment.type}
+                  onChange={(e) => setCurrentAssignment({ ...currentAssignment, type: e.target.value })}
+                  style={{
+                    background: T.s2,
+                    border: `1px solid ${T.border}`,
+                    borderRadius: 8,
+                    padding: '9px 12px',
+                    color: T.text,
+                    fontSize: 13,
+                    outline: 'none',
+                    fontFamily: 'inherit'
+                  }}
+                >
+                  <option value="Text">Online Text editor</option>
+                  <option value="PDF">PDF File Attachment</option>
+                  <option value="Document">Word Document</option>
+                  <option value="URL">Submission URL link</option>
+                  <option value="Image">Screenshots / Image</option>
+                </select>
               </div>
 
               {/* Custom Course Name Input if selected */}

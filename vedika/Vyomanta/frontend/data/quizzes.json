@@ -1,0 +1,442 @@
+[
+  {
+    "id": "quiz-bio-skeletal",
+    "title": "Skeletal & Muscular Systems Assessment",
+    "course": "1789228482056",
+    "courseTitle": "Human Anatomy",
+    "category": "Biology",
+    "duration": "10 mins",
+    "passing_percentage": 70,
+    "total_marks": 10,
+    "questions": [
+      {
+        "question": "What is the primary function of osteocytes in the human skeletal system?",
+        "options": ["Break down bone matrix", "Maintain bone tissue and mineral homeostasis", "Generate red blood cells exclusively", "Produce synovial fluid"],
+        "correct": 1
+      },
+      {
+        "question": "Which type of muscle tissue exhibits voluntary control and striations?",
+        "options": ["Smooth muscle", "Cardiac muscle", "Skeletal muscle", "Visceral muscle"],
+        "correct": 2
+      }
+    ]
+  },
+  {
+    "id": "quiz-bio-cardio",
+    "title": "Circulatory & Cardiovascular Physiology",
+    "course": "1789228482056",
+    "courseTitle": "Human Anatomy",
+    "category": "Biology",
+    "duration": "12 mins",
+    "passing_percentage": 75,
+    "total_marks": 10,
+    "questions": [
+      {
+        "question": "Which heart chamber pumps oxygen-rich blood into systemic circulation via the aorta?",
+        "options": ["Right Atrium", "Right Ventricle", "Left Ventricle", "Left Atrium"],
+        "correct": 2
+      },
+      {
+        "question": "What pacemaker node initiates the heartbeat in a healthy human heart?",
+        "options": ["Atrioventricular (AV) node", "Sinoatrial (SA) node", "Purkinje fibers", "Bundle of His"],
+        "correct": 1
+      }
+    ]
+  },
+  {
+    "id": "quiz-bio-respiration",
+    "title": "Cellular Respiration & Energy Currency",
+    "course": "1789228405992",
+    "courseTitle": "Life Process",
+    "category": "Biology",
+    "duration": "10 mins",
+    "passing_percentage": 70,
+    "total_marks": 10,
+    "questions": [
+      {
+        "question": "In which cellular organelle does the Krebs citric acid cycle take place?",
+        "options": ["Cytoplasm", "Mitochondrial matrix", "Endoplasmic reticulum", "Ribosome"],
+        "correct": 1
+      },
+      {
+        "question": "What molecule acts as the primary immediate energy currency in biological cells?",
+        "options": ["Glucose", "NADH", "ATP", "Pyruvate"],
+        "correct": 2
+      }
+    ]
+  },
+  {
+    "id": "quiz-bio-photosynthesis",
+    "title": "Photosynthesis & Autotrophic Nutrition",
+    "course": "1789228405992",
+    "courseTitle": "Life Process",
+    "category": "Biology",
+    "duration": "10 mins",
+    "passing_percentage": 70,
+    "total_marks": 10,
+    "questions": [
+      {
+        "question": "Where do the light-dependent reactions of photosynthesis occur in chloroplasts?",
+        "options": ["Stroma", "Thylakoid membranes", "Outer envelope", "Mitochondria"],
+        "correct": 1
+      },
+      {
+        "question": "Which enzyme catalyzes the initial carbon-fixing step in the Calvin cycle?",
+        "options": ["ATP synthase", "RuBisCO", "Amylase", "DNA Polymerase"],
+        "correct": 1
+      }
+    ]
+  },
+  {
+    "id": "quiz-chem-covalent",
+    "title": "Chemical Bonding: Ionic vs Covalent",
+    "course": "1789228461789",
+    "courseTitle": "Chemical Bonds",
+    "category": "Chemistry",
+    "duration": "10 mins",
+    "passing_percentage": 70,
+    "total_marks": 10,
+    "questions": [
+      {
+        "question": "What type of chemical bond involves the complete transfer of valence electrons between atoms?",
+        "options": ["Covalent bond", "Ionic bond", "Metallic bond", "Hydrogen bond"],
+        "correct": 1
+      },
+      {
+        "question": "Which of the following compounds exhibits a pure non-polar covalent bond?",
+        "options": ["NaCl", "H2O", "Cl2", "NH3"],
+        "correct": 2
+      }
+    ]
+  },
+  {
+    "id": "quiz-chem-polarity",
+    "title": "Molecular Geometry & Polarity Analysis",
+    "course": "1789228461789",
+    "courseTitle": "Chemical Bonds",
+    "category": "Chemistry",
+    "duration": "15 mins",
+    "passing_percentage": 75,
+    "total_marks": 10,
+    "questions": [
+      {
+        "question": "What is the molecular geometry of a carbon dioxide (CO2) molecule?",
+        "options": ["Bent", "Trigonal planar", "Linear", "Tetrahedral"],
+        "correct": 2
+      },
+      {
+        "question": "Why is water (H2O) a polar molecule despite containing symmetric polar bonds?",
+        "options": ["Its bent shape creates a net non-zero dipole moment", "It contains metallic ions", "Hydrogen atoms repel each other into a flat line", "Oxygen has lower electronegativity than hydrogen"],
+        "correct": 0
+      }
+    ]
+  },
+  {
+    "id": "quiz-chem-bohr",
+    "title": "Bohr's Atomic Model & Emission Spectra",
+    "course": "1789228389906",
+    "courseTitle": "Atomic Structure",
+    "category": "Chemistry",
+    "duration": "10 mins",
+    "passing_percentage": 70,
+    "total_marks": 10,
+    "questions": [
+      {
+        "question": "According to Bohr's model, when does an electron emit a photon of light?",
+        "options": ["When accelerating in a stable orbit", "When jumping from a lower energy orbit to a higher one", "When dropping from a higher energy orbit to a lower one", "When colliding with the nucleus"],
+        "correct": 2
+      },
+      {
+        "question": "What constant connects photon frequency to its quantized energy (E = hf)?",
+        "options": ["Boltzmann constant", "Planck's constant", "Avogadro's constant", "Rydberg constant"],
+        "correct": 1
+      }
+    ]
+  },
+  {
+    "id": "quiz-chem-quantum",
+    "title": "Quantum Numbers & Electron Configurations",
+    "course": "1789228389906",
+    "courseTitle": "Atomic Structure",
+    "category": "Chemistry",
+    "duration": "15 mins",
+    "passing_percentage": 75,
+    "total_marks": 10,
+    "questions": [
+      {
+        "question": "Which quantum number specifies the three-dimensional shape of an orbital?",
+        "options": ["Principal quantum number (n)", "Azimuthal/Angular momentum quantum number (l)", "Magnetic quantum number (ml)", "Spin quantum number (ms)"],
+        "correct": 1
+      },
+      {
+        "question": "What is the maximum number of electrons permitted in an atom's 3d subshell?",
+        "options": ["2", "6", "10", "14"],
+        "correct": 2
+      }
+    ]
+  },
+  {
+    "id": "quiz-phys-ohms",
+    "title": "Ohm's Law & Circuit Analysis Fundamentals",
+    "course": "1789228448965",
+    "courseTitle": "Electricity",
+    "category": "Physics",
+    "duration": "10 mins",
+    "passing_percentage": 70,
+    "total_marks": 10,
+    "questions": [
+      {
+        "question": "According to Ohm's Law, if voltage across a constant resistor doubles, what happens to current?",
+        "options": ["Halves", "Remains unchanged", "Doubles", "Quadruples"],
+        "correct": 2
+      },
+      {
+        "question": "Two 10-ohm resistors are connected in parallel. What is their equivalent resistance?",
+        "options": ["20 ohms", "10 ohms", "5 ohms", "2.5 ohms"],
+        "correct": 2
+      }
+    ]
+  },
+  {
+    "id": "quiz-phys-magnetic",
+    "title": "Electromagnetic Induction & Faraday's Law",
+    "course": "1789228448965",
+    "courseTitle": "Electricity",
+    "category": "Physics",
+    "duration": "12 mins",
+    "passing_percentage": 75,
+    "total_marks": 10,
+    "questions": [
+      {
+        "question": "According to Faraday's law of induction, what induces an electromotive force (EMF) in a closed loop?",
+        "options": ["A steady constant magnetic field", "A changing magnetic flux through the loop", "A constant high electric potential", "The resistance of the wire"],
+        "correct": 1
+      },
+      {
+        "question": "Which rule states that the direction of induced current opposes the change that caused it?",
+        "options": ["Ampere's Law", "Lenz's Law", "Coulomb's Law", "Gauss's Law"],
+        "correct": 1
+      }
+    ]
+  },
+  {
+    "id": "quiz-phys-friction-types",
+    "title": "Mechanics: Static, Kinetic & Rolling Friction",
+    "course": "1789228371981",
+    "courseTitle": "Friction",
+    "category": "Physics",
+    "duration": "10 mins",
+    "passing_percentage": 70,
+    "total_marks": 10,
+    "questions": [
+      {
+        "question": "How does the maximum static friction coefficient (μs) compare to the kinetic friction coefficient (μk)?",
+        "options": ["μs is generally less than μk", "μs is generally greater than μk", "They are always mathematically identical", "μk is infinitely larger than μs"],
+        "correct": 1
+      },
+      {
+        "question": "What happens to frictional force when the contact surface area is doubled (assuming constant normal force)?",
+        "options": ["Friction doubles", "Friction halves", "Friction remains approximately unchanged", "Friction drops to zero"],
+        "correct": 2
+      }
+    ]
+  },
+  {
+    "id": "quiz-phys-incline",
+    "title": "Forces on Inclined Planes & Equilibrium",
+    "course": "1789228371981",
+    "courseTitle": "Friction",
+    "category": "Physics",
+    "duration": "15 mins",
+    "passing_percentage": 75,
+    "total_marks": 10,
+    "questions": [
+      {
+        "question": "For a block resting on an incline of angle θ, what is the magnitude of the normal force?",
+        "options": ["mg", "mg sin(θ)", "mg cos(θ)", "mg tan(θ)"],
+        "correct": 2
+      },
+      {
+        "question": "At what critical angle θ will a block start sliding down if the static coefficient of friction is μs?",
+        "options": ["θ = sin(μs)", "θ = arctan(μs)", "θ = arccos(μs)", "θ = 45 degrees"],
+        "correct": 1
+      }
+    ]
+  },
+  {
+    "id": "quiz-soc-ind-rev",
+    "title": "Industrial Revolution & Modern Transformation",
+    "course": "1789205224090",
+    "courseTitle": "History",
+    "category": "Social",
+    "duration": "10 mins",
+    "passing_percentage": 70,
+    "total_marks": 10,
+    "questions": [
+      {
+        "question": "In which country did the first Industrial Revolution begin during the 18th century?",
+        "options": ["France", "United States", "Great Britain", "Germany"],
+        "correct": 2
+      },
+      {
+        "question": "Which invention by James Watt critically accelerated steam power across factories and locomotives?",
+        "options": ["Spinning Jenny", "Improved Steam Engine with Separate Condenser", "Cotton Gin", "Telegraph"],
+        "correct": 1
+      }
+    ]
+  },
+  {
+    "id": "quiz-soc-ancient",
+    "title": "Ancient Civilizations & River Valley Empires",
+    "course": "1789205224090",
+    "courseTitle": "History",
+    "category": "Social",
+    "duration": "12 mins",
+    "passing_percentage": 70,
+    "total_marks": 10,
+    "questions": [
+      {
+        "question": "Mesopotamian civilization flourished primarily between which two major rivers?",
+        "options": ["Nile and Amazon", "Tigris and Euphrates", "Indus and Ganges", "Yellow and Yangtze"],
+        "correct": 1
+      },
+      {
+        "question": "The famous legal principle 'an eye for an eye' is famously preserved in which ancient code?",
+        "options": ["Code of Justinian", "Magna Carta", "Code of Hammurabi", "Twelve Tables"],
+        "correct": 2
+      }
+    ]
+  },
+  {
+    "id": "quiz-prog-java-oop",
+    "title": "Java Object-Oriented Design Principles",
+    "course": "1789228412700",
+    "courseTitle": "Java",
+    "category": "Programming",
+    "duration": "12 mins",
+    "passing_percentage": 75,
+    "total_marks": 10,
+    "questions": [
+      {
+        "question": "Which Java keyword is used to inherit another class?",
+        "options": ["implements", "extends", "inherits", "super"],
+        "correct": 1
+      },
+      {
+        "question": "Can an abstract class in Java have concrete methods with implementation bodies?",
+        "options": ["Yes, it can have both abstract and concrete methods", "No, abstract classes can only declare empty signatures", "Only if marked static", "Only if marked final"],
+        "correct": 0
+      }
+    ]
+  },
+  {
+    "id": "quiz-prog-java-threads",
+    "title": "Java Concurrency & Memory Model",
+    "course": "1789228412700",
+    "courseTitle": "Java",
+    "category": "Programming",
+    "duration": "15 mins",
+    "passing_percentage": 80,
+    "total_marks": 10,
+    "questions": [
+      {
+        "question": "What is the key effect of marking a Java variable as 'volatile'?",
+        "options": ["It guarantees atomic increment operations", "It ensures reads and writes go directly to main memory rather than CPU cache", "It prevents garbage collection", "It makes the variable immutable"],
+        "correct": 1
+      },
+      {
+        "question": "Which interface should be implemented to create a task that returns a value asynchronously?",
+        "options": ["Runnable", "Callable<V>", "Threadable", "Completable"],
+        "correct": 1
+      }
+    ]
+  },
+  {
+    "id": "quiz-prog-py-syntax",
+    "title": "Python Control Flow & Data Structures",
+    "course": "1",
+    "courseTitle": "Python Fundamentals",
+    "category": "Programming",
+    "duration": "10 mins",
+    "passing_percentage": 75,
+    "total_marks": 10,
+    "questions": [
+      {
+        "question": "Which data structure in Python is immutable and declared with parentheses?",
+        "options": ["List", "Dictionary", "Tuple", "Set"],
+        "correct": 2
+      },
+      {
+        "question": "What does a list comprehension [x**2 for x in range(4)] evaluate to?",
+        "options": ["[0, 1, 4, 9]", "[1, 4, 9, 16]", "[0, 2, 4, 6]", "[4, 9, 16, 25]"],
+        "correct": 0
+      }
+    ]
+  },
+  {
+    "id": "quiz-dsa-bst",
+    "title": "Binary Search Trees & Balancing Techniques",
+    "course": "2",
+    "courseTitle": "Data Structures & Algorithms",
+    "category": "Data Structures & Algorithms",
+    "duration": "15 mins",
+    "passing_percentage": 75,
+    "total_marks": 10,
+    "questions": [
+      {
+        "question": "Which tree traversal order yields keys in non-decreasing order for a Binary Search Tree?",
+        "options": ["Pre-order", "In-order", "Post-order", "Level-order"],
+        "correct": 1
+      },
+      {
+        "question": "What is the worst-case time complexity of searching in a completely skewed BST?",
+        "options": ["O(1)", "O(log n)", "O(n)", "O(n log n)"],
+        "correct": 2
+      }
+    ]
+  },
+  {
+    "id": "quiz-dsa-graphs",
+    "title": "Graph Algorithms: Shortest Path & Traversals",
+    "course": "2",
+    "courseTitle": "Data Structures & Algorithms",
+    "category": "Data Structures & Algorithms",
+    "duration": "15 mins",
+    "passing_percentage": 80,
+    "total_marks": 10,
+    "questions": [
+      {
+        "question": "Which algorithm is suitable for finding the shortest path in a weighted graph with negative edge weights?",
+        "options": ["Dijkstra's Algorithm", "Bellman-Ford Algorithm", "Kruskal's Algorithm", "Prim's Algorithm"],
+        "correct": 1
+      },
+      {
+        "question": "Which data structure is typically used to implement Breadth-First Search (BFS)?",
+        "options": ["Stack", "Queue", "Priority Queue", "Binary Search Tree"],
+        "correct": 1
+      }
+    ]
+  },
+  {
+    "id": "quiz-web-next-ssr",
+    "title": "Next.js App Router & Server Components",
+    "course": "4",
+    "courseTitle": "Web Development with Next.js",
+    "category": "Collaborate",
+    "duration": "12 mins",
+    "passing_percentage": 75,
+    "total_marks": 10,
+    "questions": [
+      {
+        "question": "In Next.js App Router, what directive marks a component to execute on the client?",
+        "options": ["'use server'", "'use client'", "'enable hydration'", "'client side'"],
+        "correct": 1
+      },
+      {
+        "question": "Which file convention defines the root or nested layout in Next.js App Router?",
+        "options": ["page.jsx", "route.js", "layout.jsx", "template.js"],
+        "correct": 2
+      }
+    ]
+  }
+]

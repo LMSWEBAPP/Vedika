@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { getSubjectArtwork } from '@/lib/artwork';
 import './ZimCarousel3D.css';
 
 const DEFAULT_THUMBNAILS = [
@@ -276,7 +277,7 @@ export default function ZimCarousel3D({
           const rankFromFront = numPages - zIndex;
           const faderAlpha = isTop ? 0 : Math.min(0.65, rankFromFront * fade);
 
-          const imgUrl = ct.item.thumbnail || DEFAULT_THUMBNAILS[ct.item.originalIndex % DEFAULT_THUMBNAILS.length];
+          const imgUrl = ct.item.thumbnail || ct.item.image || getSubjectArtwork(ct.item.category, ct.item.title);
 
           return (
             <div
@@ -312,7 +313,7 @@ export default function ZimCarousel3D({
               {/* Content overlay */}
               <div className="zim-card-overlay">
                 <div className="zim-card-category">
-                  {ct.item.category || 'Course'}
+                  {ct.item.badge || ct.item.category || 'Course'}
                 </div>
                 <div className="zim-card-title">
                   {ct.item.title}

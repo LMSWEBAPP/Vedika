@@ -15,12 +15,14 @@ if sys.platform == "win32":
 
 # Import GeminiLiveClient before PySide6 QApplication to prevent Shiboken inspection locks
 from engine.gemini_live import GeminiLiveClient
+from engine.memory import MemoryManager
+import datetime
 
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import QTimer, QThread, QObject, Slot, Signal, QUrl
 from PySide6.QtGui import QCursor, Qt
 from PySide6.QtWebSockets import QWebSocketServer, QWebSocket
-from PySide6.QtNetwork import QHostAddress
+from PySide6.QtNetwork import QHostAddress, QAbstractSocket
 
 ALLOWED_ROUTE_PATTERN = re.compile(r"^/[a-z0-9\-_/]*$")
 
@@ -73,6 +75,7 @@ from engine.sprite import SpriteLoader
 from engine.pet import Pet
 from engine.activity_tracker import DesktopActivityTracker
 from engine.user_profile import UserProfileManager
+from engine.memory import MemoryManager
 from ui.transparent_window import TransparentWindow
 
 class DesktopPetApp(QObject):
@@ -158,6 +161,7 @@ class DesktopPetApp(QObject):
         self.gemini_client.trigger_hint_requested.connect(self.on_trigger_hint_requested)
         self.gemini_client.trigger_action_requested.connect(self.on_trigger_action_requested)
         self.gemini_client.timer_requested.connect(self.on_timer_requested)
+        self.gemini_client.broadcast_webapp_requested.connect(self.broadcast_to_webapp)
 
         # Initialize PointerOverlay & ScreenCapturer on Main GUI Thread
         from ui.pointer_overlay import PointerOverlay
@@ -485,8 +489,9 @@ class DesktopPetApp(QObject):
 
     def is_webapp_connected(self) -> bool:
         """Returns True if at least one active Vyomanta WebApp browser tab is connected via WebSocket."""
-        return any(c.isValid() and c.state() == QWebSocket.SocketState.ConnectedState for c in getattr(self, 'web_clients', []))
+        return any(c.isValid() and c.state() == QAbstractSocket.SocketState.ConnectedState for c in getattr(self, 'web_clients', []))
 
+    @Slot(dict)
     def broadcast_to_webapp(self, message_dict) -> bool:
         """Broadcasts JSON payload to all connected active browser tabs."""
         if not hasattr(self, 'web_clients') or not self.web_clients:
@@ -494,7 +499,7 @@ class DesktopPetApp(QObject):
         msg_str = json.dumps(message_dict)
         sent_count = 0
         for c in list(self.web_clients):
-            if c.isValid() and c.state() == QWebSocket.SocketState.ConnectedState:
+            if c.isValid() and c.state() == QAbstractSocket.SocketState.ConnectedState:
                 c.sendTextMessage(msg_str)
                 sent_count += 1
         return sent_count > 0
@@ -530,8 +535,104 @@ class DesktopPetApp(QObject):
                 if self.pet:
                     self.pet.say(f"I notice you've been working on {puzzle_title}! Press Alt+V if you'd like a hint! 💡", duration=6.0)
 
+            elif msg_type == "ASK_VEDIKA_VIDEO_MOMENT":
+                if hasattr(self, 'gemini_client') and self.gemini_client:
+                    self.gemini_client.active_webapp_context = payload
+
+                time_str = payload.get("timestampFormatted", "this moment")
+                topic_str = payload.get("topic") or payload.get("lessonTitle", "this topic")
+                lesson_str = payload.get("lessonTitle", "")
+                course_str = payload.get("courseTitle", "")
+                concept_summary = payload.get("conceptSummary") or payload.get("overview") or ""
+                snippet = payload.get("transcriptSnippet") or ""
+                
+                print(f"[WS Bridge] Ask Vedika Video Moment received: {lesson_str} @ {time_str} ({topic_str})")
+                self.set_active_animation("explaining")
+
+                if self.pet:
+                    self.pet.say(f"I see you paused at {time_str} on {topic_str}! What part feels tricky or confusing? 💡", duration=6.0)
+
+                # Synthesize rich pedagogic diagnostic prompt with video topic context (Requirement 4)
+                context_parts = [f"Course: '{course_str}'", f"Lesson: '{lesson_str}'", f"Video Timestamp: {time_str}"]
+                if topic_str:
+                    context_parts.append(f"Current Topic: '{topic_str}'")
+                if concept_summary:
+                    context_parts.append(f"Concept Taught at this moment: '{concept_summary}'")
+                if snippet:
+                    context_parts.append(f"Lecture transcript: '{snippet}'")
+
+                context_str = ". ".join(context_parts)
+
+                diagnostic_speech = (
+                    f"Speak this exact sentence warmly out loud: 'I see you paused at {time_str} on {topic_str}! What part feels tricky or confusing?' and wave to me. "
+                    f"[PEDAGOGICAL CONTEXT FOR VEDIKA]: The student is watching this video lesson ({context_str}). "
+                    f"When they ask you to explain what is happening, explain the actual programming/lesson concept taught at this timestamp in simple, intuitive, relatable terms with a clear example. Do NOT capture the computer screen; focus directly on explaining the video lesson concept."
+                )
+                if hasattr(self, "gemini_client") and self.gemini_client:
+                    self.gemini_client.send_realtime_text_prompt(diagnostic_speech)
+
+                # Acknowledge to WebApp that Vedika has received the moment
+                self.broadcast_to_webapp({
+                    "type": "ASK_VEDIKA_ACKNOWLEDGED",
+                    "payload": {
+                        "status": "active",
+                        "timestampFormatted": time_str,
+                        "topic": topic_str
+                    }
+                })
+
+            elif msg_type == "SAVE_STUDY_NOTE":
+                note_text = payload.get("noteText", "").strip()
+                if note_text:
+                    create_new = bool(payload.get("createNew", False))
+                    mm = MemoryManager()
+                    nid, is_updated, combined_text, saved_note = mm.append_or_create_notebook_note(
+                        note_text=note_text,
+                        course_id=payload.get("courseId", ""),
+                        course_title=payload.get("courseTitle", ""),
+                        chapter_title=payload.get("chapterTitle", ""),
+                        lesson_id=payload.get("lessonId", ""),
+                        lesson_title=payload.get("lessonTitle", ""),
+                        video_id=payload.get("videoId", ""),
+                        timestamp_seconds=float(payload.get("timestampSeconds", 0.0) or 0.0),
+                        timestamp_formatted=payload.get("timestampFormatted", "00:00") or "00:00",
+                        topic=payload.get("topic", ""),
+                        source=payload.get("source", "dictated"),
+                        create_new=create_new
+                    )
+                    event_type = "STUDY_NOTE_UPDATED" if is_updated else "STUDY_NOTE_ADDED"
+                    self.broadcast_to_webapp({
+                        "type": event_type,
+                        "payload": saved_note
+                    })
+                    if self.pet:
+                        msg = "Updated your note with new point! 📝" if is_updated else "Added to your personal study notebook! 📝"
+                        self.pet.say(msg, duration=2.5)
+
+            elif msg_type == "GET_STUDY_NOTES":
+                mm = MemoryManager()
+                notes = mm.get_notebook_notes(
+                    course_id=payload.get("courseId"),
+                    lesson_id=payload.get("lessonId")
+                )
+                self.broadcast_to_webapp({
+                    "type": "STUDY_NOTES_LIST",
+                    "payload": {"notes": notes}
+                })
+
+            elif msg_type == "DELETE_STUDY_NOTE":
+                note_id = payload.get("id")
+                if note_id:
+                    mm = MemoryManager()
+                    mm.delete_notebook_note(note_id)
+                    self.broadcast_to_webapp({
+                        "type": "STUDY_NOTE_DELETED",
+                        "payload": {"id": note_id}
+                    })
+
         except Exception as e:
             print(f"[WS Bridge] Message parse error: {e}")
+            traceback.print_exc()
 
     def get_vyomanta_base_url(self):
         """Returns active base URL for Vyomanta (defaults to localhost:3000 if connected or configured, otherwise vercel app)."""

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Search, Plus, Edit2, Trash2, X, ChevronLeft, ChevronRight, GraduationCap, BookOpen, Upload, Download } from 'lucide-react';
 import { T } from '@/lib/lms-data';
 import { useMediaQuery, isMobileMQ } from '@/lib/useMediaQuery';
-import { getCourses, createCourse, updateCourse, deleteCourse } from '@/lib/frappe';
+import { getCourses, createCourse, updateCourse, deleteCourse, getCourseCategories, addCourseCategory } from '@/lib/frappe';
 
 export default function AdminCoursesPage() {
   const router = useRouter();
@@ -13,6 +13,9 @@ export default function AdminCoursesPage() {
   
   // State variables
   const [courses, setCourses] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [isAddingCategory, setIsAddingCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedStatus, setSelectedStatus] = useState('All');
@@ -151,10 +154,28 @@ export default function AdminCoursesPage() {
     }
   };
 
-  // Load courses via unified API client
+  // Load courses & categories via unified API client
   useEffect(() => {
-    getCourses().then(setCourses);
+    Promise.all([getCourses(), getCourseCategories()]).then(([courseList, catList]) => {
+      setCourses(courseList);
+      const courseCats = (courseList || []).map(c => c.category).filter(Boolean);
+      const mergedCats = Array.from(new Set([...catList, ...courseCats]));
+      setCategories(mergedCats);
+    });
   }, []);
+
+  const handleCreateCustomCategory = async () => {
+    const trimmed = newCategoryName.trim();
+    if (!trimmed) return;
+    await addCourseCategory(trimmed);
+    setCategories(prev => {
+      if (prev.some(c => c.toLowerCase() === trimmed.toLowerCase())) return prev;
+      return [...prev, trimmed];
+    });
+    setCurrentCourse(prev => ({ ...prev, category: trimmed }));
+    setIsAddingCategory(false);
+    setNewCategoryName('');
+  };
 
   const updateChecklist = (newList) => {
     // Update Getting Started checklist 'course' step automatically if list is not empty
@@ -173,14 +194,27 @@ export default function AdminCoursesPage() {
 
   const handleOpenCreateModal = () => {
     setModalMode('create');
+    setIsAddingCategory(false);
+    setNewCategoryName('');
     const today = new Date();
     const formattedDate = today.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    setCurrentCourse({ id: '', title: '', instructor: 'Administrator', category: 'Web Development', enrolled: 0, status: 'Draft', date: formattedDate, description: '', image: '', pdf: '' });
+    const defaultCategory = categories[0] || 'Web Development';
+    setCurrentCourse({ id: '', title: '', instructor: 'Administrator', category: defaultCategory, enrolled: 0, status: 'Published', date: formattedDate, description: '', image: '', pdf: '' });
     setIsModalOpen(true);
+  };
+
+  const handleToggleCourseStatus = async (course) => {
+    const nextStatus = (course.status === 'Published' || course.status === 'published') ? 'Draft' : 'Published';
+    await updateCourse(course.id, { ...course, status: nextStatus });
+    const fresh = await getCourses();
+    setCourses(fresh);
+    updateChecklist(fresh);
   };
 
   const handleOpenEditModal = (course) => {
     setModalMode('edit');
+    setIsAddingCategory(false);
+    setNewCategoryName('');
     setCurrentCourse({
       id: course.id,
       title: course.title,
@@ -197,32 +231,30 @@ export default function AdminCoursesPage() {
   };
 
   const handleDeleteCourse = async (id) => {
+    const strId = String(id);
     // 1. Immediately remove from local state
-    setCourses(prev => prev.filter(c => c.id !== id));
+    setCourses(prev => prev.filter(c => String(c.id) !== strId));
 
     // 2. Write to local storage deleted cache to hide on student side instantly
     try {
-      const locallyDeleted = JSON.parse(localStorage.getItem('locally_deleted_courses') || '[]');
-      if (!locallyDeleted.includes(id)) {
-        locallyDeleted.push(id);
+      const locallyDeleted = JSON.parse(localStorage.getItem('locally_deleted_courses') || '[]').map(String);
+      if (!locallyDeleted.includes(strId)) {
+        locallyDeleted.push(strId);
         localStorage.setItem('locally_deleted_courses', JSON.stringify(locallyDeleted));
       }
     } catch (e) {
       console.error('Failed to update locally_deleted_courses:', e);
     }
 
-    // 3. Delete in background
-    deleteCourse(id).then(success => {
-      if (success) {
-        getCourses().then(fresh => {
-          updateChecklist(fresh);
-        });
-      } else {
-        console.error('Failed to delete course from DB in background');
-      }
-    }).catch(e => {
-      console.error('Error during background course deletion:', e);
-    });
+    // 3. Delete via unified API and refresh
+    try {
+      await deleteCourse(id);
+      const fresh = await getCourses();
+      setCourses(fresh);
+      updateChecklist(fresh);
+    } catch (e) {
+      console.error('Error during course deletion:', e);
+    }
   };
 
   const handleSaveCourseSubmit = async (e) => {
@@ -382,13 +414,9 @@ export default function AdminCoursesPage() {
           }}
         >
           <option value="All">All Categories</option>
-          <option value="Personal Development">Personal Development</option>
-          <option value="Design">Design</option>
-          <option value="Business">Business</option>
-          <option value="Finance">Finance</option>
-          <option value="Web Development">Web Development</option>
-          <option value="Frontend">Frontend</option>
-          <option value="Framework">Framework</option>
+          {categories.map((cat) => (
+            <option key={cat} value={cat}>{cat}</option>
+          ))}
         </select>
 
         {/* Status Filter */}
@@ -499,19 +527,29 @@ export default function AdminCoursesPage() {
                       
                       {/* Status */}
                       <td style={{ padding: '16px 20px' }}>
-                        <span style={{
-                          display: 'inline-block',
-                          fontSize: 10.5,
-                          fontWeight: 700,
-                          padding: '3px 9px',
-                          borderRadius: 20,
-                          textTransform: 'capitalize',
-                          background: isPublished ? 'rgba(34, 197, 160, 0.12)' : 'rgba(100, 114, 152, 0.15)',
-                          color: isPublished ? T.green : T.muted,
-                          border: `1px solid ${isPublished ? 'rgba(34, 197, 160, 0.25)' : 'rgba(100, 114, 152, 0.3)'}`
-                        }}>
-                          {course.status}
-                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleCourseStatus(course)}
+                          title={`Click to switch to ${isPublished ? 'Draft' : 'Published'}`}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 5,
+                            fontSize: 10.5,
+                            fontWeight: 700,
+                            padding: '3px 10px',
+                            borderRadius: 20,
+                            textTransform: 'capitalize',
+                            cursor: 'pointer',
+                            background: isPublished ? 'rgba(34, 197, 160, 0.12)' : 'rgba(100, 114, 152, 0.15)',
+                            color: isPublished ? T.green : T.muted,
+                            border: `1px solid ${isPublished ? 'rgba(34, 197, 160, 0.25)' : 'rgba(100, 114, 152, 0.3)'}`,
+                            transition: 'all 0.15s'
+                          }}
+                        >
+                          <span>{course.status || 'Draft'}</span>
+                          <span style={{ fontSize: 9, opacity: 0.6 }}>⇄</span>
+                        </button>
                       </td>
                       
                       {/* Created Date */}
@@ -720,29 +758,117 @@ export default function AdminCoursesPage() {
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: T.text }}>Category</label>
-                  <select
-                    value={currentCourse.category}
-                    onChange={(e) => setCurrentCourse({ ...currentCourse, category: e.target.value })}
-                    style={{
-                      background: T.s2,
-                      border: `1px solid ${T.border}`,
-                      borderRadius: 8,
-                      padding: '9px 12px',
-                      color: T.text,
-                      fontSize: 13,
-                      outline: 'none',
-                      fontFamily: 'inherit'
-                    }}
-                  >
-                    <option value="Personal Development">Personal Development</option>
-                    <option value="Design">Design</option>
-                    <option value="Business">Business</option>
-                    <option value="Finance">Finance</option>
-                    <option value="Web Development">Web Development</option>
-                    <option value="Frontend">Frontend</option>
-                    <option value="Framework">Framework</option>
-                  </select>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: T.text }}>Category</label>
+                    {!isAddingCategory && (
+                      <button
+                        type="button"
+                        onClick={() => { setIsAddingCategory(true); setNewCategoryName(''); }}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: T.purple,
+                          fontSize: 11.5,
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          padding: 0
+                        }}
+                      >
+                        + Add Custom Category
+                      </button>
+                    )}
+                  </div>
+
+                  {!isAddingCategory ? (
+                    <select
+                      value={currentCourse.category}
+                      onChange={(e) => {
+                        if (e.target.value === '__add_new__') {
+                          setIsAddingCategory(true);
+                          setNewCategoryName('');
+                        } else {
+                          setCurrentCourse({ ...currentCourse, category: e.target.value });
+                        }
+                      }}
+                      style={{
+                        background: T.s2,
+                        border: `1px solid ${T.border}`,
+                        borderRadius: 8,
+                        padding: '9px 12px',
+                        color: T.text,
+                        fontSize: 13,
+                        outline: 'none',
+                        fontFamily: 'inherit'
+                      }}
+                    >
+                      {categories.map((cat) => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                      <option value="__add_new__" style={{ color: T.purple, fontWeight: 700 }}>
+                        + Add New Category...
+                      </option>
+                    </select>
+                  ) : (
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <input
+                        type="text"
+                        autoFocus
+                        placeholder="Enter custom category name..."
+                        value={newCategoryName}
+                        onChange={(e) => setNewCategoryName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleCreateCustomCategory();
+                          } else if (e.key === 'Escape') {
+                            setIsAddingCategory(false);
+                          }
+                        }}
+                        style={{
+                          flex: 1,
+                          background: T.s2,
+                          border: `1px solid ${T.purple}`,
+                          borderRadius: 8,
+                          padding: '8px 10px',
+                          color: T.text,
+                          fontSize: 12.5,
+                          outline: 'none',
+                          fontFamily: 'inherit'
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleCreateCustomCategory}
+                        style={{
+                          background: T.purple,
+                          color: '#fff',
+                          border: 'none',
+                          borderRadius: 8,
+                          padding: '0 12px',
+                          fontSize: 12,
+                          fontWeight: 600,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Add
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsAddingCategory(false)}
+                        style={{
+                          background: 'transparent',
+                          border: `1px solid ${T.border}`,
+                          color: T.muted,
+                          borderRadius: 8,
+                          padding: '0 10px',
+                          fontSize: 12,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 

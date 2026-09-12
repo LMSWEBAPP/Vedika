@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { Play, Pause, RotateCcw, RotateCw, Sparkles } from 'lucide-react';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { Play, Pause, RotateCcw, RotateCw, Bot } from 'lucide-react';
+import { T } from '@/lib/lms-data';
 
 function formatTime(seconds) {
   const total = Math.max(0, Math.floor(seconds || 0));
@@ -14,23 +15,28 @@ function formatTime(seconds) {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
-import { T } from '@/lib/lms-data';
-
 export default function VideoPlayerWithAI({
   videoId,
   onExplainRequested,
   onTimeUpdate,
   seekTime,
-  onSeekComplete
+  onSeekComplete,
+  forcePause
 }) {
   const containerRef = useRef(null);
   const playerRef = useRef(null);
   const intervalRef = useRef(null);
+  const progressBarRef = useRef(null);
+  const isDraggingRef = useRef(false);
+
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
+  const [scrubTime, setScrubTime] = useState(null);
   const [duration, setDuration] = useState(0);
   const [isApiReady, setIsApiReady] = useState(false);
-  const [justPausedAt, setJustPausedAt] = useState(null);
+  const [isHoveringBar, setIsHoveringBar] = useState(false);
+  const [hoverTime, setHoverTime] = useState(null);
+  const [hoverX, setHoverX] = useState(0);
 
   const onTimeUpdateRef = useRef(onTimeUpdate);
   useEffect(() => {
@@ -89,10 +95,12 @@ export default function VideoPlayerWithAI({
         height: '100%',
         playerVars: {
           autoplay: 0,
-          controls: 0, // Disable native YouTube controls as requested
-          disablekb: 1,
+          controls: 0, // Clean custom controls
+          disablekb: 0,
           modestbranding: 1,
           rel: 0,
+          showinfo: 0,
+          iv_load_policy: 3,
           playsinline: 1,
           enablejsapi: 1,
           fs: 0,
@@ -107,13 +115,11 @@ export default function VideoPlayerWithAI({
             // YT.PlayerState: PLAYING = 1, PAUSED = 2
             if (event.data === 1) {
               setIsPlaying(true);
-              setJustPausedAt(null);
               if (onTimeUpdateRef.current) onTimeUpdateRef.current(event.target.getCurrentTime() || 0, false);
             } else if (event.data === 2) {
               setIsPlaying(false);
               const pausedSecs = event.target.getCurrentTime() || 0;
               setCurrentTime(pausedSecs);
-              setJustPausedAt(pausedSecs);
               if (onTimeUpdateRef.current) onTimeUpdateRef.current(pausedSecs, true);
             } else {
               setIsPlaying(false);
@@ -127,6 +133,7 @@ export default function VideoPlayerWithAI({
 
     if (intervalRef.current) clearInterval(intervalRef.current);
     intervalRef.current = setInterval(() => {
+      if (isDraggingRef.current) return; // Don't overwrite during live scrub drag
       if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function') {
         try {
           const time = playerRef.current.getCurrentTime();
@@ -142,7 +149,7 @@ export default function VideoPlayerWithAI({
           }
         } catch (e) {}
       }
-    }, 300);
+    }, 250);
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
@@ -165,20 +172,32 @@ export default function VideoPlayerWithAI({
       } catch (err) {}
       if (onSeekComplete) onSeekComplete();
     }
-  }, [seekTime]);
+  }, [seekTime, onSeekComplete]);
 
-  const handleTogglePlay = () => {
+  // Handle external forcePause requests
+  useEffect(() => {
+    if (forcePause && playerRef.current && typeof playerRef.current.pauseVideo === 'function') {
+      try {
+        playerRef.current.pauseVideo();
+        setIsPlaying(false);
+      } catch (e) {}
+    }
+  }, [forcePause]);
+
+  const handleTogglePlay = useCallback(() => {
     if (!playerRef.current) return;
     try {
       if (isPlaying) {
         playerRef.current.pauseVideo();
+        setIsPlaying(false);
       } else {
         playerRef.current.playVideo();
+        setIsPlaying(true);
       }
     } catch (e) {}
-  };
+  }, [isPlaying]);
 
-  const handleSeekDelta = (delta) => {
+  const handleSeekDelta = useCallback((delta) => {
     if (!playerRef.current) return;
     try {
       const current = playerRef.current.getCurrentTime() || currentTime;
@@ -186,125 +205,265 @@ export default function VideoPlayerWithAI({
       playerRef.current.seekTo(target, true);
       setCurrentTime(target);
     } catch (e) {}
-  };
+  }, [currentTime, duration]);
+
+  // Helper to compute time from progress bar coordinate
+  const getTimeFromEvent = useCallback((e) => {
+    if (!progressBarRef.current || !duration) return 0;
+    const rect = progressBarRef.current.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clickX = Math.max(0, Math.min(rect.width, clientX - rect.left));
+    const ratio = clickX / rect.width;
+    return ratio * duration;
+  }, [duration]);
+
+  // Smooth Scrubber Dragging System
+  const handleScrubberStart = useCallback((e) => {
+    e.preventDefault();
+    if (!progressBarRef.current || !duration) return;
+    isDraggingRef.current = true;
+    const newTime = getTimeFromEvent(e);
+    setScrubTime(newTime);
+
+    const handleGlobalMove = (moveEvent) => {
+      if (!isDraggingRef.current) return;
+      const t = getTimeFromEvent(moveEvent);
+      setScrubTime(t);
+      if (progressBarRef.current) {
+        const rect = progressBarRef.current.getBoundingClientRect();
+        const clientX = moveEvent.touches ? moveEvent.touches[0].clientX : moveEvent.clientX;
+        const pos = Math.max(0, Math.min(rect.width, clientX - rect.left));
+        setHoverX(pos);
+        setHoverTime(t);
+      }
+    };
+
+    const handleGlobalEnd = (endEvent) => {
+      if (!isDraggingRef.current) return;
+      isDraggingRef.current = false;
+      const finalTime = getTimeFromEvent(endEvent);
+      setScrubTime(null);
+      setCurrentTime(finalTime);
+      if (playerRef.current && typeof playerRef.current.seekTo === 'function') {
+        playerRef.current.seekTo(finalTime, true);
+      }
+      window.removeEventListener('mousemove', handleGlobalMove);
+      window.removeEventListener('mouseup', handleGlobalEnd);
+      window.removeEventListener('touchmove', handleGlobalMove);
+      window.removeEventListener('touchend', handleGlobalEnd);
+    };
+
+    window.addEventListener('mousemove', handleGlobalMove);
+    window.addEventListener('mouseup', handleGlobalEnd);
+    window.addEventListener('touchmove', handleGlobalMove);
+    window.addEventListener('touchend', handleGlobalEnd);
+  }, [duration, getTimeFromEvent]);
+
+  const handleScrubberMouseMove = useCallback((e) => {
+    if (!progressBarRef.current || !duration) return;
+    const rect = progressBarRef.current.getBoundingClientRect();
+    const pos = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+    setHoverX(pos);
+    setHoverTime((pos / rect.width) * duration);
+  }, [duration]);
+
+  const activeDisplayTime = scrubTime !== null ? scrubTime : currentTime;
+  const progressPercent = duration > 0 ? (activeDisplayTime / duration) * 100 : 0;
+  const isInteractingWithBar = isHoveringBar || isDraggingRef.current;
 
   return (
     <div style={{
       display: 'flex',
       flexDirection: 'column',
-      borderRadius: 16,
-      border: `1px solid ${T.border}`,
-      background: T.s1,
+      background: '#0B0F19',
       overflow: 'hidden',
-      boxShadow: '0 8px 24px -4px rgba(0, 0, 0, 0.08)'
+      height: '100%',
+      minHeight: 0,
+      width: '100%'
     }}>
-      {/* Video Canvas Frame */}
-      <div style={{ position: 'relative', width: '100%', paddingTop: '56.25%', background: '#000000' }}>
-        <div ref={containerRef} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }} />
-
-        {/* Fallback iframe */}
-        {!isApiReady && (
-          <iframe
-            src={`https://www.youtube.com/embed/${videoId}?enablejsapi=1&controls=0`}
-            title="YouTube video player"
-            style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 0 }}
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            allowFullScreen
-          />
-        )}
-
-        {/* Overlay banner when paused (Moved button to the FAR RIGHT) */}
-        {justPausedAt !== null && !isPlaying && (
+      {/* Video Canvas Frame with YouTube Header & Watermark Clipping */}
+      <div style={{
+        position: 'relative',
+        width: '100%',
+        flex: 1,
+        minHeight: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#000000',
+        overflow: 'hidden',
+        userSelect: 'none'
+      }}>
+        <div style={{
+          position: 'relative',
+          width: '100%',
+          aspectRatio: '16 / 9',
+          maxHeight: '100%',
+          background: '#000000',
+          overflow: 'hidden'
+        }}>
+          {/* Scaled/offset viewport to conceal YouTube top title bar and bottom-right logo */}
           <div style={{
             position: 'absolute',
-            bottom: 12,
-            left: 12,
-            right: 12,
-            zIndex: 20,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            borderRadius: 12,
-            background: 'rgba(15, 23, 42, 0.90)',
-            backdropFilter: 'blur(8px)',
-            padding: '10px 16px',
-            border: '1px solid rgba(255, 255, 255, 0.15)',
-            color: '#FFFFFF',
-            boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.5)'
+            top: '-7%',
+            left: '-2%',
+            width: '104%',
+            height: '115%',
+            pointerEvents: 'none' // Prevents clicking YouTube's external links
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{
-                height: 10,
-                width: 10,
-                borderRadius: '50%',
-                background: '#F59E0B',
-                display: 'inline-block'
-              }} />
-              <span style={{ fontSize: 12, color: '#E2E8F0' }}>
-                Paused at <strong style={{ color: '#FFFFFF', fontFamily: 'monospace', fontWeight: 600 }}>{formatTime(justPausedAt)}</strong>
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => onExplainRequested && onExplainRequested(justPausedAt)}
+            <div
+              ref={containerRef}
               style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                borderRadius: 8,
-                background: T.accent,
-                padding: '6px 14px',
-                fontSize: 12,
-                fontWeight: 600,
-                color: '#FFFFFF',
-                border: 'none',
-                cursor: 'pointer',
-                boxShadow: `0 4px 6px -1px ${T.accent}50`,
-                flexShrink: 0
+                width: '100%',
+                height: '100%'
               }}
-            >
-              <Sparkles size={14} style={{ color: '#FCD34D' }} />
-              Explain what is being taught here
-            </button>
+            />
+          </div>
+
+          {/* Fallback iframe */}
+          {!isApiReady && (
+            <iframe
+              src={`https://www.youtube.com/embed/${videoId}?enablejsapi=1&controls=0&modestbranding=1&rel=0`}
+              title="Course Video"
+              style={{
+                position: 'absolute',
+                top: '-7%',
+                left: '-2%',
+                width: '104%',
+                height: '115%',
+                border: 0,
+                pointerEvents: 'none'
+              }}
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+            />
+          )}
+
+          {/* Transparent click-to-play overlay - user stays in LMS and controls playback directly */}
+          <div
+            onClick={handleTogglePlay}
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              height: '100%',
+              zIndex: 10,
+              cursor: 'pointer'
+            }}
+          />
+        </div>
+      </div>
+
+      {/* Ultra-Smooth Video Scrubber Progress Bar */}
+      <div
+        ref={progressBarRef}
+        onMouseDown={handleScrubberStart}
+        onTouchStart={handleScrubberStart}
+        onMouseMove={handleScrubberMouseMove}
+        onMouseEnter={() => setIsHoveringBar(true)}
+        onMouseLeave={() => {
+          setIsHoveringBar(false);
+          setHoverTime(null);
+        }}
+        style={{
+          position: 'relative',
+          width: '100%',
+          height: isInteractingWithBar ? 8 : 4,
+          background: 'rgba(255, 255, 255, 0.12)',
+          cursor: 'pointer',
+          transition: 'height 0.12s ease'
+        }}
+      >
+        {/* Played Progress Track */}
+        <div style={{
+          height: '100%',
+          width: `${progressPercent}%`,
+          background: 'linear-gradient(90deg, #3B82F6 0%, #60A5FA 100%)',
+          position: 'relative',
+          pointerEvents: 'none'
+        }}>
+          {/* Scrubber Knob */}
+          <div style={{
+            position: 'absolute',
+            right: -6,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            width: isInteractingWithBar ? 14 : 8,
+            height: isInteractingWithBar ? 14 : 8,
+            borderRadius: '50%',
+            background: '#FFFFFF',
+            boxShadow: '0 0 10px rgba(96, 165, 250, 0.9)',
+            opacity: isInteractingWithBar ? 1 : 0.85,
+            transition: isDraggingRef.current ? 'none' : 'width 0.12s, height 0.12s'
+          }} />
+        </div>
+
+        {/* Hover Time Tooltip */}
+        {hoverTime !== null && (
+          <div style={{
+            position: 'absolute',
+            bottom: 14,
+            left: hoverX,
+            transform: 'translateX(-50%)',
+            padding: '3px 8px',
+            borderRadius: 6,
+            background: 'rgba(11, 15, 25, 0.95)',
+            color: '#FFFFFF',
+            fontSize: 11,
+            fontFamily: 'monospace',
+            pointerEvents: 'none',
+            whiteSpace: 'nowrap',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+            border: '1px solid rgba(255, 255, 255, 0.15)',
+            zIndex: 30
+          }}>
+            {formatTime(hoverTime)}
           </div>
         )}
       </div>
 
-      {/* Companion Control Bar (Far Left controls, Far Right Explain button) */}
+      {/* Ultra-Sleek Minimalist Video Control Bar */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         gap: 12,
-        padding: '10px 14px',
-        background: T.s2,
-        borderTop: `1px solid ${T.border}`,
-        color: T.text
+        padding: '10px 18px',
+        background: '#0B0F19',
+        borderTop: '1px solid rgba(255, 255, 255, 0.05)',
+        color: '#FFFFFF'
       }}>
-        {/* Left Side Controls */}
+        {/* Left Controls: Play/Pause, -5s, +5s, Digital Clock */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* Play/Pause Button */}
           <button
             type="button"
             onClick={handleTogglePlay}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: 6,
-              padding: '6px 14px',
-              borderRadius: 8,
-              background: T.accent,
+              justifyContent: 'center',
+              width: 34,
+              height: 34,
+              borderRadius: '50%',
+              background: isPlaying ? 'rgba(255, 255, 255, 0.08)' : '#2563EB',
               color: '#FFFFFF',
-              fontSize: 12,
-              fontWeight: 600,
               border: 'none',
               cursor: 'pointer',
-              boxShadow: `0 2px 4px ${T.accent}30`
+              boxShadow: isPlaying ? 'none' : '0 2px 10px rgba(37, 99, 235, 0.4)',
+              transition: 'all 0.15s ease'
             }}
+            title={isPlaying ? 'Pause video' : 'Play video'}
           >
-            {isPlaying ? <Pause size={14} /> : <Play size={14} style={{ fill: '#FFFFFF' }} />}
-            <span>{isPlaying ? 'Pause' : 'Play'}</span>
+            {isPlaying ? (
+              <Pause size={15} style={{ fill: '#FFFFFF' }} />
+            ) : (
+              <Play size={15} style={{ fill: '#FFFFFF', marginLeft: 2 }} />
+            )}
           </button>
 
+          {/* Quick Skip -5s */}
           <button
             type="button"
             onClick={() => handleSeekDelta(-5)}
@@ -312,20 +471,31 @@ export default function VideoPlayerWithAI({
               display: 'inline-flex',
               alignItems: 'center',
               gap: 4,
-              padding: '6px 10px',
+              padding: '6px 9px',
               borderRadius: 8,
               background: 'transparent',
-              color: T.muted,
-              fontSize: 12,
+              color: '#94A3B8',
+              fontSize: 11.5,
+              fontWeight: 500,
               border: 'none',
-              cursor: 'pointer'
+              cursor: 'pointer',
+              transition: 'all 0.15s ease'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = '#FFFFFF';
+              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = '#94A3B8';
+              e.currentTarget.style.background = 'transparent';
             }}
             title="Rewind 5 seconds"
           >
             <RotateCcw size={14} />
-            <span style={{ fontFamily: 'monospace', fontSize: 11 }}>-5s</span>
+            <span style={{ fontFamily: 'monospace' }}>-5s</span>
           </button>
 
+          {/* Quick Skip +5s */}
           <button
             type="button"
             onClick={() => handleSeekDelta(5)}
@@ -333,61 +503,91 @@ export default function VideoPlayerWithAI({
               display: 'inline-flex',
               alignItems: 'center',
               gap: 4,
-              padding: '6px 10px',
+              padding: '6px 9px',
               borderRadius: 8,
               background: 'transparent',
-              color: T.muted,
-              fontSize: 12,
+              color: '#94A3B8',
+              fontSize: 11.5,
+              fontWeight: 500,
               border: 'none',
-              cursor: 'pointer'
+              cursor: 'pointer',
+              transition: 'all 0.15s ease'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = '#FFFFFF';
+              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = '#94A3B8';
+              e.currentTarget.style.background = 'transparent';
             }}
             title="Forward 5 seconds"
           >
             <RotateCw size={14} />
-            <span style={{ fontFamily: 'monospace', fontSize: 11 }}>+5s</span>
+            <span style={{ fontFamily: 'monospace' }}>+5s</span>
           </button>
 
+          {/* Digital Clock Time Counter */}
           <div style={{
             display: 'flex',
             alignItems: 'center',
-            gap: 4,
-            paddingLeft: 10,
-            borderLeft: `1px solid ${T.border}`,
+            gap: 5,
+            paddingLeft: 8,
+            borderLeft: '1px solid rgba(255, 255, 255, 0.1)',
             fontSize: 12,
             fontFamily: 'monospace',
-            color: T.text
+            color: '#CBD5E1',
+            letterSpacing: '0.02em'
           }}>
-            <span style={{ fontWeight: 600, color: T.text }}>{formatTime(currentTime)}</span>
+            <span style={{ fontWeight: 600, color: '#F1F5F9' }}>{formatTime(activeDisplayTime)}</span>
             {duration > 0 && (
               <>
-                <span style={{ color: T.dim }}>/</span>
-                <span style={{ color: T.muted }}>{formatTime(duration)}</span>
+                <span style={{ color: '#475569' }}>/</span>
+                <span style={{ color: '#64748B' }}>{formatTime(duration)}</span>
               </>
             )}
           </div>
         </div>
 
-        {/* Right Side: Explain At MM:SS Button */}
+        {/* Right Side: Elegant "Ask Vedika at MM:SS" Action Button */}
         <button
           type="button"
-          onClick={() => onExplainRequested && onExplainRequested(currentTime)}
+          onClick={() => {
+            if (playerRef.current && isPlaying) {
+              playerRef.current.pauseVideo();
+              setIsPlaying(false);
+            }
+            if (onExplainRequested) onExplainRequested(activeDisplayTime);
+          }}
           style={{
             display: 'inline-flex',
             alignItems: 'center',
-            gap: 6,
-            borderRadius: 10,
-            background: `${T.amber || '#F59E0B'}18`,
-            border: `1px solid ${T.amber || '#F59E0B'}40`,
-            padding: '6px 14px',
+            gap: 7,
+            borderRadius: 9999,
+            background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.18), rgba(217, 119, 6, 0.22))',
+            border: '1px solid rgba(245, 158, 11, 0.45)',
+            padding: '7px 15px',
             fontSize: 12,
             fontWeight: 600,
-            color: T.amber || '#D97706',
+            color: '#FBBF24',
             cursor: 'pointer',
-            flexShrink: 0
+            flexShrink: 0,
+            boxShadow: '0 2px 10px rgba(245, 158, 11, 0.12)',
+            transition: 'all 0.15s ease'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'linear-gradient(135deg, rgba(245, 158, 11, 0.28), rgba(217, 119, 6, 0.35))';
+            e.currentTarget.style.borderColor = 'rgba(245, 158, 11, 0.65)';
+            e.currentTarget.style.boxShadow = '0 2px 14px rgba(245, 158, 11, 0.25)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'linear-gradient(135deg, rgba(245, 158, 11, 0.18), rgba(217, 119, 6, 0.22))';
+            e.currentTarget.style.borderColor = 'rgba(245, 158, 11, 0.45)';
+            e.currentTarget.style.boxShadow = '0 2px 10px rgba(245, 158, 11, 0.12)';
           }}
         >
-          <Sparkles size={14} style={{ color: T.amber || '#F59E0B' }} />
-          Explain At {formatTime(currentTime)}
+          <Bot size={14} style={{ color: '#FCD34D' }} />
+          <span>Ask Vedika at {formatTime(activeDisplayTime)}</span>
         </button>
       </div>
     </div>

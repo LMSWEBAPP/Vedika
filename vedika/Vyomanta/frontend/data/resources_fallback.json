@@ -1,0 +1,74 @@
+[
+  {
+    "id": 1,
+    "name": "Data Structures & Algorithms in Depth",
+    "category": "Computer Science",
+    "subcategory": "Algorithms",
+    "thumbnail": "https://images.unsplash.com/photo-1516116211227-bbc13c7a6707?w=500&auto=format&fit=crop&q=60",
+    "file_link": "https://drive.google.com/file/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs/view",
+    "created_at": "2026-01-15T10:00:00.000Z"
+  },
+  {
+    "id": 2,
+    "name": "Modern Operating Systems & Kernel Architecture",
+    "category": "Computer Science",
+    "subcategory": "Operating Systems",
+    "thumbnail": "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=500&auto=format&fit=crop&q=60",
+    "file_link": "https://drive.google.com/file/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs/view",
+    "created_at": "2026-01-20T10:00:00.000Z"
+  },
+  {
+    "id": 3,
+    "name": "Machine Learning Fundamentals & Neural Networks",
+    "category": "Artificial Intelligence",
+    "subcategory": "Machine Learning",
+    "thumbnail": "https://images.unsplash.com/photo-1620712943543-bcc4688e7485?w=500&auto=format&fit=crop&q=60",
+    "file_link": "https://drive.google.com/file/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs/view",
+    "created_at": "2026-02-01T10:00:00.000Z"
+  },
+  {
+    "id": 4,
+    "name": "Distributed Systems & Cloud Computing Handbook",
+    "category": "Cloud & DevOps",
+    "subcategory": "System Design",
+    "thumbnail": "https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=500&auto=format&fit=crop&q=60",
+    "file_link": "https://drive.google.com/file/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs/view",
+    "created_at": "2026-02-10T10:00:00.000Z"
+  },
+  {
+    "id": 5,
+    "name": "Full-Stack Web Engineering with React & Node",
+    "category": "Web Development",
+    "subcategory": "Full Stack",
+    "thumbnail": "https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=500&auto=format&fit=crop&q=60",
+    "file_link": "https://drive.google.com/file/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs/view",
+    "created_at": "2026-02-18T10:00:00.000Z"
+  },
+  {
+    "id": 6,
+    "name": "Database Management Systems & SQL Query Mastery",
+    "category": "Computer Science",
+    "subcategory": "Databases",
+    "thumbnail": "https://images.unsplash.com/photo-1544383835-bda2bc66a55d?w=500&auto=format&fit=crop&q=60",
+    "file_link": "https://drive.google.com/file/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs/view",
+    "created_at": "2026-02-25T10:00:00.000Z"
+  },
+  {
+    "id": 7,
+    "name": "Computer Networks: Protocols, Architecture & Security",
+    "category": "Computer Science",
+    "subcategory": "Networking",
+    "thumbnail": "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?w=500&auto=format&fit=crop&q=60",
+    "file_link": "https://drive.google.com/file/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs/view",
+    "created_at": "2026-03-01T10:00:00.000Z"
+  },
+  {
+    "id": 8,
+    "name": "Python for Data Science & Scientific Computing",
+    "category": "Artificial Intelligence",
+    "subcategory": "Data Science",
+    "thumbnail": "https://images.unsplash.com/photo-1526379095098-d400fd0bf935?w=500&auto=format&fit=crop&q=60",
+    "file_link": "https://drive.google.com/file/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs/view",
+    "created_at": "2026-03-05T10:00:00.000Z"
+  }
+]

@@ -1,10 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { FileText, Clock, CheckCircle, X, ChevronRight, HelpCircle, ArrowLeft, Send, AlertCircle } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { FileText, Clock, CheckCircle, X, ChevronRight, HelpCircle, ArrowLeft, Send, AlertCircle, Filter, Search } from 'lucide-react';
 import { T } from '@/lib/lms-data';
 import { useMediaQuery, isMobileMQ } from '@/lib/useMediaQuery';
 import { getAssignments, getAssignmentSubmissions, submitAssignmentResponse, getCourses, parseQuestionsList } from '@/lib/frappe';
+import { getSubjectArtwork } from '@/lib/artwork';
+import CategoryShowcaseCarousel from '@/components/CategoryShowcaseCarousel';
+import PacmanPagination from '@/components/PacmanPagination';
 
 export default function StudentAssignmentsPage() {
   const isMobile = useMediaQuery(isMobileMQ);
@@ -15,6 +18,20 @@ export default function StudentAssignmentsPage() {
   const [submissions, setSubmissions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState(null);
+
+  // Category, Search & Pagination States
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 3;
+
+  // Filter States
+  const [filterCourse, setFilterCourse] = useState('all');
+  const [filterChapter, setFilterChapter] = useState('all');
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedCategory, searchQuery, filterCourse, filterChapter]);
 
   // Active Assignment Submission Modal
   const [selectedAssignment, setSelectedAssignment] = useState(null);
@@ -133,11 +150,6 @@ export default function StudentAssignmentsPage() {
     }
   };
 
-  // Helper to map course ID to name
-  const getCourseName = (ass) => {
-    if (ass.custom_course_title) return ass.custom_course_title;
-    return courses.find(c => c.id === ass.course)?.title || ass.course || "Course Topic";
-  };
 
   // Helper to get assignment submission status
   const getAssignmentStatus = (assId) => {
@@ -156,190 +168,387 @@ export default function StudentAssignmentsPage() {
     };
   };
 
-  const containerPadding = isMobile ? '70px 16px 32px 16px' : '40px';
-  const gridColumns = isMobile ? '1fr' : 'repeat(auto-fill, minmax(350px, 1fr))';
+  // Helper to resolve assignment category
+  const getAssignmentCategory = (ass) => {
+    if (ass.category) return ass.category;
+    const match = courses.find(c => String(c.id) === String(ass.course));
+    return match?.category || 'General';
+  };
+
+  const getCourseName = (ass) => {
+    if (ass.courseTitle) return ass.courseTitle;
+    if (ass.custom_course_title) return ass.custom_course_title;
+    const match = courses.find(c => String(c.id) === String(ass.course));
+    return match?.title || ass.course || 'Curriculum Course';
+  };
+
+  // Category showcase deck items
+  const categoryShowcaseItems = useMemo(() => {
+    const map = new Map();
+    assignments.forEach((ass) => {
+      const cat = getAssignmentCategory(ass);
+      if (!map.has(cat)) map.set(cat, { assignments: [], courseIds: new Set() });
+      const entry = map.get(cat);
+      entry.assignments.push(ass);
+      if (ass.course) entry.courseIds.add(String(ass.course));
+    });
+    return Array.from(map.entries()).map(([cat, val]) => ({
+      category: cat,
+      count: val.assignments.length,
+      coursesCount: val.courseIds.size,
+      artwork: getSubjectArtwork(cat),
+      assignments: val.assignments
+    }));
+  }, [assignments, courses]);
+
+  const categories = useMemo(() => {
+    return ['All', ...categoryShowcaseItems.map(c => c.category)];
+  }, [categoryShowcaseItems]);
+
+  const filteredAssignments = useMemo(() => {
+    return assignments.filter(ass => {
+      const cat = getAssignmentCategory(ass);
+      if (selectedCategory && cat.toLowerCase() !== selectedCategory.toLowerCase()) {
+        return false;
+      }
+      if (filterCourse !== 'all' && String(ass.course) !== String(filterCourse)) return false;
+      if (filterChapter !== 'all' && String(ass.chapter) !== String(filterChapter)) return false;
+      if (searchQuery.trim()) {
+        const query = searchQuery.toLowerCase().trim();
+        const titleMatch = ass.title?.toLowerCase().includes(query);
+        const courseMatch = getCourseName(ass)?.toLowerCase().includes(query);
+        const catMatch = cat.toLowerCase().includes(query);
+        if (!titleMatch && !courseMatch && !catMatch) return false;
+      }
+      return true;
+    });
+  }, [assignments, selectedCategory, filterCourse, filterChapter, searchQuery, courses]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredAssignments.length / ITEMS_PER_PAGE));
+  const paginatedAssignments = filteredAssignments.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
+  const containerPadding = isMobile ? '20px 16px' : '24px 32px';
 
   return (
-    <div style={{
-      padding: containerPadding,
-      maxWidth: 1200,
-      margin: '0 auto',
-      fontFamily: 'var(--font-outfit), sans-serif',
-      color: T.text
-    }}>
-      {/* Header */}
-      <div style={{ marginBottom: 28 }}>
-        <h1 style={{ color: T.text, fontSize: isMobile ? 22 : 28, fontWeight: 700, margin: 0, letterSpacing: '-0.04em' }}>
-          Course Assignments
-        </h1>
-        <p style={{ color: T.muted, fontSize: 13.5, margin: '4px 0 0' }}>
-          Submit curriculum challenges, view feedback, and coordinate grades directly with instructors.
-        </p>
-      </div>
-
-      {loading ? (
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 240 }}>
-          <div style={{
-            width: 32, height: 32, borderRadius: '50%',
-            border: '2px solid rgba(155, 110, 248, 0.2)', borderTopColor: T.purple,
-            animation: 'spin 1s linear infinite'
-          }} />
-        </div>
-      ) : assignments.length === 0 ? (
+    <div
+      className="no-scrollbar"
+      style={{
+        padding: containerPadding,
+        maxWidth: 1200,
+        margin: '0 auto',
+        height: '100%',
+        maxHeight: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        overflow: 'hidden',
+        fontFamily: 'var(--font-outfit), sans-serif',
+        color: T.text,
+        boxSizing: 'border-box'
+      }}
+    >
+      {/* STAGE 1: CATEGORY CAROUSEL (When no category is selected) */}
+      {!selectedCategory ? (
         <div style={{
-          background: T.s1, border: `1px solid ${T.border}`, borderRadius: 14,
-          padding: '64px 20px', display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center', textAlign: 'center', minHeight: 300
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: '100%',
+          overflow: 'hidden',
+          textAlign: 'center'
         }}>
-          <FileText size={48} color={T.muted} style={{ marginBottom: 16 }} />
-          <h3 style={{ color: T.text, fontSize: 16, margin: '0 0 6px 0' }}>No Assignments Listed</h3>
-          <p style={{ color: T.muted, fontSize: 13, maxWidth: 300, margin: 0 }}>
-            There are no course assignments assigned to your curriculum at this moment.
-          </p>
+          <div style={{ marginBottom: 16 }}>
+            <h1 style={{ color: T.text, fontSize: isMobile ? 22 : 30, fontWeight: 800, margin: 0, letterSpacing: '-0.04em' }}>
+              Course Assignments
+            </h1>
+            <p style={{ color: T.muted, fontSize: 14, margin: '6px 0 0' }}>
+              Select a subject domain to enter assignments and submit challenges.
+            </p>
+          </div>
+
+          <CategoryShowcaseCarousel
+            items={categoryShowcaseItems}
+            itemTypeLabel="Assignments"
+            onSelectCategory={(cat) => {
+              setSelectedCategory(cat);
+              setCurrentPage(1);
+            }}
+          />
         </div>
       ) : (
+        /* STAGE 2: ASSIGNMENTS INSIDE SELECTED CATEGORY (Zero Scrolling) */
         <div style={{
-          display: 'grid',
-          gridTemplateColumns: gridColumns,
-          gap: 20
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+          width: '100%',
+          height: '100%',
+          overflow: 'hidden'
         }}>
-          {assignments.map((ass) => {
-            const subStatus = getAssignmentStatus(ass.id);
-            return (
-              <div
-                key={ass.id}
-                style={{
-                  background: T.s1,
-                  border: `1px solid ${T.border}`,
-                  borderRadius: 12,
-                  padding: 20,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'space-between',
-                  transition: 'all 0.2s',
+          {/* Top Drilldown Header */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            marginBottom: 16,
+            padding: '10px 16px',
+            background: T.s1,
+            border: `1px solid ${T.border}`,
+            borderRadius: 12,
+            flexWrap: isMobile ? 'wrap' : 'nowrap'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <button
+                onClick={() => {
+                  setSelectedCategory(null);
+                  setCurrentPage(1);
+                  setSearchQuery('');
                 }}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  background: `${T.purple}18`,
+                  border: `1px solid ${T.purple}40`,
+                  color: T.purple,
+                  padding: '6px 14px',
+                  borderRadius: 8,
+                  fontSize: 12.5,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = `${T.purple}30`}
+                onMouseLeave={(e) => e.currentTarget.style.background = `${T.purple}18`}
               >
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 8 }}>
-                    <h3 style={{ color: T.text, fontSize: 15.5, fontWeight: 700, margin: 0, lineHeight: 1.3 }}>
-                      {ass.title}
-                    </h3>
-                  </div>
+                <ArrowLeft size={15} /> Back to Categories
+              </button>
 
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
-                    <span
-                      title={getCourseName(ass)}
-                      style={{
-                        fontSize: 9.5,
-                        background: `${T.purple}15`,
-                        border: `1px solid ${T.purple}25`,
-                        color: T.purple,
-                        padding: '3px 8px',
-                        borderRadius: 4,
-                        maxWidth: 200,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                        display: 'inline-block'
-                      }}
-                    >
-                      {getCourseName(ass)}
-                    </span>
-                    <span style={{ fontSize: 9.5, background: `${T.accent}15`, border: `1px solid ${T.accent}25`, color: T.accent, padding: '3px 8px', borderRadius: 4, whiteSpace: 'nowrap' }}>
-                      Mode: {ass.type}
-                    </span>
-                    {ass.questions?.length > 1 && (
-                      <span style={{ fontSize: 9.5, background: `${T.green}15`, border: `1px solid ${T.green}25`, color: T.green, padding: '3px 8px', borderRadius: 4, whiteSpace: 'nowrap' }}>
-                        {ass.questions.length} Questions
-                      </span>
-                    )}
-                  </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 14.5, fontWeight: 700, color: T.text }}>
+                  📂 {selectedCategory}
+                </span>
+                <span style={{
+                  fontSize: 11,
+                  background: `${T.purple}20`,
+                  color: T.purple,
+                  padding: '2px 8px',
+                  borderRadius: 10,
+                  fontWeight: 700
+                }}>
+                  {filteredAssignments.length} {filteredAssignments.length === 1 ? 'Assignment' : 'Assignments'}
+                </span>
+              </div>
+            </div>
 
-                  {ass.questions && ass.questions.length > 1 ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, margin: '0 0 16px 0' }}>
-                      {ass.questions.map((q, qIdx) => (
-                        <div
-                          key={qIdx}
-                          style={{
-                            fontSize: 12.5,
-                            color: T.muted,
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                            lineHeight: 1.4
-                          }}
-                        >
-                          <span style={{ fontWeight: 700, color: T.purple, marginRight: 6 }}>Q{qIdx + 1}:</span>
-                          {q.prompt?.replace(/<[^>]*>/g, '') || ''}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    ass.question && (
-                      <p
-                        style={{
-                          color: T.muted,
-                          fontSize: 12.5,
-                          lineHeight: 1.5,
-                          margin: '0 0 16px 0',
-                          display: '-webkit-box',
-                          WebkitLineClamp: 2,
-                          WebkitBoxOrient: 'vertical',
-                          overflow: 'hidden'
-                        }}
-                        dangerouslySetInnerHTML={{ __html: ass.question }}
-                      />
-                    )
-                  )}
-                </div>
+            {/* In-category Search */}
+            <div style={{ position: 'relative', width: isMobile ? '100%' : 240 }}>
+              <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: T.muted }} />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={`Search ${selectedCategory}...`}
+                style={{
+                  width: '100%',
+                  padding: '7px 28px 7px 32px',
+                  borderRadius: 8,
+                  background: T.s2,
+                  border: `1px solid ${T.border}`,
+                  color: T.text,
+                  fontSize: 12.5,
+                  outline: 'none'
+                }}
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: T.muted, cursor: 'pointer' }}
+                >
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+          </div>
 
-                <div style={{ borderTop: `1px solid ${T.border}`, paddingTop: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  {/* Status Indicator */}
-                  <div>
-                    {subStatus.status === 'Pass' && (
-                      <span style={{ fontSize: 11.5, color: T.green, display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600 }}>
-                        <CheckCircle size={13} /> Passed {subStatus.score !== null && subStatus.score !== undefined ? `(${subStatus.score}/100)` : ''}
-                      </span>
-                    )}
-                    {subStatus.status === 'Fail' && (
-                      <span style={{ fontSize: 11.5, color: T.red, fontWeight: 600 }}>
-                        Rejected / Fail {subStatus.score !== null && subStatus.score !== undefined ? `(${subStatus.score}/100)` : ''}
-                      </span>
-                    )}
-                    {subStatus.status === 'Not Graded' && (
-                      <span style={{ fontSize: 11.5, color: T.amber, fontWeight: 600 }}>
-                        Pending Grade
-                      </span>
-                    )}
-                    {subStatus.status === 'Not Submitted' && (
-                      <span style={{ fontSize: 11.5, color: T.muted }}>
-                        Not Submitted
-                      </span>
-                    )}
-                  </div>
-
-                  <button
-                    onClick={() => handleOpenPrompt(ass)}
+          {/* Cards Grid or Empty State */}
+          {loading ? (
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 220 }}>
+              <div style={{ width: 30, height: 30, borderRadius: '50%', border: '2px solid rgba(155, 110, 248, 0.2)', borderTopColor: T.purple, animation: 'spin 1s linear infinite' }} />
+            </div>
+          ) : filteredAssignments.length === 0 ? (
+            <div style={{ background: T.s1, border: `1px solid ${T.border}`, borderRadius: 12, padding: '36px 20px', textAlign: 'center' }}>
+              <FileText size={40} color={T.muted} style={{ marginBottom: 12 }} />
+              <h4 style={{ color: T.text, fontSize: 15, margin: '0 0 6px 0' }}>No Assignments Found</h4>
+              <p style={{ color: T.muted, fontSize: 12.5, margin: 0 }}>No assignments match your search query in {selectedCategory}.</p>
+            </div>
+          ) : (
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
+              gap: 16,
+              alignItems: 'stretch'
+            }}>
+              {paginatedAssignments.map((ass) => {
+                const subStatus = getAssignmentStatus(ass.id);
+                return (
+                  <div
+                    key={ass.id}
                     style={{
-                      background: subStatus.status === 'Pass' ? T.s2 : T.purple,
-                      color: subStatus.status === 'Pass' ? T.text : '#fff',
-                      border: subStatus.status === 'Pass' ? `1px solid ${T.border}` : 'none',
-                      padding: '7px 14px',
-                      borderRadius: 8,
-                      fontSize: 12,
-                      fontWeight: 600,
-                      cursor: 'pointer',
+                      background: T.s1,
+                      border: `1px solid ${T.border}`,
+                      borderRadius: 14,
+                      padding: 18,
                       display: 'flex',
-                      alignItems: 'center',
-                      gap: 4
+                      flexDirection: 'column',
+                      justifyContent: 'space-between',
+                      height: 250,
+                      boxShadow: '0 4px 14px rgba(0, 0, 0, 0.15)',
+                      transition: 'border-color 0.2s, transform 0.2s'
                     }}
                   >
-                    {subStatus.status === 'Not Submitted' ? 'Submit Solution' : 'View Submission'} <ChevronRight size={13} />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
+                    <div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                        <span style={{
+                          fontSize: 9.5,
+                          background: `${T.purple}18`,
+                          border: `1px solid ${T.purple}30`,
+                          color: T.purple,
+                          padding: '2.5px 8px',
+                          borderRadius: 4,
+                          fontWeight: 600,
+                          maxWidth: 160,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap'
+                        }}>
+                          📚 {getCourseName(ass)}
+                        </span>
+                        {ass.chapter && (
+                          <span style={{
+                            fontSize: 9.5,
+                            background: 'rgba(56, 189, 248, 0.12)',
+                            color: '#38bdf8',
+                            padding: '2.5px 8px',
+                            borderRadius: 4
+                          }}>
+                            Ch: {ass.chapterTitle || ass.chapter}
+                          </span>
+                        )}
+                      </div>
+
+                      <h3 style={{
+                        color: T.text,
+                        fontSize: 14.5,
+                        fontWeight: 700,
+                        margin: '0 0 10px 0',
+                        lineHeight: 1.35,
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden'
+                      }}>
+                        {ass.title}
+                      </h3>
+
+                      <p style={{
+                        color: T.muted,
+                        fontSize: 12,
+                        margin: '0 0 10px 0',
+                        lineHeight: 1.45,
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden'
+                      }}>
+                        {ass.question || 'Review curriculum instructions and submit solutions.'}
+                      </p>
+
+                      <div style={{ display: 'flex', gap: 10, fontSize: 11.5, color: T.muted }}>
+                        <span style={{
+                          background: `${T.accent}14`,
+                          color: T.accent,
+                          padding: '2px 8px',
+                          borderRadius: 4,
+                          fontWeight: 600
+                        }}>
+                          {ass.type || 'Standard'}
+                        </span>
+                        {ass.questions?.length > 1 && (
+                          <span style={{
+                            background: `${T.green}14`,
+                            color: T.green,
+                            padding: '2px 8px',
+                            borderRadius: 4,
+                            fontWeight: 600
+                          }}>
+                            {ass.questions.length} Questions
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      borderTop: `1px solid ${T.border}`,
+                      paddingTop: 12,
+                      marginTop: 8
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{
+                          width: 7,
+                          height: 7,
+                          borderRadius: '50%',
+                          background: subStatus.status === 'Pass' ? T.green : subStatus.status === 'Needs Review' ? T.accent : T.muted
+                        }} />
+                        <span style={{
+                          fontSize: 11.5,
+                          fontWeight: 700,
+                          color: subStatus.status === 'Pass' ? T.green : subStatus.status === 'Needs Review' ? T.accent : T.muted
+                        }}>
+                          {subStatus.status}
+                        </span>
+                      </div>
+
+                      <button
+                        onClick={() => handleOpenPrompt(ass)}
+                        style={{
+                          background: subStatus.status === 'Pass' ? T.s2 : T.purple,
+                          color: subStatus.status === 'Pass' ? T.text : '#fff',
+                          border: subStatus.status === 'Pass' ? `1px solid ${T.border}` : 'none',
+                          padding: '6px 14px',
+                          borderRadius: 8,
+                          fontSize: 12,
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4
+                        }}
+                      >
+                        {subStatus.status === 'Not Submitted' ? 'Submit' : 'View'} <ChevronRight size={13} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Pacman Pagination */}
+          {filteredAssignments.length > 0 && (
+            <div style={{ marginTop: 12 }}>
+              <PacmanPagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={setCurrentPage}
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -385,12 +594,18 @@ export default function StudentAssignmentsPage() {
                     <h2 style={{ margin: 0, color: T.text, fontSize: 16, fontWeight: 700 }}>
                       {selectedAssignment.title}
                     </h2>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                      <span style={{ fontSize: 11, background: `${T.purple}20`, color: T.purple, padding: '2px 8px', borderRadius: 4, fontWeight: 600 }}>
+                        📚 {getCourseName(selectedAssignment)}
+                      </span>
+                      <span style={{ fontSize: 11, background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', padding: '2px 8px', borderRadius: 4, fontWeight: 600 }}>
+                        🔖 Chapter: {selectedAssignment.chapterTitle || selectedAssignment.chapter || 'General'}
+                      </span>
                       <span style={{ fontSize: 11.5, color: T.muted }}>
                         Mode: {selectedAssignment.type}
                       </span>
                       {qList.length > 1 && (
-                        <span style={{ fontSize: 11, background: `${T.purple}20`, color: T.purple, padding: '1px 8px', borderRadius: 10, fontWeight: 700 }}>
+                        <span style={{ fontSize: 11, background: `${T.green}20`, color: T.green, padding: '2px 8px', borderRadius: 10, fontWeight: 700 }}>
                           Question {activeQuestionIndex + 1} of {qList.length}
                         </span>
                       )}

@@ -38,14 +38,20 @@ function getActiveUserId() {
   return 'anonymous';
 }
 
-// Helper to invalidate cache
+// Helper to invalidate cache across all user sessions
 export function invalidateCoursesCache() {
-  const userId = getActiveUserId();
-  delete clientCache.courses[userId];
-  delete clientCache.coursesTimestamp[userId];
+  clientCache.courses = {};
+  clientCache.coursesTimestamp = {};
   if (typeof window !== 'undefined') {
-    localStorage.removeItem(`cached_courses_list_${userId}`);
-    localStorage.removeItem(`cached_courses_timestamp_${userId}`);
+    try {
+      Object.keys(localStorage).forEach(key => {
+        if (key.startsWith('cached_courses_list_') || key.startsWith('cached_courses_timestamp_')) {
+          localStorage.removeItem(key);
+        }
+      });
+      localStorage.setItem('courses_updated_ts', Date.now().toString());
+      window.dispatchEvent(new Event('courses_updated'));
+    } catch (e) {}
   }
 }
 
@@ -55,14 +61,13 @@ export function invalidateSyllabusCache(courseId) {
     if (typeof window !== 'undefined') {
       localStorage.removeItem(`cached_syllabus_${courseId}`);
       localStorage.removeItem(`cached_syllabus_timestamp_${courseId}`);
-      localStorage.removeItem(`admin_course_details_${courseId}`);
     }
   } else {
     clientCache.syllabus = {};
     if (typeof window !== 'undefined') {
-      // Clear all cached syllabuses from localStorage
+      // Clear all cached read syllabuses from localStorage
       Object.keys(localStorage).forEach(key => {
-        if (key.startsWith('cached_syllabus_') || key.startsWith('admin_course_details_')) {
+        if (key.startsWith('cached_syllabus_')) {
           localStorage.removeItem(key);
         }
       });
@@ -299,332 +304,341 @@ export async function getEnrolledCourses() {
   return DEFAULT_COURSES.filter(c => c.status === 'Published');
 }
 
+// --- Course Categories API ---
+
+export async function getCourseCategories() {
+  if (typeof window !== 'undefined') {
+    try {
+      const res = await fetch('/api/categories', { cache: 'no-store' });
+      if (res.ok) {
+        const list = await res.json();
+        if (Array.isArray(list) && list.length > 0) {
+          localStorage.setItem('admin_course_categories', JSON.stringify(list));
+          return list;
+        }
+      }
+    } catch (_) {}
+
+    const saved = localStorage.getItem('admin_course_categories');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (_) {}
+    }
+  }
+
+  return [
+    "Web Development",
+    "Frontend",
+    "Framework",
+    "Data Structures & Algorithms",
+    "Python Programming",
+    "Finance",
+    "Business",
+    "Design",
+    "Personal Development"
+  ];
+}
+
+export async function addCourseCategory(categoryName) {
+  const trimmed = (categoryName || '').trim();
+  if (!trimmed) return null;
+
+  if (typeof window !== 'undefined') {
+    try {
+      const res = await fetch('/api/categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ category: trimmed })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.categories) {
+          localStorage.setItem('admin_course_categories', JSON.stringify(data.categories));
+        }
+      }
+    } catch (_) {}
+
+    const saved = localStorage.getItem('admin_course_categories');
+    let list = [];
+    try { list = JSON.parse(saved) || []; } catch (_) {}
+    if (!list.some(c => c.toLowerCase() === trimmed.toLowerCase())) {
+      list.push(trimmed);
+      localStorage.setItem('admin_course_categories', JSON.stringify(list));
+    }
+  }
+
+  return trimmed;
+}
+
 // --- High-level Unified REST-based Course Management API ---
 
 /**
  * Fetch all courses (filtered or unfiltered)
  */
 export async function getCourses(options = {}) {
-  const forceRefresh = options.forceRefresh || (typeof window !== 'undefined' && window.location.pathname.includes('/admin'));
-  const userId = getActiveUserId();
-
   let locallyDeleted = [];
   if (typeof window !== 'undefined') {
     try {
-      locallyDeleted = JSON.parse(localStorage.getItem('locally_deleted_courses') || '[]');
+      locallyDeleted = JSON.parse(localStorage.getItem('locally_deleted_courses') || '[]').map(String);
     } catch (e) {}
   }
 
-  // Check cache first
-  const now = Date.now();
-  if (typeof window !== 'undefined' && !forceRefresh) {
-    if (!clientCache.courses[userId]) {
-      try {
-        const cachedStr = localStorage.getItem(`cached_courses_list_${userId}`);
-        const cachedTs = Number(localStorage.getItem(`cached_courses_timestamp_${userId}`) || '0');
-        if (cachedStr && cachedTs) {
-          clientCache.courses[userId] = JSON.parse(cachedStr);
-          clientCache.coursesTimestamp[userId] = cachedTs;
-        }
-      } catch (e) {}
-    }
-  }
-
-  // If cache is valid (within 5 minutes / 300,000ms) and we are not forcing refresh, return it instantly
-  if (!forceRefresh && clientCache.courses[userId] && (now - clientCache.coursesTimestamp[userId] < 300000)) {
-    return clientCache.courses[userId].filter(c => !locallyDeleted.includes(c.id));
-  }
-
-  const fetchPromise = (async () => {
-    let list = null;
-    if (FRAPPE_URL) {
-      try {
-        list = await frappeGet("lms.lms.api.get_courses_optimized");
-        if (list && Array.isArray(list) && !list.error) {
-          // Success
-        } else {
-          list = null;
-        }
-      } catch (e) {
-        console.warn("Failed to fetch optimized courses, falling back to legacy REST API.", e);
-      }
-
-      if (!list) {
-        try {
-          // Fetch LMS Courses and Enrollments from Frappe in parallel
-          const [courses, enrollments] = await Promise.all([
-            frappeRestGet("LMS Course", {
-              fields: JSON.stringify(["name", "title", "published", "creation", "category", "short_introduction", "lessons", "description", "image"]),
-              limit_page_length: 100
-            }),
-            frappeRestGet("LMS Enrollment", {
-              fields: JSON.stringify(["course", "member"]),
-              limit_page_length: 1000
-            }).catch(() => [])
-          ]);
-
-          const enrollmentCounts = {};
-          if (enrollments && Array.isArray(enrollments)) {
-            enrollments.forEach(e => {
-              if (e.course) {
-                enrollmentCounts[e.course] = (enrollmentCounts[e.course] || 0) + 1;
-              }
-            });
-          }
-
-          if (courses && Array.isArray(courses)) {
-            list = courses.map(c => {
-              let descText = c.description || "";
-              let pdfLink = "";
-              if (descText.trim().startsWith('{')) {
-                try {
-                  const parsed = JSON.parse(descText);
-                  descText = parsed.description || "";
-                  pdfLink = parsed.pdf || "";
-                } catch(e) {}
-              }
-              return {
-                id: c.name,
-                title: c.title,
-                instructor: "Administrator",
-                category: c.category || "Web Development",
-                tagline: c.short_introduction || "Learn the basics and get started.",
-                lessonsCount: c.lessons || 0,
-                enrolled: enrollmentCounts[c.name] || 0,
-                status: c.published ? "Published" : "Draft",
-                date: new Date(c.creation).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-                description: descText,
-                image: c.image || "",
-                pdf: pdfLink
-              };
-            });
-          }
-        } catch (e) {
-          console.error("Failed to fetch courses from Frappe REST API. Falling back to local state.", e);
-        }
-      }
-    }
-
-    // Fallback to LocalStorage for offline/simulated mode
-    if (!list && typeof window !== 'undefined') {
-      const savedEnrollments = localStorage.getItem('student_course_enrollments');
-      let localEnrollments = [];
-      if (!savedEnrollments) {
-        const defaultEnrollments = [
-          { course: '1', member: 'student1@lms.com' },
-          { course: '2', member: 'student1@lms.com' },
-          { course: '1', member: 'student2@lms.com' },
-          { course: '1', member: 'student3@lms.com' },
-          { course: '2', member: 'student3@lms.com' },
-          { course: '3', member: 'student3@lms.com' },
-          { course: '2', member: 'student4@lms.com' },
-          { course: '1', member: 'student5@lms.com' }
-        ];
-        localStorage.setItem('student_course_enrollments', JSON.stringify(defaultEnrollments));
-        localEnrollments = defaultEnrollments;
-      } else {
-        try {
-          localEnrollments = JSON.parse(savedEnrollments);
-        } catch (e) {}
-      }
-
-      const localCounts = {};
-      localEnrollments.forEach(e => {
-        if (e.course) {
-          localCounts[e.course] = (localCounts[e.course] || 0) + 1;
-        }
-      });
-
+  // 1. Instant local read for zero-latency UI rendering
+  let list = null;
+  if (typeof window !== 'undefined') {
+    try {
       const saved = localStorage.getItem('admin_courses_list');
       if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          list = parsed.map(c => ({
-            ...c,
-            enrolled: localCounts[c.id] || 0
-          }));
-        } catch (e) {}
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          list = parsed;
+        }
       }
-      if (!list) {
-        list = DEFAULT_COURSES.map(c => ({
-          ...c,
-          enrolled: localCounts[c.id] || 0
-        }));
-        localStorage.setItem('admin_courses_list', JSON.stringify(list));
-      }
-    }
-
-    if (!list) {
-      list = DEFAULT_COURSES;
-    }
-
-    // Clean up locallyDeleted cache for any courses that actually exist in the backend
-    if (typeof window !== 'undefined' && locallyDeleted.length > 0) {
-      const activeIds = new Set(list.map(c => c.id));
-      const cleaned = locallyDeleted.filter(id => !activeIds.has(id));
-      if (cleaned.length !== locallyDeleted.length) {
-        localStorage.setItem('locally_deleted_courses', JSON.stringify(cleaned));
-      }
-    }
-
-    // Update Cache
-    clientCache.courses[userId] = list;
-    clientCache.coursesTimestamp[userId] = Date.now();
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem(`cached_courses_list_${userId}`, JSON.stringify(list));
-        localStorage.setItem(`cached_courses_timestamp_${userId}`, String(clientCache.coursesTimestamp[userId]));
-      } catch (e) {}
-    }
-
-    return list.filter(c => !locallyDeleted.includes(c.id));
-  })();
-
-  if (!forceRefresh && clientCache.courses[userId]) {
-    // Run background refresh silently
-    fetchPromise.catch(e => console.warn("Background courses refresh failed:", e));
-    return clientCache.courses[userId].filter(c => !locallyDeleted.includes(c.id));
+    } catch (e) {}
   }
 
-  return fetchPromise;
+  // 2. Fetch authoritative courses from local Next.js server API (/api/courses)
+  if (typeof window !== 'undefined') {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000);
+      const res = await fetch('/api/courses', { signal: controller.signal }).catch(() => null);
+      clearTimeout(timeoutId);
+
+      if (res && res.ok) {
+        const data = await res.json();
+        if (data && Array.isArray(data.courses) && data.courses.length > 0) {
+          // If local storage has newly added courses not yet on server, merge them
+          if (list && Array.isArray(list)) {
+            const serverIds = new Set(data.courses.map(c => String(c.id)));
+            const localOnly = list.filter(c => !serverIds.has(String(c.id)));
+            list = [...localOnly, ...data.courses];
+          } else {
+            list = data.courses;
+          }
+          try {
+            localStorage.setItem('admin_courses_list', JSON.stringify(list));
+          } catch (e) {}
+        }
+      }
+    } catch (e) {
+      console.warn('[getCourses] API fetch fallback to local:', e);
+    }
+  }
+
+  // 3. Fallback to DEFAULT_COURSES if nothing is initialized yet
+  if (!list || !Array.isArray(list) || list.length === 0) {
+    list = DEFAULT_COURSES;
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('admin_courses_list', JSON.stringify(DEFAULT_COURSES));
+      } catch (e) {}
+    }
+  }
+
+  // 4. Attach student enrollment counts from local storage
+  let localEnrollments = [];
+  if (typeof window !== 'undefined') {
+    try {
+      const savedEnrollments = localStorage.getItem('student_course_enrollments');
+      if (savedEnrollments) {
+        localEnrollments = JSON.parse(savedEnrollments);
+      }
+    } catch (e) {}
+  }
+
+  const localCounts = {};
+  if (Array.isArray(localEnrollments)) {
+    localEnrollments.forEach(e => {
+      if (e && e.course) {
+        localCounts[e.course] = (localCounts[e.course] || 0) + 1;
+      }
+    });
+  }
+
+  const preparedList = list
+    .filter(c => c && !locallyDeleted.includes(String(c.id)))
+    .map(c => ({
+      ...c,
+      enrolled: localCounts[c.id] !== undefined ? localCounts[c.id] : (c.enrolled || 0)
+    }));
+
+  return preparedList;
 }
 
 /**
  * Create a new course
  */
 export async function createCourse(courseData) {
-  invalidateCoursesCache();
-  if (FRAPPE_URL) {
+  const today = new Date();
+  const formattedDate = today.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const newCourse = {
+    ...courseData,
+    id: courseData.id || Date.now().toString(),
+    status: courseData.status || 'Published',
+    enrolled: 0,
+    date: courseData.date || formattedDate
+  };
+
+  // 1. Immediately update localStorage
+  if (typeof window !== 'undefined') {
     try {
-      let inst = "Administrator";
-      if (courseData.instructor && (courseData.instructor.includes("@") || courseData.instructor === "Administrator")) {
-        inst = courseData.instructor;
-      }
-      const serializedDescription = JSON.stringify({
-        description: courseData.description || "",
-        pdf: courseData.pdf || ""
-      });
-      const result = await frappeRestPost("LMS Course", {
-        title: sanitizeTitle(courseData.title),
-        published: courseData.status === "Published" ? 1 : 0,
-        instructors: [{ instructor: inst }],
-        short_introduction: courseData.tagline || courseData.short_introduction || `${courseData.title} course introduction.`,
-        description: serializedDescription,
-        category: courseData.category || "Web Development",
-        image: courseData.image || ""
-      });
-      if (result && result.name) {
-        return {
-          id: result.name,
-          title: result.title,
-          instructor: inst,
-          category: result.category || "Web Development",
-          enrolled: 0,
-          status: result.published ? "Published" : "Draft",
-          date: new Date(result.creation).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-          description: courseData.description || "",
-          image: result.image || "",
-          pdf: courseData.pdf || ""
-        };
-      }
-    } catch (e) {
-      console.error("Failed to create course via Frappe REST API. Falling back to local state.", e);
-    }
+      const saved = localStorage.getItem('admin_courses_list') || JSON.stringify(DEFAULT_COURSES);
+      let courses = JSON.parse(saved);
+      courses = courses.filter(c => String(c.id) !== String(newCourse.id));
+      courses.unshift(newCourse);
+      localStorage.setItem('admin_courses_list', JSON.stringify(courses));
+    } catch (e) {}
   }
 
-  // Simulated Fallback
+  // 2. Persist to server API route (/api/courses)
   if (typeof window !== 'undefined') {
-    const saved = localStorage.getItem('admin_courses_list') || JSON.stringify(DEFAULT_COURSES);
-    const courses = JSON.parse(saved);
-    const today = new Date();
-    const formattedDate = today.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    const newCourse = {
-      ...courseData,
-      id: Date.now().toString(),
-      enrolled: 0,
-      date: formattedDate
-    };
-    courses.unshift(newCourse);
-    localStorage.setItem('admin_courses_list', JSON.stringify(courses));
-    return newCourse;
+    try {
+      fetch('/api/courses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ course: newCourse })
+      }).catch(err => console.warn('[createCourse] /api/courses save error:', err));
+    } catch (e) {}
   }
-  return courseData;
+
+  // 3. Broadcast update to all components and tabs
+  invalidateCoursesCache();
+
+  // 4. Background sync with Frappe if online (non-blocking)
+  if (FRAPPE_URL) {
+    (async () => {
+      try {
+        let inst = "Administrator";
+        if (courseData.instructor && (courseData.instructor.includes("@") || courseData.instructor === "Administrator")) {
+          inst = courseData.instructor;
+        }
+        const serializedDescription = JSON.stringify({
+          description: courseData.description || "",
+          pdf: courseData.pdf || ""
+        });
+        await frappeRestPost("LMS Course", {
+          title: sanitizeTitle(courseData.title),
+          published: newCourse.status === "Published" ? 1 : 0,
+          instructors: [{ instructor: inst }],
+          short_introduction: courseData.tagline || courseData.short_introduction || `${courseData.title} course introduction.`,
+          description: serializedDescription,
+          category: courseData.category || "Web Development",
+          image: courseData.image || ""
+        });
+      } catch (e) {}
+    })();
+  }
+
+  return newCourse;
 }
 
 /**
  * Update a course
  */
 export async function updateCourse(id, courseData) {
-  invalidateCoursesCache();
-  if (id) invalidateSyllabusCache(id);
-  if (FRAPPE_URL) {
+  const strId = String(id);
+  const updatedCourse = { ...courseData, id: strId };
+
+  // 1. Immediately update localStorage
+  if (typeof window !== 'undefined') {
     try {
-      let inst = "Administrator";
-      if (courseData.instructor && (courseData.instructor.includes("@") || courseData.instructor === "Administrator")) {
-        inst = courseData.instructor;
-      }
-      const serializedDescription = JSON.stringify({
-        description: courseData.description || "",
-        pdf: courseData.pdf || ""
-      });
-      const result = await frappeRestPut("LMS Course", id, {
-        title: sanitizeTitle(courseData.title),
-        published: courseData.status === "Published" ? 1 : 0,
-        category: courseData.category || undefined,
-        instructors: [{ instructor: inst }],
-        short_introduction: courseData.tagline || courseData.short_introduction || undefined,
-        description: serializedDescription,
-        image: courseData.image || ""
-      });
-      if (result && result.name) {
-        return {
-          id: result.name,
-          title: result.title,
-          instructor: inst,
-          category: result.category || "Web Development",
-          enrolled: courseData.enrolled || 0,
-          status: result.published ? "Published" : "Draft",
-          date: courseData.date,
-          description: courseData.description || "",
-          image: result.image || "",
-          pdf: courseData.pdf || ""
-        };
-      }
-    } catch (e) {
-      console.error("Failed to update course via Frappe REST API. Falling back to local state.", e);
-    }
+      const saved = localStorage.getItem('admin_courses_list') || JSON.stringify(DEFAULT_COURSES);
+      const courses = JSON.parse(saved);
+      const updated = courses.map(c => String(c.id) === strId ? { ...c, ...courseData, id: strId } : c);
+      localStorage.setItem('admin_courses_list', JSON.stringify(updated));
+    } catch (e) {}
   }
 
-  // Simulated Fallback
+  // 2. Persist to server API route
   if (typeof window !== 'undefined') {
-    const saved = localStorage.getItem('admin_courses_list') || JSON.stringify(DEFAULT_COURSES);
-    const courses = JSON.parse(saved);
-    const updated = courses.map(c => c.id === id ? { ...c, ...courseData } : c);
-    localStorage.setItem('admin_courses_list', JSON.stringify(updated));
-    return courseData;
+    try {
+      fetch('/api/courses', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: strId, course: courseData })
+      }).catch(err => console.warn('[updateCourse] /api/courses error:', err));
+    } catch (e) {}
   }
-  return courseData;
+
+  // 3. Broadcast update
+  invalidateCoursesCache();
+  if (id) invalidateSyllabusCache(strId);
+
+  // 4. Background sync with Frappe
+  if (FRAPPE_URL) {
+    (async () => {
+      try {
+        let inst = "Administrator";
+        if (courseData.instructor && (courseData.instructor.includes("@") || courseData.instructor === "Administrator")) {
+          inst = courseData.instructor;
+        }
+        const serializedDescription = JSON.stringify({
+          description: courseData.description || "",
+          pdf: courseData.pdf || ""
+        });
+        await frappeRestPut("LMS Course", id, {
+          title: sanitizeTitle(courseData.title),
+          published: (courseData.status === "Published" || courseData.status === "published") ? 1 : 0,
+          category: courseData.category || undefined,
+          instructors: [{ instructor: inst }],
+          short_introduction: courseData.tagline || courseData.short_introduction || undefined,
+          description: serializedDescription,
+          image: courseData.image || ""
+        });
+      } catch (e) {}
+    })();
+  }
+
+  return updatedCourse;
 }
 
 /**
  * Delete a course
  */
 export async function deleteCourse(id) {
-  invalidateCoursesCache();
-  if (id) invalidateSyllabusCache(id);
+  const strId = String(id);
 
-  // Save to locally deleted list to ensure it's hidden from the UI immediately
+  // 1. Immediately remove from local storage state and mark deleted
   if (typeof window !== 'undefined') {
     try {
-      const deleted = JSON.parse(localStorage.getItem('locally_deleted_courses') || '[]');
-      if (!deleted.includes(id)) {
-        deleted.push(id);
+      const deleted = JSON.parse(localStorage.getItem('locally_deleted_courses') || '[]').map(String);
+      if (!deleted.includes(strId)) {
+        deleted.push(strId);
         localStorage.setItem('locally_deleted_courses', JSON.stringify(deleted));
       }
     } catch (e) {}
+
+    try {
+      const saved = localStorage.getItem('admin_courses_list') || JSON.stringify(DEFAULT_COURSES);
+      const courses = JSON.parse(saved);
+      const filtered = courses.filter(c => String(c.id) !== strId);
+      localStorage.setItem('admin_courses_list', JSON.stringify(filtered));
+    } catch (e) {}
+
+    localStorage.removeItem(`admin_course_details_${strId}`);
+    localStorage.removeItem(`cached_syllabus_${strId}`);
+    localStorage.removeItem(`cached_syllabus_timestamp_${strId}`);
   }
 
-  if (FRAPPE_URL) {
+  // 2. Persist delete to server API
+  if (typeof window !== 'undefined') {
+    try {
+      fetch(`/api/courses?id=${encodeURIComponent(strId)}`, {
+        method: 'DELETE'
+      }).catch(err => console.warn('[deleteCourse] /api/courses error:', err));
+    } catch (e) {}
+  }
+
+  // 3. Broadcast update to all tabs and listeners
+  invalidateCoursesCache();
+  if (id) invalidateSyllabusCache(strId);
+
+  const isLocalCourseId = /^\d{10,}$/.test(strId) || strId.startsWith('local_') || strId.startsWith('course_');
+
+  if (FRAPPE_URL && !isLocalCourseId) {
     try {
       // 1. Fetch and delete linked Enrollments to avoid LinkExistsError
       const enrollments = await frappeRestGet("LMS Enrollment", {
@@ -685,19 +699,19 @@ export async function deleteCourse(id) {
       // 5. Fetch syllabus first to get chapter and lesson names
       const syllabus = await getCourseSyllabus(id).catch(() => null);
       if (syllabus && syllabus.modules) {
-        // Step A: Unlink lessons from chapters by clearing lessons child table in each chapter
+        // Step A: Unlink lessons from chapters
         for (const mod of syllabus.modules) {
           await frappeRestPut("Course Chapter", mod.id, { lessons: [] }).catch(err => {
             console.warn(`Failed to unlink lessons from chapter ${mod.id}:`, err);
           });
         }
 
-        // Step B: Unlink chapters from course by clearing chapters child table in the course
+        // Step B: Unlink chapters from course
         await frappeRestPut("LMS Course", id, { chapters: [] }).catch(err => {
           console.warn(`Failed to unlink chapters from course ${id}:`, err);
         });
 
-        // Step C: Delete all Course Lessons now that they are unlinked from chapters
+        // Step C: Delete all Course Lessons
         for (const mod of syllabus.modules) {
           if (mod.lessons) {
             for (const les of mod.lessons) {
@@ -708,7 +722,7 @@ export async function deleteCourse(id) {
           }
         }
 
-        // Step D: Delete all Course Chapters now that they are unlinked and lessons are deleted
+        // Step D: Delete all Course Chapters
         for (const mod of syllabus.modules) {
           await frappeRestDelete("Course Chapter", mod.id).catch(err => {
             console.warn(`Could not delete Course Chapter ${mod.id}:`, err);
@@ -719,48 +733,23 @@ export async function deleteCourse(id) {
       // Step E: Finally delete the LMS Course document itself
       await frappeRestDelete("LMS Course", id);
     } catch (e) {
-      console.error("Failed to delete course via Frappe REST API.", e);
-      throw e;
+      console.warn("Could not delete course via Frappe REST API (offline or unavailable). Deleted locally.", e);
     }
   }
 
-  // Simulated Fallback / Offline Fallback sync
-  if (typeof window !== 'undefined') {
-    const saved = localStorage.getItem('admin_courses_list') || JSON.stringify(DEFAULT_COURSES);
-    try {
-      const courses = JSON.parse(saved);
-      const filtered = courses.filter(c => c.id !== id);
-      localStorage.setItem('admin_courses_list', JSON.stringify(filtered));
-    } catch (e) {}
-    return true;
-  }
-  return false;
+  invalidateCoursesCache();
+  return true;
 }
 
 /**
- * Fetch course syllabus outline (Chapters & Lessons) from Frappe DocTypes or Local Caches
+ * Fetch course syllabus outline (Chapters & Lessons) from Server API, Local Storage, or Frappe
  */
 export async function getCourseSyllabus(courseId, options = {}) {
   const forceRefresh = options.forceRefresh || (typeof window !== 'undefined' && window.location.pathname.includes('/admin'));
   const now = Date.now();
 
-  // Check cache first
+  // Check in-memory cache first if not forced refresh
   if (!forceRefresh) {
-    if (typeof window !== 'undefined') {
-      if (!clientCache.syllabus[courseId]) {
-        try {
-          const cachedStr = localStorage.getItem(`cached_syllabus_${courseId}`);
-          const cachedTs = Number(localStorage.getItem(`cached_syllabus_timestamp_${courseId}`) || '0');
-          if (cachedStr && cachedTs) {
-            clientCache.syllabus[courseId] = {
-              data: JSON.parse(cachedStr),
-              timestamp: cachedTs
-            };
-          }
-        } catch (e) {}
-      }
-    }
-
     const cachedEntry = clientCache.syllabus[courseId];
     if (cachedEntry && (now - cachedEntry.timestamp < 300000)) { // 5 minutes TTL
       return cachedEntry.data;
@@ -768,25 +757,58 @@ export async function getCourseSyllabus(courseId, options = {}) {
   }
 
   let syllabus = null;
-  if (FRAPPE_URL) {
+
+  // 1. Try local server persistence API first (Instant and consistent across all pages and users)
+  if (typeof window !== 'undefined') {
     try {
-      syllabus = await frappeGet("lms.lms.api.get_course_syllabus_optimized", { course_id: courseId });
-      if (syllabus && !syllabus.error) {
-        // Success
-      } else {
-        syllabus = null;
+      const res = await fetch(`/api/courses/${encodeURIComponent(courseId)}/syllabus`, { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && Array.isArray(data.modules) && data.modules.length > 0) {
+          syllabus = data;
+          localStorage.setItem(`admin_course_details_${courseId}`, JSON.stringify(syllabus));
+        }
       }
-    } catch (e) {
-      console.warn("Failed to fetch optimized syllabus, falling back to legacy REST API.", e);
+    } catch (_) {}
+  }
+
+  // 2. Check localStorage custom syllabus outlines
+  if (!syllabus && typeof window !== 'undefined') {
+    const saved = localStorage.getItem(`admin_course_details_${courseId}`);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed && Array.isArray(parsed.modules)) {
+          syllabus = parsed;
+          // Sync back to server API in background
+          fetch(`/api/courses/${encodeURIComponent(courseId)}/syllabus`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ syllabus: parsed })
+          }).catch(() => {});
+        }
+      } catch (_) {}
+    }
+  }
+
+  // 3. Try Frappe DocTypes if online and not a local ID
+  const isLocalCourseId = /^\d{10,}$/.test(String(courseId)) || String(courseId).startsWith('local_') || String(courseId).startsWith('course_');
+  if (!syllabus && FRAPPE_URL && !isLocalCourseId) {
+    try {
+      syllabus = await Promise.race([
+        frappeGet("lms.lms.api.get_course_syllabus_optimized", { course_id: courseId }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
+      ]);
+      if (syllabus && syllabus.error) syllabus = null;
+    } catch (_) {
+      syllabus = null;
     }
 
     if (!syllabus) {
       try {
-        // 1. Fetch the main Course document to read its chapters child table
         const courseDoc = await frappeRestGet(`LMS Course/${courseId}`);
         const chapterRefs = courseDoc.chapters || [];
 
-        // 2. Fetch all Course Chapters in parallel
         const modules = await Promise.all((chapterRefs || []).map(async (ref) => {
           try {
             const chDoc = await frappeRestGet(`Course Chapter/${ref.chapter}`);
@@ -847,7 +869,6 @@ export async function getCourseSyllabus(courseId, options = {}) {
               lessons
             };
           } catch (err) {
-            console.error(`Failed to fetch chapter details for ${ref.chapter}`, err);
             return { id: ref.chapter, title: "Untitled Chapter", emoji: "📖", accent: "#5B8CF8", lessons: [] };
           }
         }));
@@ -858,65 +879,57 @@ export async function getCourseSyllabus(courseId, options = {}) {
           tagline: courseDoc.short_introduction || "",
           modules
         };
-      } catch (e) {
-        console.error("Failed to fetch syllabus from Frappe. Falling back to local state.", e);
-      }
+      } catch (_) {}
     }
   }
 
-  // Caching fallback
-  if (!syllabus && typeof window !== 'undefined') {
-    const saved = localStorage.getItem(`admin_course_details_${courseId}`);
-    if (saved) {
-      try {
-        syllabus = JSON.parse(saved);
-      } catch (e) {}
-    }
-
-    if (!syllabus) {
-      // Default structure for newly created courses
-      const defaultOutline = {
-        id: courseId,
-        title: "Course Syllabus Outline",
-        tagline: "Define modules and lessons for students.",
-        modules: [
-          {
-            id: `${courseId}_m1`,
-            title: "Introduction",
-            emoji: "🚀",
-            accent: "#5B8CF8",
-            lessons: [
-              {
-                id: `${courseId}_l1`,
-                title: "What is this course?",
-                dur: "5 min",
-                vid: "",
-                overview: "Welcome to the course. Here is a brief explanation of what we will cover.",
-                pts: ["Course overview", "Course requirements"],
-                quizQuestions: [],
-                codingExercise: {
-                  hasExercise: false,
-                  language: 'python',
-                  instruction: '',
-                  starterCode: '',
-                  solutionCode: '',
-                  testCases: []
-                }
-              }
-            ]
-          }
-        ]
-      };
-      localStorage.setItem(`admin_course_details_${courseId}`, JSON.stringify(defaultOutline));
-      syllabus = defaultOutline;
-    }
-  }
-
+  // 4. Default outline if completely new course
   if (!syllabus) {
-    syllabus = { id: courseId, modules: [] };
+    syllabus = {
+      id: courseId,
+      title: "Course Syllabus Outline",
+      tagline: "Define modules and lessons for students.",
+      modules: [
+        {
+          id: `${courseId}_m1`,
+          title: "Introduction",
+          emoji: "🚀",
+          accent: "#5B8CF8",
+          lessons: [
+            {
+              id: `${courseId}_l1`,
+              title: "What is this course?",
+              dur: "5 min",
+              vid: "",
+              overview: "Welcome to the course. Here is a brief explanation of what we will cover.",
+              pts: ["Course overview", "Course requirements"],
+              quizQuestions: [],
+              codingExercise: {
+                hasExercise: false,
+                language: 'python',
+                instruction: '',
+                starterCode: '',
+                solutionCode: '',
+                testCases: []
+              },
+              pdf: ""
+            }
+          ]
+        }
+      ]
+    };
+
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(`admin_course_details_${courseId}`, JSON.stringify(syllabus));
+      fetch(`/api/courses/${encodeURIComponent(courseId)}/syllabus`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ syllabus })
+      }).catch(() => {});
+    }
   }
 
-  // Save to Cache
+  // Cache in memory and localStorage
   clientCache.syllabus[courseId] = {
     data: syllabus,
     timestamp: Date.now()
@@ -924,8 +937,8 @@ export async function getCourseSyllabus(courseId, options = {}) {
   if (typeof window !== 'undefined') {
     try {
       localStorage.setItem(`cached_syllabus_${courseId}`, JSON.stringify(syllabus));
-      localStorage.setItem(`cached_syllabus_timestamp_${courseId}`, String(clientCache.syllabus[courseId].timestamp));
-    } catch (e) {}
+      localStorage.setItem(`cached_syllabus_timestamp_${courseId}`, String(Date.now()));
+    } catch (_) {}
   }
 
   return syllabus;
@@ -952,116 +965,93 @@ function cleanYoutubeVid(input) {
  * Save course syllabus outline to Frappe DocTypes or Local Storage
  */
 export async function saveCourseSyllabus(courseId, syllabus) {
-  if (FRAPPE_URL) {
-    try {
-      // Get the existing database syllabus first to identify deletions
-      const oldSyllabus = await getCourseSyllabus(courseId, { forceRefresh: true }).catch(() => null);
-      const oldChapters = new Set();
-      const oldLessons = new Set();
-      if (oldSyllabus && oldSyllabus.modules) {
-        oldSyllabus.modules.forEach(m => {
-          oldChapters.add(m.id);
-          if (m.lessons) {
-            m.lessons.forEach(l => oldLessons.add(l.id));
-          }
-        });
-      }
-
-      const newChapters = new Set();
-      const newLessons = new Set();
-      const chaptersList = [];
-
-      for (const chapter of syllabus.modules) {
-        const lessonsList = [];
-
-        // 1. Save all lessons in the chapter first to obtain real DB IDs
-        for (const lesson of chapter.lessons || []) {
-          const cleanVid = cleanYoutubeVid(lesson.vid);
-          const notesStr = JSON.stringify({
-            pts: lesson.pts || ["Key concept introduction."],
-            quizQuestions: lesson.quizQuestions || [],
-            codingExercise: lesson.codingExercise || {
-              hasExercise: false,
-              language: 'python',
-              instruction: '',
-              starterCode: '',
-              solutionCode: '',
-              testCases: []
-            },
-            pdf: lesson.pdf || ""
-          });
-
-          const lRes = await frappePost("lms.lms.api.save_course_lesson_custom", {
-            lesson_id: lesson.id,
-            title: sanitizeTitle(lesson.title),
-            chapter_id: chapter.id,
-            youtube: cleanVid,
-            body: lesson.overview,
-            instructor_notes: notesStr,
-            user_email: getActiveUserId()
-          });
-
-          if (lRes && lRes.status === "success" && lRes.name) {
-            lessonsList.push(lRes.name);
-            newLessons.add(lRes.name);
-          } else {
-            console.error("Failed to save lesson:", lRes);
-            throw new Error((lRes && lRes.message) || `Failed to save lesson "${lesson.title}"`);
-          }
-        }
-
-        // 2. Save the chapter with verified real lesson IDs
-        const chRes = await frappePost("lms.lms.api.save_course_chapter_custom", {
-          chapter_id: chapter.id,
-          title: sanitizeTitle(chapter.title),
-          course: courseId,
-          lessons: lessonsList.map(lId => ({ lesson: lId })),
-          user_email: getActiveUserId()
-        });
-
-        if (chRes && chRes.status === "success" && chRes.name) {
-          chaptersList.push(chRes.name);
-          newChapters.add(chRes.name);
-        } else {
-          console.error("Failed to save chapter:", chRes);
-          throw new Error((chRes && chRes.message) || `Failed to save chapter "${chapter.title}"`);
-        }
-      }
-
-      // 3. Delete removed lessons & chapters
-      for (const oldLesId of oldLessons) {
-        if (!newLessons.has(oldLesId) && !oldLesId.startsWith("les_")) {
-          await frappeRestDelete("Course Lesson", oldLesId).catch(() => {});
-        }
-      }
-
-      for (const oldChId of oldChapters) {
-        if (!newChapters.has(oldChId) && !oldChId.startsWith("ch_")) {
-          await frappeRestDelete("Course Chapter", oldChId).catch(() => {});
-        }
-      }
-
-      invalidateCoursesCache();
-      invalidateSyllabusCache(courseId);
-
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem(`admin_course_details_${courseId}`);
-      }
-
-      return getCourseSyllabus(courseId, { forceRefresh: true });
-    } catch (e) {
-      console.error("Failed to sync course syllabus outline with Frappe server.", e);
-      throw e;
-    }
-  }
-
-  // Caching fallback
+  // 1. Immediately persist to server API (permanent across browsers and reloads)
   if (typeof window !== 'undefined') {
+    try {
+      await fetch(`/api/courses/${encodeURIComponent(courseId)}/syllabus`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ syllabus }),
+        cache: 'no-store'
+      });
+    } catch (apiErr) {
+      console.warn("Failed to persist syllabus to server API:", apiErr);
+    }
+
+    // 2. Persist to localStorage
     localStorage.setItem(`admin_course_details_${courseId}`, JSON.stringify(syllabus));
-    invalidateCoursesCache();
-    invalidateSyllabusCache(courseId);
-    return syllabus;
+    localStorage.setItem(`cached_syllabus_${courseId}`, JSON.stringify(syllabus));
+    localStorage.setItem(`cached_syllabus_timestamp_${courseId}`, String(Date.now()));
+
+    // Update lesson count in cached course list
+    try {
+      const saved = localStorage.getItem('admin_courses_list');
+      if (saved) {
+        const courses = JSON.parse(saved);
+        const totalLessons = (syllabus.modules || []).reduce((acc, m) => acc + (m.lessons ? m.lessons.length : 0), 0);
+        const updated = courses.map(c => String(c.id) === String(courseId) ? { ...c, lessonsCount: totalLessons } : c);
+        localStorage.setItem('admin_courses_list', JSON.stringify(updated));
+      }
+    } catch (_) {}
   }
+
+  // 3. Update memory cache
+  clientCache.syllabus[courseId] = {
+    data: syllabus,
+    timestamp: Date.now()
+  };
+
+  // 4. Try syncing to Frappe DocTypes in background (non-blocking, tolerant of 503)
+  const isLocalCourseId = /^\d{10,}$/.test(String(courseId)) || String(courseId).startsWith('local_') || String(courseId).startsWith('course_');
+  if (FRAPPE_URL && !isLocalCourseId) {
+    (async () => {
+      try {
+        for (const chapter of syllabus.modules) {
+          const lessonsList = [];
+          for (const lesson of chapter.lessons || []) {
+            const cleanVid = cleanYoutubeVid(lesson.vid);
+            const notesStr = JSON.stringify({
+              pts: lesson.pts || ["Key concept introduction."],
+              quizQuestions: lesson.quizQuestions || [],
+              codingExercise: lesson.codingExercise || { hasExercise: false },
+              pdf: lesson.pdf || ""
+            });
+
+            const lRes = await Promise.race([
+              frappePost("lms.lms.api.save_course_lesson_custom", {
+                lesson_id: lesson.id,
+                title: sanitizeTitle(lesson.title),
+                chapter_id: chapter.id,
+                youtube: cleanVid,
+                body: lesson.overview,
+                instructor_notes: notesStr,
+                user_email: getActiveUserId()
+              }),
+              new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
+            ]);
+
+            if (lRes && lRes.status === "success" && lRes.name) {
+              lessonsList.push(lRes.name);
+            }
+          }
+
+          await Promise.race([
+            frappePost("lms.lms.api.save_course_chapter_custom", {
+              chapter_id: chapter.id,
+              title: sanitizeTitle(chapter.title),
+              course: courseId,
+              lessons: lessonsList.map(lId => ({ lesson: lId })),
+              user_email: getActiveUserId()
+            }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
+          ]);
+        }
+      } catch (e) {
+        console.warn("Background Frappe sync skipped (Frappe offline/suspended).");
+      }
+    })();
+  }
+
   return syllabus;
 }
 
@@ -1214,8 +1204,7 @@ export async function createBatch(batchData) {
       });
       return { ...batchData, id: result.name };
     } catch (e) {
-      console.error("Failed to create batch via Frappe REST API. Falling back to local state.", e);
-      throw e;
+      console.warn("Notice: Frappe REST API unavailable for createBatch. Falling back to local state.", e.message || e);
     }
   }
 
@@ -1252,8 +1241,7 @@ export async function updateBatch(id, batchData) {
       });
       return batchData;
     } catch (e) {
-      console.error("Failed to update batch via Frappe REST API. Falling back to local state.", e);
-      throw e;
+      console.warn("Notice: Frappe REST API unavailable for updateBatch. Falling back to local state.", e.message || e);
     }
   }
 
@@ -1359,6 +1347,17 @@ export async function checkStudentEnrollment(courseId, studentEmail) {
 export async function getStudentEnrollments(studentEmail) {
   if (!studentEmail) return [];
 
+  let local = [];
+  if (typeof window !== 'undefined') {
+    try {
+      const saved = localStorage.getItem('student_course_enrollments') || '[]';
+      const enrollments = JSON.parse(saved);
+      local = enrollments.filter(e => e && e.member === studentEmail).map(e => e.course);
+    } catch (e) {}
+  }
+
+  if (local.length > 0) return local;
+
   if (FRAPPE_URL) {
     try {
       const res = await frappeRestGet("LMS Enrollment", {
@@ -1370,20 +1369,11 @@ export async function getStudentEnrollments(studentEmail) {
       });
       return (res || []).map(e => e.course);
     } catch (e) {
-      console.error("Failed to fetch student enrollments via Frappe REST API. Falling back to local state.", e);
+      console.warn("Failed to fetch student enrollments via Frappe REST API. Falling back to local state.", e);
     }
   }
 
-  if (typeof window !== 'undefined') {
-    const saved = localStorage.getItem('student_course_enrollments') || '[]';
-    let enrollments = [];
-    try {
-      enrollments = JSON.parse(saved);
-    } catch (e) {}
-
-    return enrollments.filter(e => e.member === studentEmail).map(e => e.course);
-  }
-  return [];
+  return local;
 }
 
 // --- LMS Quiz API ---
@@ -1419,6 +1409,21 @@ const DEFAULT_QUIZZES = [
 ];
 
 export async function getQuizzes() {
+  // 1. Try local server API first (instant, persistent across reloads and users)
+  if (typeof window !== 'undefined') {
+    try {
+      const res = await fetch('/api/quizzes', { cache: 'no-store' });
+      if (res.ok) {
+        const list = await res.json();
+        if (Array.isArray(list) && list.length > 0) {
+          localStorage.setItem('admin_quizzes_list', JSON.stringify(list));
+          return list;
+        }
+      }
+    } catch (_) {}
+  }
+
+  // 2. Try Frappe LMS backend if configured
   if (FRAPPE_URL) {
     try {
       const quizzes = await frappeRestGet("LMS Quiz", {
@@ -1451,7 +1456,6 @@ export async function getQuizzes() {
                 correct
               };
             } catch (err) {
-              console.error("Failed to fetch LMS Question detail:", ref.question, err);
               return {
                 id: ref.name,
                 question: ref.question_detail || "Question details unavailable",
@@ -1472,7 +1476,6 @@ export async function getQuizzes() {
             questions: questionsList.filter(Boolean)
           };
         } catch (err) {
-          console.error("Failed to fetch LMS Quiz details:", q.name, err);
           return {
             id: q.name,
             title: q.title,
@@ -1486,12 +1489,18 @@ export async function getQuizzes() {
           };
         }
       }));
-      return detailedQuizzes;
+      if (detailedQuizzes && detailedQuizzes.length > 0) {
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('admin_quizzes_list', JSON.stringify(detailedQuizzes));
+        }
+        return detailedQuizzes;
+      }
     } catch (e) {
-      console.error("Failed to fetch quizzes. Falling back.", e);
+      console.warn("Notice: Frappe quizzes API unavailable. Falling back to local state.", e.message || e);
     }
   }
 
+  // 3. Fallback to localStorage or default quizzes
   if (typeof window !== 'undefined') {
     const saved = localStorage.getItem('admin_quizzes_list');
     if (saved) {
@@ -1504,140 +1513,171 @@ export async function getQuizzes() {
 }
 
 export async function createQuiz(quizData) {
-  if (FRAPPE_URL) {
-    try {
-      // 1. Create each question as an LMS Question document first
-      const questionsRefs = [];
-      const qs = quizData.questions || [];
-      for (const q of qs) {
-        const qDoc = await frappeRestPost("LMS Question", {
-          question: q.question,
-          type: "Choices",
-          multiple: 0,
-          option_1: q.options[0] || "",
-          is_correct_1: q.correct === 0 ? 1 : 0,
-          option_2: q.options[1] || "",
-          is_correct_2: q.correct === 1 ? 1 : 0,
-          option_3: q.options[2] || "",
-          is_correct_3: q.correct === 2 ? 1 : 0,
-          option_4: q.options[3] || "",
-          is_correct_4: q.correct === 3 ? 1 : 0,
-        });
-        questionsRefs.push({
-          question: qDoc.name,
-          marks: 5,
-          question_detail: q.question,
-          type: "Choices"
-        });
-      }
+  const payload = {
+    ...quizData,
+    id: quizData.id || ('quiz-' + Date.now()),
+    questions: quizData.questions || []
+  };
 
-      // 2. Create the LMS Quiz document referencing these questions
-      const payload = {
-        title: quizData.title,
-        course: quizData.course,
-        lesson: quizData.lesson || undefined,
-        max_attempts: parseInt(quizData.max_attempts) || 3,
-        passing_percentage: parseInt(quizData.passing_percentage) || 70,
-        total_marks: parseInt(quizData.total_marks) || 10,
-        duration: quizData.duration || '10 mins',
-        questions: questionsRefs
-      };
-
-      let result;
-      try {
-        result = await frappeRestPost("LMS Quiz", payload);
-      } catch (err) {
-        if (err.message && err.message.includes("Could not find Lesson")) {
-          delete payload.lesson;
-          result = await frappeRestPost("LMS Quiz", payload);
-        } else {
-          throw err;
-        }
-      }
-      return { ...quizData, id: result.name };
-    } catch (e) {
-      console.error("Failed to create quiz via Frappe REST API. Falling back to local state.", e);
-      throw e;
-    }
-  }
-
+  // 1. Persist to local server API (/api/quizzes)
   if (typeof window !== 'undefined') {
-    const saved = localStorage.getItem('admin_quizzes_list') || JSON.stringify(DEFAULT_QUIZZES);
-    const list = JSON.parse(saved);
-    const newQuiz = { ...quizData, id: 'quiz-' + Date.now() };
-    list.unshift(newQuiz);
-    localStorage.setItem('admin_quizzes_list', JSON.stringify(list));
-    return newQuiz;
-  }
-  return quizData;
-}
-
-export async function updateQuiz(id, quizData) {
-  if (FRAPPE_URL) {
     try {
-      // 1. Create or update each question
-      const questionsRefs = [];
-      const qs = quizData.questions || [];
-      for (const q of qs) {
-        let qName = q.id;
-        const qPayload = {
-          question: q.question,
-          type: "Choices",
-          multiple: 0,
-          option_1: q.options[0] || "",
-          is_correct_1: q.correct === 0 ? 1 : 0,
-          option_2: q.options[1] || "",
-          is_correct_2: q.correct === 1 ? 1 : 0,
-          option_3: q.options[2] || "",
-          is_correct_3: q.correct === 2 ? 1 : 0,
-          option_4: q.options[3] || "",
-          is_correct_4: q.correct === 3 ? 1 : 0,
+      await fetch('/api/quizzes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ quiz: payload })
+      });
+    } catch (_) {}
+
+    // 2. Persist to localStorage
+    const saved = localStorage.getItem('admin_quizzes_list') || JSON.stringify(DEFAULT_QUIZZES);
+    try {
+      const list = JSON.parse(saved);
+      const existingIdx = list.findIndex(q => q.id === payload.id);
+      if (existingIdx >= 0) {
+        list[existingIdx] = { ...list[existingIdx], ...payload };
+      } else {
+        list.unshift(payload);
+      }
+      localStorage.setItem('admin_quizzes_list', JSON.stringify(list));
+    } catch (_) {}
+  }
+
+  // 3. Optional Frappe background sync (fire-and-forget, never throws to caller)
+  if (FRAPPE_URL) {
+    (async () => {
+      try {
+        const questionsRefs = [];
+        const qs = quizData.questions || [];
+        for (const q of qs) {
+          const qDoc = await frappeRestPost("LMS Question", {
+            question: q.question,
+            type: "Choices",
+            multiple: 0,
+            option_1: q.options?.[0] || "",
+            is_correct_1: q.correct === 0 ? 1 : 0,
+            option_2: q.options?.[1] || "",
+            is_correct_2: q.correct === 1 ? 1 : 0,
+            option_3: q.options?.[2] || "",
+            is_correct_3: q.correct === 2 ? 1 : 0,
+            option_4: q.options?.[3] || "",
+            is_correct_4: q.correct === 3 ? 1 : 0,
+          });
+          questionsRefs.push({
+            question: qDoc.name,
+            marks: 5,
+            question_detail: q.question,
+            type: "Choices"
+          });
+        }
+
+        const frappePayload = {
+          title: quizData.title,
+          course: quizData.course,
+          lesson: quizData.lesson || undefined,
+          max_attempts: parseInt(quizData.max_attempts) || 3,
+          passing_percentage: parseInt(quizData.passing_percentage) || 70,
+          total_marks: parseInt(quizData.total_marks) || 10,
+          duration: quizData.duration || '10 mins',
+          questions: questionsRefs
         };
 
         try {
-          if (qName && !qName.startsWith("q_") && !qName.startsWith("quiz-")) {
-            // Update existing Question document
-            await frappeRestPut("LMS Question", qName, qPayload);
-          } else {
-            // Create new Question document
-            const qDoc = await frappeRestPost("LMS Question", qPayload);
-            qName = qDoc.name;
-          }
-        } catch (qErr) {
-          const isNotFound = qErr.message && (
-            qErr.message.includes('not found') || 
-            qErr.message.includes('404') || 
-            qErr.message.includes('DoesNotExistError')
-          );
-          if (isNotFound) {
-            const qDoc = await frappeRestPost("LMS Question", qPayload);
-            qName = qDoc.name;
-          } else {
-            throw qErr;
+          await frappeRestPost("LMS Quiz", frappePayload);
+        } catch (err) {
+          if (err.message && err.message.includes("Could not find Lesson")) {
+            delete frappePayload.lesson;
+            await frappeRestPost("LMS Quiz", frappePayload);
           }
         }
-
-        questionsRefs.push({
-          question: qName,
-          marks: 5,
-          question_detail: q.question,
-          type: "Choices"
-        });
+      } catch (e) {
+        console.warn("Notice: Frappe background sync for quiz deferred or offline:", e.message || e);
       }
+    })();
+  }
 
-      // 2. Update LMS Quiz referencing these questions
-      const updatePayload = {
-        title: quizData.title,
-        course: quizData.course,
-        lesson: quizData.lesson || null,
-        max_attempts: parseInt(quizData.max_attempts) || 3,
-        passing_percentage: parseInt(quizData.passing_percentage) || 70,
-        total_marks: parseInt(quizData.total_marks) || 10,
-        duration: quizData.duration,
-        questions: questionsRefs
-      };
-      
+  return payload;
+}
+
+export async function updateQuiz(id, quizData) {
+  const payload = {
+    ...quizData,
+    id,
+    questions: quizData.questions || []
+  };
+
+  // 1. Persist to server API (/api/quizzes)
+  if (typeof window !== 'undefined') {
+    try {
+      await fetch('/api/quizzes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ quiz: payload })
+      });
+    } catch (_) {}
+
+    // 2. Persist to localStorage
+    const saved = localStorage.getItem('admin_quizzes_list') || JSON.stringify(DEFAULT_QUIZZES);
+    try {
+      const list = JSON.parse(saved);
+      const updated = list.map(q => q.id === id ? { ...q, ...payload } : q);
+      localStorage.setItem('admin_quizzes_list', JSON.stringify(updated));
+    } catch (_) {}
+  }
+
+  // 3. Optional Frappe sync (fire-and-forget, never throws)
+  if (FRAPPE_URL) {
+    (async () => {
       try {
+        const questionsRefs = [];
+        const qs = quizData.questions || [];
+        for (const q of qs) {
+          let qName = q.id;
+          const qPayload = {
+            question: q.question,
+            type: "Choices",
+            multiple: 0,
+            option_1: q.options?.[0] || "",
+            is_correct_1: q.correct === 0 ? 1 : 0,
+            option_2: q.options?.[1] || "",
+            is_correct_2: q.correct === 1 ? 1 : 0,
+            option_3: q.options?.[2] || "",
+            is_correct_3: q.correct === 2 ? 1 : 0,
+            option_4: q.options?.[3] || "",
+            is_correct_4: q.correct === 3 ? 1 : 0,
+          };
+
+          try {
+            if (qName && !qName.startsWith("q_") && !qName.startsWith("quiz-")) {
+              await frappeRestPut("LMS Question", qName, qPayload);
+            } else {
+              const qDoc = await frappeRestPost("LMS Question", qPayload);
+              qName = qDoc.name;
+            }
+          } catch (qErr) {
+            const qDoc = await frappeRestPost("LMS Question", qPayload);
+            qName = qDoc.name;
+          }
+
+          questionsRefs.push({
+            question: qName,
+            marks: 5,
+            question_detail: q.question,
+            type: "Choices"
+          });
+        }
+
+        const updatePayload = {
+          title: quizData.title,
+          course: quizData.course,
+          lesson: quizData.lesson || null,
+          max_attempts: parseInt(quizData.max_attempts) || 3,
+          passing_percentage: parseInt(quizData.passing_percentage) || 70,
+          total_marks: parseInt(quizData.total_marks) || 10,
+          duration: quizData.duration,
+          questions: questionsRefs
+        };
+
         try {
           await frappeRestPut("LMS Quiz", id, updatePayload);
         } catch (err) {
@@ -1645,79 +1685,47 @@ export async function updateQuiz(id, quizData) {
             updatePayload.lesson = null;
             await frappeRestPut("LMS Quiz", id, updatePayload);
           } else {
-            throw err;
+            await frappeRestPost("LMS Quiz", updatePayload);
           }
         }
-        return quizData;
-      } catch (qzErr) {
-        const isNotFound = qzErr.message && (
-          qzErr.message.includes('not found') || 
-          qzErr.message.includes('404') || 
-          qzErr.message.includes('DoesNotExistError')
-        );
-        if (isNotFound) {
-          const createPayload = {
-            title: quizData.title,
-            course: quizData.course,
-            lesson: quizData.lesson || undefined,
-            max_attempts: parseInt(quizData.max_attempts) || 3,
-            passing_percentage: parseInt(quizData.passing_percentage) || 70,
-            total_marks: parseInt(quizData.total_marks) || 10,
-            duration: quizData.duration || '10 mins',
-            questions: questionsRefs
-          };
-          
-          let result;
-          try {
-            result = await frappeRestPost("LMS Quiz", createPayload);
-          } catch (err) {
-            if (err.message && err.message.includes("Could not find Lesson")) {
-              delete createPayload.lesson;
-              result = await frappeRestPost("LMS Quiz", createPayload);
-            } else {
-              throw err;
-            }
-          }
-          return { ...quizData, id: result.name };
-        } else {
-          throw qzErr;
-        }
+      } catch (e) {
+        console.warn("Notice: Frappe background sync for quiz update deferred or offline:", e.message || e);
       }
-    } catch (e) {
-      console.error("Failed to update quiz via Frappe REST API. Falling back to local state.", e);
-      throw e;
-    }
+    })();
   }
 
-  if (typeof window !== 'undefined') {
-    const saved = localStorage.getItem('admin_quizzes_list') || JSON.stringify(DEFAULT_QUIZZES);
-    const list = JSON.parse(saved);
-    const updated = list.map(q => q.id === id ? { ...q, ...quizData } : q);
-    localStorage.setItem('admin_quizzes_list', JSON.stringify(updated));
-    return quizData;
-  }
-  return quizData;
+  return payload;
 }
 
 export async function deleteQuiz(id) {
-  let backendDeleted = false;
-  if (FRAPPE_URL) {
+  // 1. Delete from server API
+  if (typeof window !== 'undefined') {
     try {
-      await frappeRestDelete("LMS Quiz", id);
-      backendDeleted = true;
-    } catch (e) {
-      console.error("Failed to delete quiz from Frappe server. It might be local-only or unauthorized.", e);
-    }
+      await fetch(`/api/quizzes?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+    } catch (_) {}
+
+    // 2. Delete from localStorage
+    const saved = localStorage.getItem('admin_quizzes_list') || JSON.stringify(DEFAULT_QUIZZES);
+    try {
+      const list = JSON.parse(saved);
+      const filtered = list.filter(q => q.id !== id);
+      localStorage.setItem('admin_quizzes_list', JSON.stringify(filtered));
+    } catch (_) {}
   }
 
-  if (typeof window !== 'undefined') {
-    const saved = localStorage.getItem('admin_quizzes_list') || JSON.stringify(DEFAULT_QUIZZES);
-    const list = JSON.parse(saved);
-    const filtered = list.filter(q => q.id !== id);
-    localStorage.setItem('admin_quizzes_list', JSON.stringify(filtered));
-    return true;
+  // 3. Optional Frappe sync
+  if (FRAPPE_URL) {
+    (async () => {
+      try {
+        await Promise.race([
+          frappeRestDelete("LMS Quiz", id),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
+        ]);
+      } catch (_) {}
+    })();
   }
-  return backendDeleted;
+
+  return true;
 }
 
 // --- LMS Quiz Submission API ---
@@ -1808,13 +1816,16 @@ function setStoredAiEval(subId, score, aiEval) {
 
 const DEFAULT_ASSIGNMENTS = [
   {
-    id: 'assign-python-loops',
+    id: 'assign-python-fibonacci',
     title: 'Implementing Fibonacci Sequence Generator',
     course: '1',
+    courseTitle: 'Python Fundamentals',
+    chapter: '1_m1',
+    chapterTitle: 'Introduction',
     type: 'Text',
     question: '<p>Write a Python function <code>fibonacci(n)</code> that returns the first <code>n</code> Fibonacci numbers as a list. Hand in the source code file or code text.</p>',
     show_answer: true,
-    answer: '<code>def fibonacci(n):\n    if n <= 0: return []\n    if n == 1: return [0]\n    seq = [0, 1]\n    while len(seq) < n:\n        seq.append(seq[-1] + seq[-2])\n    return seq</code>',
+    answer: 'def fibonacci(n):\n    if n <= 0: return []\n    if n == 1: return [0]\n    seq = [0, 1]\n    while len(seq) < n:\n        seq.append(seq[-1] + seq[-2])\n    return seq',
     evaluation_criteria: [
       'Function named fibonacci(n) returning a list',
       'Handles edge cases n <= 0 and n == 1 correctly',
@@ -1822,6 +1833,7 @@ const DEFAULT_ASSIGNMENTS = [
       'Time complexity O(N) or efficient execution'
     ],
     pass_threshold: 70,
+    min_char_count: 20,
     questions: [
       {
         id: 1,
@@ -1832,8 +1844,11 @@ const DEFAULT_ASSIGNMENTS = [
   },
   {
     id: 'assign-dsa-sorting',
-    title: 'Custom Merge Sort Analysis',
+    title: 'Custom Merge Sort Complexity Analysis',
     course: '2',
+    courseTitle: 'Data Structures & Algorithms',
+    chapter: '2_m1',
+    chapterTitle: 'Sorting Algorithms',
     type: 'PDF',
     question: '<p>Compare the computational complexity and space requirements of Merge Sort and In-place Quicksort. Submit a PDF report explaining edge cases.</p>',
     show_answer: false,
@@ -1845,6 +1860,7 @@ const DEFAULT_ASSIGNMENTS = [
       'Edge cases (duplicate elements, sorted array, empty array)'
     ],
     pass_threshold: 75,
+    min_char_count: 20,
     questions: [
       {
         id: 1,
@@ -1884,38 +1900,30 @@ export function parseQuestionsList(questionStr, extraQuestions, defaultAnswer) {
   return [{ id: 1, prompt: questionStr, sample_answer: defaultAnswer || '' }];
 }
 
-export async function getAssignments() {
-  if (FRAPPE_URL) {
+export async function getAssignments(filterParams = {}) {
+  // 1. Try local server API first (instant, persistent across reloads and users)
+  if (typeof window !== 'undefined') {
     try {
-      const assignments = await frappeRestGet("LMS Assignment", {
-        fields: JSON.stringify(["name", "title", "type", "course", "question", "show_answer", "answer"]),
-        limit_page_length: 100
-      });
-      return assignments.map(a => {
-        const extra = getAssignmentMetadata(a.name);
-        const resolvedQuestions = parseQuestionsList(a.question || '', extra.questions, a.answer);
-        return {
-          id: a.name,
-          title: a.title,
-          type: a.type || 'Text',
-          course: a.course,
-          question: a.question || '',
-          show_answer: !!a.show_answer,
-          answer: a.answer || '',
-          evaluation_criteria: extra.evaluation_criteria || [
-            'Function/solution correctly implements requested logic',
-            'Handles edge cases and valid input boundaries',
-            'Clean structure, readability, and formatting'
-          ],
-          pass_threshold: extra.pass_threshold || 70,
-          min_char_count: extra.min_char_count !== undefined ? extra.min_char_count : 20,
-          questions: resolvedQuestions,
-          custom_course_title: extra.custom_course_title || ''
-        };
-      });
-    } catch (e) {
-      console.error("Failed to fetch assignments. Falling back.", e);
-    }
+      const query = new URLSearchParams(filterParams).toString();
+      const res = await fetch(`/api/assignments${query ? '?' + query : ''}`, { cache: 'no-store' });
+      if (res.ok) {
+        const list = await res.json();
+        if (Array.isArray(list) && list.length > 0) {
+          localStorage.setItem('admin_assignments_list', JSON.stringify(list));
+          return list.map(a => {
+            const extra = getAssignmentMetadata(a.id);
+            const resolvedQuestions = parseQuestionsList(a.question || '', extra.questions || a.questions, a.answer);
+            return {
+              ...a,
+              evaluation_criteria: extra.evaluation_criteria || a.evaluation_criteria || [],
+              pass_threshold: extra.pass_threshold || a.pass_threshold || 70,
+              min_char_count: extra.min_char_count !== undefined ? extra.min_char_count : (a.min_char_count !== undefined ? a.min_char_count : 20),
+              questions: resolvedQuestions
+            };
+          });
+        }
+      }
+    } catch (_) {}
   }
 
   if (typeof window !== 'undefined') {
@@ -1931,8 +1939,7 @@ export async function getAssignments() {
             evaluation_criteria: extra.evaluation_criteria || a.evaluation_criteria || [],
             pass_threshold: extra.pass_threshold || a.pass_threshold || 70,
             min_char_count: extra.min_char_count !== undefined ? extra.min_char_count : (a.min_char_count !== undefined ? a.min_char_count : 20),
-            questions: resolvedQuestions,
-            custom_course_title: extra.custom_course_title || a.custom_course_title || ''
+            questions: resolvedQuestions
           };
         });
       } catch (e) {}
@@ -1948,47 +1955,59 @@ export async function createAssignment(assignmentData) {
     ? assignmentData.questions.map((q, idx) => `Question ${idx + 1}: ${q.prompt}`).join('\n\n')
     : (assignmentData.question || 'Assignment prompt details.');
 
-  if (FRAPPE_URL) {
-    try {
-      const result = await frappeRestPost("LMS Assignment", {
-        title: assignmentData.title,
-        type: assignmentData.type || 'Text',
-        course: assignmentData.course,
-        question: combinedQuestion,
-        show_answer: assignmentData.show_answer ? 1 : 0,
-        answer: assignmentData.answer || ''
-      });
-      const assId = result.name;
-      setAssignmentMetadata(assId, {
-        evaluation_criteria: assignmentData.evaluation_criteria || [],
-        pass_threshold: assignmentData.pass_threshold || 70,
-        min_char_count: assignmentData.min_char_count !== undefined ? assignmentData.min_char_count : 20,
-        questions: assignmentData.questions || [],
-        custom_course_title: assignmentData.custom_course_title || ''
-      });
-      return { ...assignmentData, id: assId, question: combinedQuestion };
-    } catch (e) {
-      console.error("Failed to create assignment. Falling back.", e);
-      throw e;
-    }
-  }
+  const payload = {
+    ...assignmentData,
+    id: assignmentData.id || `assign-${Date.now()}`,
+    question: combinedQuestion
+  };
 
+  // 1. Persist to server API
   if (typeof window !== 'undefined') {
+    try {
+      await fetch('/api/assignments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assignment: payload })
+      });
+    } catch (_) {}
+
+    // 2. Persist to localStorage
     const saved = localStorage.getItem('admin_assignments_list') || JSON.stringify(DEFAULT_ASSIGNMENTS);
-    const list = JSON.parse(saved);
-    const newAss = { ...assignmentData, id: 'assign-' + Date.now(), question: combinedQuestion };
-    list.unshift(newAss);
-    localStorage.setItem('admin_assignments_list', JSON.stringify(list));
-    setAssignmentMetadata(newAss.id, {
+    try {
+      const list = JSON.parse(saved);
+      list.unshift(payload);
+      localStorage.setItem('admin_assignments_list', JSON.stringify(list));
+    } catch (_) {}
+
+    setAssignmentMetadata(payload.id, {
       evaluation_criteria: assignmentData.evaluation_criteria || [],
       pass_threshold: assignmentData.pass_threshold || 70,
       min_char_count: assignmentData.min_char_count !== undefined ? assignmentData.min_char_count : 20,
       questions: assignmentData.questions || [],
       custom_course_title: assignmentData.custom_course_title || ''
     });
-    return newAss;
   }
-  return assignmentData;
+
+  // 3. Optional Frappe background sync
+  if (FRAPPE_URL) {
+    (async () => {
+      try {
+        await Promise.race([
+          frappeRestPost("LMS Assignment", {
+            title: payload.title,
+            type: payload.type || 'Text',
+            course: payload.course,
+            question: combinedQuestion,
+            show_answer: payload.show_answer ? 1 : 0,
+            answer: payload.answer || ''
+          }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
+        ]);
+      } catch (_) {}
+    })();
+  }
+
+  return payload;
 }
 
 export async function updateAssignment(id, assignmentData) {
@@ -1996,59 +2015,68 @@ export async function updateAssignment(id, assignmentData) {
     ? assignmentData.questions.map((q, idx) => `Question ${idx + 1}: ${q.prompt}`).join('\n\n')
     : (assignmentData.question || 'Assignment prompt details.');
 
-  setAssignmentMetadata(id, {
-    evaluation_criteria: assignmentData.evaluation_criteria || [],
-    pass_threshold: assignmentData.pass_threshold || 70,
-    min_char_count: assignmentData.min_char_count !== undefined ? assignmentData.min_char_count : 20,
-    questions: assignmentData.questions || [],
-    custom_course_title: assignmentData.custom_course_title || ''
-  });
+  const payload = {
+    ...assignmentData,
+    id,
+    question: combinedQuestion
+  };
 
-  if (FRAPPE_URL) {
-    try {
-      await frappeRestPut("LMS Assignment", id, {
-        title: assignmentData.title,
-        type: assignmentData.type,
-        course: assignmentData.course,
-        question: combinedQuestion,
-        show_answer: assignmentData.show_answer ? 1 : 0,
-        answer: assignmentData.answer
-      });
-      return { ...assignmentData, question: combinedQuestion };
-    } catch (e) {
-      console.error("Failed to update assignment. Falling back.", e);
-      throw e;
-    }
-  }
-
+  // 1. Persist to server API
   if (typeof window !== 'undefined') {
+    try {
+      await fetch('/api/assignments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assignment: payload })
+      });
+    } catch (_) {}
+
+    // 2. Persist to localStorage
     const saved = localStorage.getItem('admin_assignments_list') || JSON.stringify(DEFAULT_ASSIGNMENTS);
-    const list = JSON.parse(saved);
-    const updated = list.map(a => a.id === id ? { ...a, ...assignmentData, question: combinedQuestion } : a);
-    localStorage.setItem('admin_assignments_list', JSON.stringify(updated));
-    return assignmentData;
+    try {
+      const list = JSON.parse(saved);
+      const updated = list.map(a => a.id === id ? { ...a, ...payload } : a);
+      localStorage.setItem('admin_assignments_list', JSON.stringify(updated));
+    } catch (_) {}
+
+    setAssignmentMetadata(id, {
+      evaluation_criteria: assignmentData.evaluation_criteria || [],
+      pass_threshold: assignmentData.pass_threshold || 70,
+      min_char_count: assignmentData.min_char_count !== undefined ? assignmentData.min_char_count : 20,
+      questions: assignmentData.questions || [],
+      custom_course_title: assignmentData.custom_course_title || ''
+    });
   }
-  return assignmentData;
+
+  return payload;
 }
 
 export async function deleteAssignment(id) {
-  if (FRAPPE_URL) {
+  if (typeof window !== 'undefined') {
     try {
-      await frappeRestDelete("LMS Assignment", id);
-      return true;
-    } catch (e) {
-      console.error("Failed to delete assignment.", e);
-    }
+      await fetch(`/api/assignments?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+    } catch (_) {}
+
+    const saved = localStorage.getItem('admin_assignments_list') || JSON.stringify(DEFAULT_ASSIGNMENTS);
+    try {
+      const list = JSON.parse(saved);
+      const filtered = list.filter(a => a.id !== id);
+      localStorage.setItem('admin_assignments_list', JSON.stringify(filtered));
+    } catch (_) {}
   }
 
-  if (typeof window !== 'undefined') {
-    const saved = localStorage.getItem('admin_assignments_list') || JSON.stringify(DEFAULT_ASSIGNMENTS);
-    const list = JSON.parse(saved);
-    const filtered = list.filter(a => a.id !== id);
-    localStorage.setItem('admin_assignments_list', JSON.stringify(filtered));
-    return true;
+  if (FRAPPE_URL) {
+    (async () => {
+      try {
+        await Promise.race([
+          frappeRestDelete("LMS Assignment", id),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
+        ]);
+      } catch (_) {}
+    })();
   }
-  return false;
+
+  return true;
 }
 
 // --- LMS Assignment Submission API ---

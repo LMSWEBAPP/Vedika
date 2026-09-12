@@ -73,6 +73,23 @@ class MemoryManager:
                     subject TEXT DEFAULT 'general',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
+
+                CREATE TABLE IF NOT EXISTS student_notebook_notes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    course_id TEXT DEFAULT '',
+                    course_title TEXT DEFAULT '',
+                    chapter_title TEXT DEFAULT '',
+                    lesson_id TEXT DEFAULT '',
+                    lesson_title TEXT DEFAULT '',
+                    video_id TEXT DEFAULT '',
+                    timestamp_seconds REAL DEFAULT 0.0,
+                    timestamp_formatted TEXT DEFAULT '00:00',
+                    note_text TEXT NOT NULL,
+                    topic TEXT DEFAULT '',
+                    source TEXT DEFAULT 'vedika_voice', -- 'vedika_voice' | 'dictated' | 'manual'
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
             """)
 
             # Seed default profile if empty
@@ -357,3 +374,206 @@ class MemoryManager:
             
         print("[MemoryManager] All student conversation memories and voice chat history cleared successfully.")
         return True
+
+    def add_notebook_note(
+        self,
+        note_text: str,
+        course_id: str = "",
+        course_title: str = "",
+        chapter_title: str = "",
+        lesson_id: str = "",
+        lesson_title: str = "",
+        video_id: str = "",
+        timestamp_seconds: float = 0.0,
+        timestamp_formatted: str = "00:00",
+        topic: str = "",
+        source: str = "vedika_voice"
+    ) -> Optional[int]:
+        """
+        Saves a structured study note with exact video timestamp and course context.
+        Returns the inserted note ID.
+        """
+        clean_text = scrub_pii(note_text.strip())
+        if not clean_text:
+            return None
+
+        with self._get_connection() as conn:
+            cursor = conn.execute("""
+                INSERT INTO student_notebook_notes (
+                    course_id, course_title, chapter_title, lesson_id, lesson_title,
+                    video_id, timestamp_seconds, timestamp_formatted, note_text, topic, source
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                course_id, course_title, chapter_title, lesson_id, lesson_title,
+                video_id, float(timestamp_seconds or 0.0), timestamp_formatted or "00:00",
+                clean_text, topic or lesson_title or "", source or "vedika_voice"
+            ))
+            return cursor.lastrowid
+
+    def append_or_create_notebook_note(
+        self,
+        note_text: str,
+        course_id: str = "",
+        course_title: str = "",
+        chapter_title: str = "",
+        lesson_id: str = "",
+        lesson_title: str = "",
+        video_id: str = "",
+        timestamp_seconds: float = 0.0,
+        timestamp_formatted: str = "00:00",
+        topic: str = "",
+        source: str = "vedika_voice",
+        create_new: bool = False
+    ) -> tuple:
+        """
+        If create_new is False: looks for the most recent note for this lesson/course.
+        If found, appends note_text as a formatted bullet point to the existing note.
+        If not found or create_new is True: inserts a new note.
+        Returns: (note_id, is_updated, combined_text, note_dict)
+        """
+        clean_text = scrub_pii(note_text.strip())
+        if not clean_text:
+            return (0, False, "", {})
+
+        with self._get_connection() as conn:
+            if not create_new:
+                cursor = conn.execute("""
+                    SELECT id, note_text, timestamp_formatted, timestamp_seconds, course_id, course_title, chapter_title, lesson_id, lesson_title, video_id, topic, created_at
+                    FROM student_notebook_notes
+                    WHERE (lesson_id = ? AND lesson_id != '') OR (lesson_title = ? AND lesson_title != '') OR (course_id = ? AND lesson_id = '')
+                    ORDER BY id DESC LIMIT 1
+                """, (lesson_id or "", lesson_title or "", course_id or ""))
+                row = cursor.fetchone()
+                if row:
+                    note_id = row["id"]
+                    existing_text = row["note_text"]
+                    
+                    if clean_text in existing_text:
+                        note_dict = {
+                            "id": note_id,
+                            "courseId": row["course_id"],
+                            "courseTitle": row["course_title"],
+                            "chapterTitle": row["chapter_title"],
+                            "lessonId": row["lesson_id"],
+                            "lessonTitle": row["lesson_title"],
+                            "videoId": row["video_id"],
+                            "timestampSeconds": row["timestamp_seconds"],
+                            "timestampFormatted": row["timestamp_formatted"],
+                            "noteText": existing_text,
+                            "topic": row["topic"],
+                            "source": source,
+                            "createdAt": row["created_at"]
+                        }
+                        return (note_id, True, existing_text, note_dict)
+
+                    formatted_pt = clean_text if clean_text.startswith("•") or clean_text.startswith("-") else f"• {clean_text}"
+                    if "\n" in existing_text or existing_text.startswith("•"):
+                        combined = f"{existing_text}\n{formatted_pt}"
+                    else:
+                        combined = f"• {existing_text}\n{formatted_pt}"
+
+                    conn.execute("""
+                        UPDATE student_notebook_notes
+                        SET note_text = ?, updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ?
+                    """, (combined, note_id))
+
+                    note_dict = {
+                        "id": note_id,
+                        "courseId": row["course_id"],
+                        "courseTitle": row["course_title"],
+                        "chapterTitle": row["chapter_title"],
+                        "lessonId": row["lesson_id"],
+                        "lessonTitle": row["lesson_title"],
+                        "videoId": row["video_id"],
+                        "timestampSeconds": row["timestamp_seconds"],
+                        "timestampFormatted": row["timestamp_formatted"],
+                        "noteText": combined,
+                        "topic": row["topic"],
+                        "source": source,
+                        "createdAt": row["created_at"]
+                    }
+                    return (note_id, True, combined, note_dict)
+
+            # Otherwise create a new note
+            cursor = conn.execute("""
+                INSERT INTO student_notebook_notes (
+                    course_id, course_title, chapter_title, lesson_id, lesson_title,
+                    video_id, timestamp_seconds, timestamp_formatted, note_text, topic, source
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                course_id, course_title, chapter_title, lesson_id, lesson_title,
+                video_id, float(timestamp_seconds or 0.0), timestamp_formatted or "00:00",
+                clean_text, topic or lesson_title or "", source or "vedika_voice"
+            ))
+            new_id = cursor.lastrowid
+            note_dict = {
+                "id": new_id,
+                "courseId": course_id,
+                "courseTitle": course_title,
+                "chapterTitle": chapter_title,
+                "lessonId": lesson_id,
+                "lessonTitle": lesson_title,
+                "videoId": video_id,
+                "timestampSeconds": float(timestamp_seconds or 0.0),
+                "timestampFormatted": timestamp_formatted or "00:00",
+                "noteText": clean_text,
+                "topic": topic or lesson_title or "",
+                "source": source or "vedika_voice",
+                "createdAt": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
+            return (new_id, False, clean_text, note_dict)
+
+    def get_notebook_notes(
+        self,
+        course_id: Optional[str] = None,
+        lesson_id: Optional[str] = None,
+        limit: int = 100
+    ) -> List[Dict]:
+        """Retrieves saved notebook notes, optionally filtered by course or lesson."""
+        query = "SELECT * FROM student_notebook_notes"
+        params = []
+        conditions = []
+
+        if course_id:
+            conditions.append("(course_id = ? OR course_id = '' OR course_title = ?)")
+            params.append(course_id)
+            params.append(course_id)
+        if lesson_id:
+            conditions.append("(lesson_id = ? OR lesson_title = ?)")
+            params.append(lesson_id)
+            params.append(lesson_id)
+
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+
+        query += " ORDER BY timestamp_seconds ASC, created_at ASC LIMIT ?"
+        params.append(limit)
+
+        with self._get_connection() as conn:
+            cursor = conn.execute(query, tuple(params))
+            results = []
+            for row in cursor.fetchall():
+                results.append({
+                    "id": row["id"],
+                    "courseId": row["course_id"],
+                    "courseTitle": row["course_title"],
+                    "chapterTitle": row["chapter_title"],
+                    "lessonId": row["lesson_id"],
+                    "lessonTitle": row["lesson_title"],
+                    "videoId": row["video_id"],
+                    "timestampSeconds": row["timestamp_seconds"],
+                    "timestampFormatted": row["timestamp_formatted"],
+                    "noteText": row["note_text"],
+                    "topic": row["topic"],
+                    "source": row["source"],
+                    "createdAt": row["created_at"]
+                })
+            return results
+
+    def delete_notebook_note(self, note_id: int) -> bool:
+        """Deletes a specific notebook note by ID."""
+        with self._get_connection() as conn:
+            cursor = conn.execute("DELETE FROM student_notebook_notes WHERE id = ?", (note_id,))
+            return cursor.rowcount > 0
+

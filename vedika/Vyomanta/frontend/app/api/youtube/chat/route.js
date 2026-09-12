@@ -20,7 +20,7 @@ async function generateWithFallback({ contents, systemInstruction, maxOutputToke
   }
 
   const shuffledKeys = [...allKeys].sort(() => Math.random() - 0.5);
-  const models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+  const models = ["gemini-3.6-flash", "gemini-flash-latest", "gemini-2.5-flash", "gemini-flash-lite-latest"];
   let lastError = null;
 
   for (const apiKey of shuffledKeys) {

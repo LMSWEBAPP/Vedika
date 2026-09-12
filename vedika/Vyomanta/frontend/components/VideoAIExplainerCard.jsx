@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Clock, Check, Copy, Sparkles, HelpCircle, ChevronRight, BookOpen, Quote, Info } from 'lucide-react';
+import { Clock, Check, Copy, Brain, HelpCircle, ChevronRight, BookOpen, Quote, Info } from 'lucide-react';
 import { T } from '@/lib/lms-data';
 
 export default function VideoAIExplainerCard({ explanation, onSeek, onAskFollowUp }) {
@@ -94,7 +94,7 @@ export default function VideoAIExplainerCard({ explanation, onSeek, onAskFollowU
         alignItems: 'flex-start',
         gap: 10
       }}>
-        <Sparkles size={16} style={{ color: T.accent, flexShrink: 0, marginTop: 2 }} />
+        <Brain size={16} style={{ color: T.accent, flexShrink: 0, marginTop: 2 }} />
         <p style={{ fontSize: 12.5, fontWeight: 500, lineHeight: 1.6, color: T.text, margin: 0 }}>
           {explanation.summary}
         </p>

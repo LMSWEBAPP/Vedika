@@ -99,7 +99,8 @@ export async function POST(request) {
             query_vector: JSON.stringify(embedding),
             similarity_threshold: 0.3,
             limit: 4
-          })
+          }),
+          signal: AbortSignal.timeout(3500)
         });
 
         if (rlsResponse.ok) {

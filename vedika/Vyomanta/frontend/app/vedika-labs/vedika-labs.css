@@ -137,8 +137,8 @@
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%) scale(0);
-  width: 250px;
-  height: 250px;
+  width: 420px;
+  height: 420px;
   pointer-events: none;
   z-index: 4;
   opacity: 0;
@@ -173,7 +173,8 @@
   transform: translateX(-50%);
 }
 
-.vl-avatar-floating-inner.vl-float-physics {
+.vl-avatar-floating-inner.vl-float-physics,
+.vl-avatar-physics.settled .vl-avatar-floating-inner {
   animation: vlFloatPhysics 4.2s ease-in-out infinite alternate;
 }
 
@@ -184,7 +185,8 @@
   transform: translateX(-50%);
 }
 
-.vl-avatar-floating-inner.vl-float-chemistry {
+.vl-avatar-floating-inner.vl-float-chemistry,
+.vl-avatar-chemistry.settled .vl-avatar-floating-inner {
   animation: vlFloatChem 3.8s ease-in-out infinite alternate;
 }
 
@@ -195,7 +197,8 @@
   transform: translateX(-50%);
 }
 
-.vl-avatar-floating-inner.vl-float-biology {
+.vl-avatar-floating-inner.vl-float-biology,
+.vl-avatar-biology.settled .vl-avatar-floating-inner {
   animation: vlFloatBio 4.4s ease-in-out infinite alternate;
 }
 
@@ -206,7 +209,8 @@
   transform: translateX(-50%);
 }
 
-.vl-avatar-floating-inner.vl-float-math {
+.vl-avatar-floating-inner.vl-float-math,
+.vl-avatar-math.settled .vl-avatar-floating-inner {
   animation: vlFloatMath 4.0s ease-in-out infinite alternate;
 }
 
@@ -283,14 +287,14 @@
   padding: 4px 12px;
   margin: 0;
   backdrop-filter: none;
-  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: opacity 0.2s ease;
 }
 
 .vl-station-card:hover {
-  transform: translateY(-4px);
   background: transparent;
   border: none;
   box-shadow: none;
+  transform: none;
 }
 
 /* Glowing 3D Badge Image Container */
@@ -302,7 +306,6 @@
   align-items: center;
   justify-content: center;
   position: relative;
-  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .vl-station-badge-img {
@@ -310,27 +313,24 @@
   height: 100%;
   object-fit: contain;
   filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.6));
-  transition: filter 0.3s ease, transform 0.3s ease;
+  transition: filter 0.25s ease;
 }
 
-.vl-station-card:hover .vl-station-badge-wrap {
-  transform: scale(1.12);
-}
-
+/* Hover glow colors synchronized to respective avatar colors (zero transform/float) */
 .vl-station-card:hover .vl-badge-physics .vl-station-badge-img {
-  filter: drop-shadow(0 0 16px rgba(191, 85, 247, 0.95));
+  filter: drop-shadow(0 0 18px rgba(57, 255, 20, 0.95)) drop-shadow(0 0 32px rgba(57, 255, 20, 0.4));
 }
 
 .vl-station-card:hover .vl-badge-chemistry .vl-station-badge-img {
-  filter: drop-shadow(0 0 16px rgba(242, 42, 38, 0.95));
+  filter: drop-shadow(0 0 18px rgba(255, 110, 255, 0.95)) drop-shadow(0 0 32px rgba(255, 110, 255, 0.4));
 }
 
 .vl-station-card:hover .vl-badge-biology .vl-station-badge-img {
-  filter: drop-shadow(0 0 16px rgba(156, 149, 62, 0.95));
+  filter: drop-shadow(0 0 18px rgba(255, 49, 49, 0.95)) drop-shadow(0 0 32px rgba(255, 49, 49, 0.4));
 }
 
 .vl-station-card:hover .vl-badge-math .vl-station-badge-img {
-  filter: drop-shadow(0 0 16px rgba(31, 114, 255, 0.95));
+  filter: drop-shadow(0 0 18px rgba(255, 92, 0, 0.95)) drop-shadow(0 0 32px rgba(255, 92, 0, 0.4));
 }
 
 /* Lab Title */

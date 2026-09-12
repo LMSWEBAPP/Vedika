@@ -1,0 +1,138 @@
+.pacman-pagination-wrapper {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: center;
+	gap: 16px;
+	padding: 12px 0 6px 0;
+	user-select: none;
+}
+
+.pacman-arrow-btn {
+	background: rgba(255, 255, 255, 0.05);
+	border: 1px solid rgba(255, 255, 255, 0.15);
+	color: #f7b997;
+	width: 28px;
+	height: 28px;
+	border-radius: 50%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
+	transition: all 0.2s ease;
+}
+
+.pacman-arrow-btn:hover:not(:disabled) {
+	background: #ffff03;
+	color: #000;
+	border-color: #ffff03;
+	transform: scale(1.12);
+	box-shadow: 0 0 12px rgba(255, 255, 3, 0.55);
+}
+
+.pacman-arrow-btn:disabled {
+	opacity: 0.18;
+	cursor: not-allowed;
+	transform: none;
+}
+
+.pagination {
+	position: relative;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	height: 30px;
+	--ddim: 6px;
+	--rd: 15px;
+	--rdim: calc(var(--rd) * 2);
+	--pm: #ffff03;
+}
+
+.pagination label {
+	content: '';
+	margin: 0 12px;
+	height: var(--ddim);
+	width: var(--ddim);
+	background: #f7b997;
+	cursor: pointer;
+	display: block;
+	transition: transform 150ms ease, opacity 200ms ease;
+}
+
+.pagination label:first-of-type {
+	margin-left: 0;
+}
+
+.pagination label:last-of-type {
+	margin-right: 0;
+}
+
+.pagination label:hover {
+	transform: scale(1.4);
+	background: #fff;
+}
+
+.pagination input {
+	display: none;
+}
+
+.pacman {
+	content: '';
+	position: absolute;
+	top: 0;
+	left: -12px; /* Centers 30px Pacman directly on the 6px dot */
+	height: var(--rdim);
+	width: var(--rdim);
+	transform-origin: center center;
+	transition: transform 350ms cubic-bezier(0.4, 0, 0.2, 1);
+	pointer-events: none;
+	z-index: 5;
+}
+
+.pacman:before,
+.pacman:after {
+	content: '';
+	position: absolute;
+	height: var(--rd);
+	width: var(--rdim);
+	left: 0;
+	background: var(--pm);
+}
+
+/* Idle state: mouth rests open stably, NO constant chomping */
+.pacman:before {
+	top: 0;
+	border-top-left-radius: var(--rdim);
+	border-top-right-radius: var(--rdim);
+	transform-origin: bottom center;
+	transform: rotate(-45deg);
+}
+
+.pacman:after {
+	bottom: 0;
+	border-bottom-left-radius: var(--rdim);
+	border-bottom-right-radius: var(--rdim);
+	transform-origin: top center;
+	transform: rotate(45deg);
+}
+
+/* Moving state: mouth chomps ONLY during page movement */
+.pacman.is-moving:before {
+	animation: waka-top 180ms infinite ease-in-out;
+}
+
+.pacman.is-moving:after {
+	animation: waka-bottom 180ms infinite ease-in-out;
+}
+
+@keyframes waka-top {
+	0% { transform: rotate(-45deg); }
+	50% { transform: rotate(0deg); }
+	100% { transform: rotate(-45deg); }
+}
+
+@keyframes waka-bottom {
+	0% { transform: rotate(45deg); }
+	50% { transform: rotate(0deg); }
+	100% { transform: rotate(45deg); }
+}

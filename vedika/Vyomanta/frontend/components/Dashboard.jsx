@@ -164,10 +164,22 @@ export default function Dashboard() {
         }
 
         const [list, enrollments] = await Promise.all([
-          getCourses(),
+          getCourses({ forceRefresh: true }),
           email ? getStudentEnrollments(email) : Promise.resolve([])
         ]);
-        const published = list.filter(c => c.status === 'Published');
+        let locallyDeleted = [];
+        try {
+          locallyDeleted = JSON.parse(localStorage.getItem('locally_deleted_courses') || '[]').map(String);
+        } catch (e) {}
+
+        const isCourseVisible = (c) => {
+          if (!c) return false;
+          if (locallyDeleted.includes(String(c.id))) return false;
+          if (c.status === 'Published' || c.status === 'published' || !c.status) return true;
+          if (/^\d{10,}$/.test(String(c.id)) || String(c.id).startsWith('local_') || String(c.id).startsWith('course_')) return true;
+          return false;
+        };
+        const published = list.filter(isCourseVisible);
         setCourses(published);
 
         const enrolled = published.filter(c => enrollments.includes(c.id));
@@ -202,6 +214,13 @@ export default function Dashboard() {
     }
     loadDashboardData();
 
+    const handleCoursesUpdated = () => {
+      loadDashboardData();
+    };
+    window.addEventListener('courses_updated', handleCoursesUpdated);
+    window.addEventListener('storage', handleCoursesUpdated);
+    window.addEventListener('focus', handleCoursesUpdated);
+
     let key = 'completed_lessons';
     let email = '';
     if (typeof window !== 'undefined') {
@@ -232,6 +251,12 @@ export default function Dashboard() {
         }).catch(err => console.error("Error loading progress from Redis:", err));
       }
     }
+
+    return () => {
+      window.removeEventListener('courses_updated', handleCoursesUpdated);
+      window.removeEventListener('storage', handleCoursesUpdated);
+      window.removeEventListener('focus', handleCoursesUpdated);
+    };
   }, []);
 
   const totalLessonsCompleted = Object.keys(completed).length;

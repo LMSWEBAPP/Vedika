@@ -45,15 +45,26 @@ function CoursesContent() {
 
   return (
     <div style={{
-      minHeight: '100vh',
+      height: '100%',
+      maxHeight: '100%',
       background: 'var(--bg)',
       color: T.text,
       width: '100%',
       display: 'flex',
-      flexDirection: 'column'
+      flexDirection: 'column',
+      overflow: 'hidden'
     }}>
       {/* Tab content view */}
-      <div style={{ flex: 1, overflowY: 'auto' }}>
+      <div
+        className="no-scrollbar"
+        style={{
+          flex: 1,
+          overflowY: (activeTab === 'quizzes' || activeTab === 'assignments') ? 'hidden' : 'auto',
+          overflowX: 'hidden',
+          height: '100%',
+          maxHeight: '100%'
+        }}
+      >
         {renderTabContent()}
       </div>
     </div>

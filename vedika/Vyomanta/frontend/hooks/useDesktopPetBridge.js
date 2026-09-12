@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 
 export function useDesktopPetBridge() {
@@ -9,25 +9,13 @@ export function useDesktopPetBridge() {
   const wsRef = useRef(null);
   const reconnectTimerRef = useRef(null);
   const currentContextRef = useRef({});
-  const retryCountRef = useRef(0);
-  const MAX_RETRIES = 2; // Prevent infinite error logging when Desktop Pet is not running
+  const [isPetConnected, setIsPetConnected] = useState(false);
 
   const connectBridge = useCallback(() => {
     if (typeof window === 'undefined') return;
 
-    const isExplicitlyEnabled = localStorage.getItem('enable_desktop_pet_bridge') === 'true';
-
-    // Only attempt local WS connection when explicitly enabled via debug/settings
-    if (!isExplicitlyEnabled) {
-      return;
-    }
-
     if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
       return;
-    }
-
-    if (retryCountRef.current >= MAX_RETRIES) {
-      return; // Cap connection retries when PySide6 desktop pet is inactive
     }
 
     try {
@@ -37,7 +25,8 @@ export function useDesktopPetBridge() {
 
       ws.onopen = () => {
         console.log('[DesktopPetBridge] Connected to local Desktop Pet event bridge');
-        retryCountRef.current = 0; // Reset counter on successful connection
+        setIsPetConnected(true);
+
         if (currentContextRef.current && currentContextRef.current.activeRoute) {
           ws.send(JSON.stringify({
             type: 'WEBAPP_STATE_UPDATE',
@@ -67,6 +56,36 @@ export function useDesktopPetBridge() {
             console.log('[DesktopPetBridge] Remote pet action received:', data.payload);
             window.dispatchEvent(new CustomEvent('vedika-pet-action', { detail: data.payload }));
           }
+
+          // Handle note added via Desktop Pet voice tool or remote sync
+          if (data.type === 'STUDY_NOTE_ADDED') {
+            console.log('[DesktopPetBridge] Study note added from pet:', data.payload);
+            window.dispatchEvent(new CustomEvent('vedika-study-note-added', { detail: data.payload }));
+          }
+
+          // Handle note updated (accumulated) via Desktop Pet voice tool
+          if (data.type === 'STUDY_NOTE_UPDATED') {
+            console.log('[DesktopPetBridge] Study note updated from pet:', data.payload);
+            window.dispatchEvent(new CustomEvent('vedika-study-note-updated', { detail: data.payload }));
+          }
+
+          // Handle notes list received from desktop pet SQLite database
+          if (data.type === 'STUDY_NOTES_LIST') {
+            console.log('[DesktopPetBridge] Study notes list received from pet:', data.payload);
+            window.dispatchEvent(new CustomEvent('vedika-study-notes-list', { detail: data.payload }));
+          }
+
+          // Handle note deleted
+          if (data.type === 'STUDY_NOTE_DELETED') {
+            console.log('[DesktopPetBridge] Study note deleted:', data.payload);
+            window.dispatchEvent(new CustomEvent('vedika-study-note-deleted', { detail: data.payload }));
+          }
+
+          // Handle Ask Vedika acknowledgment
+          if (data.type === 'ASK_VEDIKA_ACKNOWLEDGED') {
+            console.log('[DesktopPetBridge] Ask Vedika acknowledged by pet:', data.payload);
+            window.dispatchEvent(new CustomEvent('vedika-ask-acknowledged', { detail: data.payload }));
+          }
         } catch (err) {
           console.error('[DesktopPetBridge] Message parse error:', err);
         }
@@ -74,13 +93,14 @@ export function useDesktopPetBridge() {
 
       ws.onclose = () => {
         wsRef.current = null;
-        retryCountRef.current += 1;
-        if (retryCountRef.current < MAX_RETRIES) {
-          reconnectTimerRef.current = setTimeout(connectBridge, 10000);
-        }
+        setIsPetConnected(false);
+        // Retry connection every 6 seconds to detect when Python main.py starts up
+        if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = setTimeout(connectBridge, 6000);
       };
 
       ws.onerror = () => {
+        setIsPetConnected(false);
         if (ws) {
           try { ws.close(); } catch (_) {}
         }
@@ -88,7 +108,7 @@ export function useDesktopPetBridge() {
 
       wsRef.current = ws;
     } catch (e) {
-      // Suppress unhandled connection throw
+      setIsPetConnected(false);
     }
   }, [router]);
 
@@ -118,6 +138,70 @@ export function useDesktopPetBridge() {
     }
   }, [pathname]);
 
+  const askVedikaVideoMoment = useCallback((momentContext) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      try {
+        wsRef.current.send(JSON.stringify({
+          type: 'ASK_VEDIKA_VIDEO_MOMENT',
+          payload: {
+            activeRoute: pathname,
+            timestamp: Date.now(),
+            ...momentContext
+          }
+        }));
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
+    return false;
+  }, [pathname]);
+
+  const saveStudyNote = useCallback((noteData) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      try {
+        wsRef.current.send(JSON.stringify({
+          type: 'SAVE_STUDY_NOTE',
+          payload: noteData
+        }));
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
+    return false;
+  }, []);
+
+  const getStudyNotes = useCallback((filter = {}) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      try {
+        wsRef.current.send(JSON.stringify({
+          type: 'GET_STUDY_NOTES',
+          payload: filter
+        }));
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
+    return false;
+  }, []);
+
+  const deleteStudyNote = useCallback((noteId) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      try {
+        wsRef.current.send(JSON.stringify({
+          type: 'DELETE_STUDY_NOTE',
+          payload: { id: noteId }
+        }));
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
+    return false;
+  }, []);
+
   const notifyStuck = useCallback((puzzleTitle, durationSeconds = 180) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       try {
@@ -135,7 +219,12 @@ export function useDesktopPetBridge() {
   }, [pathname]);
 
   return {
+    isPetConnected,
     sendStateUpdate,
+    askVedikaVideoMoment,
+    saveStudyNote,
+    getStudyNotes,
+    deleteStudyNote,
     notifyStuck
   };
 }

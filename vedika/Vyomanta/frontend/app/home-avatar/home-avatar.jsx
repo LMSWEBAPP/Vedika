@@ -23,6 +23,7 @@ import {
   FileText,
   Briefcase,
   FolderOpen,
+  Trees,
 } from 'lucide-react';
 import { HomeAvatarScene } from './engine/HomeAvatarScene';
 import './home-avatar.css';
@@ -94,6 +95,14 @@ export const TOUR_NAV_ITEMS = [
     Icon: Briefcase,
     audio: '/audio/home/tour/tour_jobs.wav',
     dialogue: "Lets have a look! what do we have in Jobs page?",
+  },
+  {
+    id: 'lost-avatars',
+    label: 'Lost Avatars',
+    route: '/lost-avatars',
+    Icon: Trees,
+    audio: '/audio/home/tour/tour_vedika_labs.wav',
+    dialogue: "Step into the night forest sanctuary and meet our wandering avatar companions!",
   },
 ];
 
@@ -204,6 +213,31 @@ export default function HomeAvatarPage() {
   const [animSpeed, setAnimSpeed] = useState(1.0);
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
   const [coursesDropdownOpen, setCoursesDropdownOpen] = useState(false);
+  const coursesTimeoutRef = useRef(null);
+
+  const handleCoursesMouseEnter = () => {
+    if (coursesTimeoutRef.current) {
+      clearTimeout(coursesTimeoutRef.current);
+      coursesTimeoutRef.current = null;
+    }
+    setCoursesDropdownOpen(true);
+  };
+
+  const handleCoursesMouseLeave = () => {
+    if (coursesTimeoutRef.current) {
+      clearTimeout(coursesTimeoutRef.current);
+    }
+    coursesTimeoutRef.current = setTimeout(() => {
+      setCoursesDropdownOpen(false);
+    }, 400);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (coursesTimeoutRef.current) clearTimeout(coursesTimeoutRef.current);
+    };
+  }, []);
+
   const [activeTime, setActiveTime] = useState(0.0);
   const [isDeparting, setIsDeparting] = useState(false);
   const [showTransitionOverlay, setShowTransitionOverlay] = useState(false);
@@ -779,13 +813,16 @@ export default function HomeAvatarPage() {
           {/* Courses with Dropdown */}
           <div
             className="ha-nav-dropdown-wrapper"
-            onMouseEnter={() => setCoursesDropdownOpen(true)}
-            onMouseLeave={() => setCoursesDropdownOpen(false)}
+            onMouseEnter={handleCoursesMouseEnter}
+            onMouseLeave={handleCoursesMouseLeave}
           >
             <button
               type="button"
               className={`ha-nav-dropdown-trigger ${coursesDropdownOpen ? 'ha-nav-dropdown-open' : ''}`}
-              onClick={() => setCoursesDropdownOpen((prev) => !prev)}
+              onClick={() => {
+                if (coursesTimeoutRef.current) clearTimeout(coursesTimeoutRef.current);
+                setCoursesDropdownOpen((prev) => !prev);
+              }}
             >
               <BookOpen size={15} />
               <span>Courses</span>
@@ -799,7 +836,11 @@ export default function HomeAvatarPage() {
             </button>
 
             {coursesDropdownOpen && (
-              <div className="ha-nav-dropdown-menu">
+              <div
+                className="ha-nav-dropdown-menu"
+                onMouseEnter={handleCoursesMouseEnter}
+                onMouseLeave={handleCoursesMouseLeave}
+              >
                 {COURSES_DROPDOWN_ITEMS.map((subItem) => {
                   const SubIcon = subItem.Icon;
                   return (
@@ -808,6 +849,7 @@ export default function HomeAvatarPage() {
                       type="button"
                       className="ha-nav-dropdown-item"
                       onClick={(e) => {
+                        if (coursesTimeoutRef.current) clearTimeout(coursesTimeoutRef.current);
                         setCoursesDropdownOpen(false);
                         handleNavTour(e, subItem);
                       }}

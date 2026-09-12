@@ -184,6 +184,16 @@
   animation: haDropdownFadeIn 0.18s ease-out;
 }
 
+/* Invisible hover bridge connecting trigger button with dropdown menu */
+.ha-nav-dropdown-menu::before {
+  content: '';
+  position: absolute;
+  top: -12px;
+  left: 0;
+  right: 0;
+  height: 14px;
+}
+
 @keyframes haDropdownFadeIn {
   from {
     opacity: 0;

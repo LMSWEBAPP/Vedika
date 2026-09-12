@@ -93,8 +93,8 @@ const DoctorStrangePortal = forwardRef(function DoctorStrangePortal(
     canvas.height = Math.ceil(ch * dpr);
     ctx.scale(dpr, dpr);
 
-    // EXACT original portal ring size (tight, sharp, and elegant)
-    const ringRadius = 108; // Exact original compact portal radius
+    // Dynamic portal ring size proportional to size prop (~0.432 ratio: size 250 -> 108px, size 340 -> 147px)
+    const ringRadius = Math.max(70, Math.round((size / 250) * 108));
     const maxorbit = ringRadius;
     const centerx = cw / 2;
     const centery = ch / 2;
@@ -102,7 +102,7 @@ const DoctorStrangePortal = forwardRef(function DoctorStrangePortal(
     const startTime = Date.now();
     let currentTime = 0;
     const stars = [];
-    const totalStars = 2200;
+    const totalStars = Math.min(2800, Math.round(2200 * (ringRadius / 108)));
 
     function rotate(cx, cy, x, y, angle) {
       const cos = Math.cos(angle);
@@ -148,8 +148,8 @@ const DoctorStrangePortal = forwardRef(function DoctorStrangePortal(
         }
 
         this.hoverPos = centery + maxorbit * 0.38 + this.collapseBonus * 0.65;
-        // Large blast radius, with smooth fadeout before reaching canvas edge
-        this.blastMaxDist = 320 + Math.random() * 120;
+        // Large blast radius proportional to portal size, safely capped to avoid canvas boundary clipping
+        this.blastMaxDist = Math.min(410, (maxorbit * 2.2) + Math.random() * 50);
         this.expansePos = centery + this.blastMaxDist;
 
         this.prevR = this.startRotation;
@@ -260,25 +260,16 @@ const DoctorStrangePortal = forwardRef(function DoctorStrangePortal(
       }
       ctx.restore();
 
-      // Draw the central pitch-black Event Horizon void only when not fully expanded
+      // Draw the central pitch-black Event Horizon void (without any white ring outline)
       if (!stateRef.current.expanse) {
         const eventHorizonR = maxorbit * 0.32;
         ctx.save();
         ctx.beginPath();
         ctx.arc(centerx, centery, eventHorizonR, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.96)';
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.98)';
         ctx.shadowColor = 'rgba(0, 0, 0, 1)';
-        ctx.shadowBlur = 12;
+        ctx.shadowBlur = 14;
         ctx.fill();
-
-        // Delicate inner accretion edge highlight
-        ctx.beginPath();
-        ctx.arc(centerx, centery, eventHorizonR + 1.2, 0, Math.PI * 2);
-        ctx.lineWidth = 1.4;
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
-        ctx.shadowColor = 'rgba(255, 255, 255, 0.8)';
-        ctx.shadowBlur = 6;
-        ctx.stroke();
         ctx.restore();
       }
 

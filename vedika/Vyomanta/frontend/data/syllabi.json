@@ -1,0 +1,309 @@
+{
+  "1": {
+    "id": "1",
+    "title": "Python Fundamentals",
+    "tagline": "From zero to Python hero in structured modules",
+    "modules": [
+      {
+        "id": "1_m1",
+        "title": "Introduction",
+        "emoji": "🚀",
+        "accent": "#5B8CF8",
+        "lessons": [
+          {
+            "id": "1_l1",
+            "title": "What is this course?",
+            "dur": "5 min",
+            "vid": "rfscVS0vtbw",
+            "overview": "Welcome to Python Fundamentals. In this lesson, we will explore course goals, environment setup, and practical applications.",
+            "pts": [
+              "Understand course outline and objectives",
+              "Learn practical real-world Python use cases",
+              "Setup Python and VS Code"
+            ],
+            "quizQuestions": [],
+            "codingExercise": {
+              "hasExercise": false,
+              "language": "python",
+              "instruction": "",
+              "starterCode": "",
+              "solutionCode": "",
+              "testCases": []
+            },
+            "pdf": ""
+          }
+        ]
+      }
+    ]
+  },
+  "3": {
+    "id": "3",
+    "title": "Course Syllabus Outline",
+    "tagline": "Define modules and lessons for students.",
+    "modules": [
+      {
+        "id": "3_m1",
+        "title": "Introduction",
+        "emoji": "🚀",
+        "accent": "#5B8CF8",
+        "lessons": [
+          {
+            "id": "3_l1",
+            "title": "What is this course?",
+            "dur": "5 min",
+            "vid": "",
+            "overview": "Welcome to the course. Here is a brief explanation of what we will cover.",
+            "pts": [
+              "Course overview",
+              "Course requirements"
+            ],
+            "quizQuestions": [],
+            "codingExercise": {
+              "hasExercise": false,
+              "language": "python",
+              "instruction": "",
+              "starterCode": "",
+              "solutionCode": "",
+              "testCases": []
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "1789205224090": {
+    "id": "1789205224090",
+    "title": "Course Syllabus Outline",
+    "tagline": "Define modules and lessons for students.",
+    "modules": [
+      {
+        "id": "1789205224090_m1",
+        "title": "Introduction",
+        "emoji": "🚀",
+        "accent": "#5B8CF8",
+        "lessons": [
+          {
+            "id": "1789205224090_l1",
+            "title": "What is this course?",
+            "dur": "5 min",
+            "vid": "",
+            "overview": "Welcome to the course. Here is a brief explanation of what we will cover.",
+            "pts": [
+              "Course overview",
+              "Course requirements"
+            ],
+            "quizQuestions": [],
+            "codingExercise": {
+              "hasExercise": false,
+              "language": "python",
+              "instruction": "",
+              "starterCode": "",
+              "solutionCode": "",
+              "testCases": []
+            }
+          },
+          {
+            "id": "les_1789214143702",
+            "title": "hi",
+            "dur": "10 min",
+            "vid": "https://www.youtube.com/watch?v=5Pm_s2wzxo0",
+            "overview": "",
+            "pts": [
+              "Key concept introduction."
+            ],
+            "quizQuestions": [],
+            "codingExercise": {
+              "hasExercise": false,
+              "language": "python",
+              "instruction": "",
+              "starterCode": "# Write your code here\n",
+              "solutionCode": "",
+              "testCases": []
+            },
+            "pdf": ""
+          }
+        ]
+      }
+    ]
+  },
+  "1789228448965": {
+    "id": "1789228448965",
+    "title": "Course Syllabus Outline",
+    "tagline": "Define modules and lessons for students.",
+    "modules": [
+      {
+        "id": "1789228448965_m1",
+        "title": "Introduction",
+        "emoji": "🚀",
+        "accent": "#5B8CF8",
+        "lessons": [
+          {
+            "id": "1789228448965_l1",
+            "title": "What is this course?",
+            "dur": "5 min",
+            "vid": "",
+            "overview": "Welcome to the course. Here is a brief explanation of what we will cover.",
+            "pts": [
+              "Course overview",
+              "Course requirements"
+            ],
+            "quizQuestions": [],
+            "codingExercise": {
+              "hasExercise": false,
+              "language": "python",
+              "instruction": "",
+              "starterCode": "",
+              "solutionCode": "",
+              "testCases": []
+            },
+            "pdf": ""
+          }
+        ]
+      }
+    ]
+  },
+  "1789228482056": {
+    "id": "1789228482056",
+    "title": "Course Syllabus Outline",
+    "tagline": "Define modules and lessons for students.",
+    "modules": [
+      {
+        "id": "1789228482056_m1",
+        "title": "Introduction",
+        "emoji": "🚀",
+        "accent": "#5B8CF8",
+        "lessons": [
+          {
+            "id": "1789228482056_l1",
+            "title": "What is this course?",
+            "dur": "5 min",
+            "vid": "",
+            "overview": "Welcome to the course. Here is a brief explanation of what we will cover.",
+            "pts": [
+              "Course overview",
+              "Course requirements"
+            ],
+            "quizQuestions": [],
+            "codingExercise": {
+              "hasExercise": false,
+              "language": "python",
+              "instruction": "",
+              "starterCode": "",
+              "solutionCode": "",
+              "testCases": []
+            },
+            "pdf": ""
+          }
+        ]
+      }
+    ]
+  },
+  "1789228371981": {
+    "id": "1789228371981",
+    "title": "Course Syllabus Outline",
+    "tagline": "Define modules and lessons for students.",
+    "modules": [
+      {
+        "id": "1789228371981_m1",
+        "title": "Introduction",
+        "emoji": "🚀",
+        "accent": "#5B8CF8",
+        "lessons": [
+          {
+            "id": "1789228371981_l1",
+            "title": "What is this course?",
+            "dur": "5 min",
+            "vid": "",
+            "overview": "Welcome to the course. Here is a brief explanation of what we will cover.",
+            "pts": [
+              "Course overview",
+              "Course requirements"
+            ],
+            "quizQuestions": [],
+            "codingExercise": {
+              "hasExercise": false,
+              "language": "python",
+              "instruction": "",
+              "starterCode": "",
+              "solutionCode": "",
+              "testCases": []
+            },
+            "pdf": ""
+          }
+        ]
+      }
+    ]
+  },
+  "1789228461789": {
+    "id": "1789228461789",
+    "title": "Course Syllabus Outline",
+    "tagline": "Define modules and lessons for students.",
+    "modules": [
+      {
+        "id": "1789228461789_m1",
+        "title": "Introduction",
+        "emoji": "🚀",
+        "accent": "#5B8CF8",
+        "lessons": [
+          {
+            "id": "1789228461789_l1",
+            "title": "What is this course?",
+            "dur": "5 min",
+            "vid": "",
+            "overview": "Welcome to the course. Here is a brief explanation of what we will cover.",
+            "pts": [
+              "Course overview",
+              "Course requirements"
+            ],
+            "quizQuestions": [],
+            "codingExercise": {
+              "hasExercise": false,
+              "language": "python",
+              "instruction": "",
+              "starterCode": "",
+              "solutionCode": "",
+              "testCases": []
+            },
+            "pdf": ""
+          }
+        ]
+      }
+    ]
+  },
+  "1789228405992": {
+    "id": "1789228405992",
+    "title": "Course Syllabus Outline",
+    "tagline": "Define modules and lessons for students.",
+    "modules": [
+      {
+        "id": "1789228405992_m1",
+        "title": "Introduction",
+        "emoji": "🚀",
+        "accent": "#5B8CF8",
+        "lessons": [
+          {
+            "id": "1789228405992_l1",
+            "title": "What is this course?",
+            "dur": "5 min",
+            "vid": "",
+            "overview": "Welcome to the course. Here is a brief explanation of what we will cover.",
+            "pts": [
+              "Course overview",
+              "Course requirements"
+            ],
+            "quizQuestions": [],
+            "codingExercise": {
+              "hasExercise": false,
+              "language": "python",
+              "instruction": "",
+              "starterCode": "",
+              "solutionCode": "",
+              "testCases": []
+            },
+            "pdf": ""
+          }
+        ]
+      }
+    ]
+  }
+}

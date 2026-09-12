@@ -110,7 +110,7 @@ export default function VedikaLabsHub() {
   const mathAvatarRef = useRef(null);
   const [isSettled, setIsSettled] = useState(false);
 
-  // Arrival Sequence: Avatars emerge from the swirling black void ONE BY ONE directly into their stations
+  // Arrival Sequence: Avatars emerge from the swirling black void ONE BY ONE with 1.5s gap and graceful flight
   const playLabsPortalArrival = useCallback(() => {
     const portal = portalRef.current;
     const avatars = [
@@ -123,6 +123,7 @@ export default function VedikaLabsHub() {
     // Initial state: hidden inside the event horizon
     avatars.forEach(({ el }) => {
       if (el) {
+        el.classList.remove('settled');
         gsap.set(el, {
           left: '50%',
           top: '50%',
@@ -133,8 +134,8 @@ export default function VedikaLabsHub() {
       }
     });
 
-    // Deep cosmic suction whoosh
-    playDeepCosmicWhoosh(2.4, 1.0);
+    // Deep cosmic suction whoosh (extended duration for the full 1.5s cadence)
+    playDeepCosmicWhoosh(7.0, 1.0);
 
     const arrivalTl = gsap.timeline({
       onComplete: () => {
@@ -157,33 +158,43 @@ export default function VedikaLabsHub() {
       }, 0);
     }
 
-    // 2. Avatars emerge ONE BY ONE directly into their individual lab stations with silky smooth flight
-    const emergeStartTime = 0.28;
+    // 2. Avatars emerge ONE BY ONE with 1.5s gap and extended graceful flight
+    const emergeStartTime = 0.35;
+    const gap = 1.5; // Exactly 1.5s gap between each avatar coming out
+    const flightDuration = 1.35; // Deliberate, graceful flight trajectory so they take time emerging
+
     avatars.forEach(({ el, dest, pitch }, idx) => {
       if (!el) return;
-      const emergeTime = emergeStartTime + idx * 0.32;
+      const emergeTime = emergeStartTime + idx * gap;
 
-      // Micro whoosh sound
+      // Micro whoosh sound for each avatar
       arrivalTl.call(() => {
         playAvatarWhoosh(pitch);
       }, null, emergeTime);
 
-      // Directly emerge into own station destination with silky smooth easing
+      // Emerge from event horizon directly into own station destination with silky smooth easing
       arrivalTl.fromTo(el, {
-        rotation: (idx % 2 === 0 ? -16 : 16),
+        left: '50%',
+        top: '50%',
+        scale: 0.001,
+        opacity: 0,
+        rotation: (idx % 2 === 0 ? -18 : 18),
       }, {
         left: dest.left,
         top: dest.top,
         scale: 1.0,
         opacity: 1,
         rotation: 0,
-        duration: 0.74,
+        duration: flightDuration,
         ease: 'power2.out',
+        onComplete: () => {
+          el.classList.add('settled');
+        },
       }, emergeTime);
     });
 
-    // 3. When all avatars are out, trigger the click expanse burst animation
-    const allOutTime = emergeStartTime + (avatars.length - 1) * 0.32 + 0.35;
+    // 3. When all 4 avatars have emerged and settled, trigger the click expanse burst animation
+    const allOutTime = emergeStartTime + (avatars.length - 1) * gap + flightDuration + 0.15;
     arrivalTl.call(() => {
       portalRef.current?.triggerExpanse?.();
     }, null, allOutTime);
@@ -461,8 +472,8 @@ export default function VedikaLabsHub() {
           {/* Seamless Vignette (Zero Box Border) */}
           <div className="vl-stage-vignette" />
 
-          {/* Doctor Strange Sling Ring Portal (Single fiery spark ring + black void) */}
-          <DoctorStrangePortal ref={portalRef} size={250} className="vl-central-portal-wrap" />
+          {/* Doctor Strange Sling Ring Portal (Single fiery spark ring + black void center, no white ring) */}
+          <DoctorStrangePortal ref={portalRef} size={420} className="vl-central-portal-wrap" />
 
           {/* 1. Purple (Physics) — Above Newton's Cradle */}
           <div

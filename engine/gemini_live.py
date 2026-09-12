@@ -2,6 +2,7 @@ import os
 import json
 import base64
 import time
+import datetime
 import asyncio
 from queue import Queue as ThreadSafeQueue
 from PySide6.QtCore import QObject, QUrl, Slot, Signal, QIODevice, QByteArray, QTimer, QThread
@@ -273,6 +274,87 @@ class GeminiLiveWorker(QThread):
         if hasattr(self, "client") and self.client:
             self.client.tool_executing = False
 
+    def execute_add_study_note(self, note_content: str, topic: str = "", timestamp: str = "", create_new: bool = False) -> dict:
+        try:
+            print(f"[GeminiLiveWorker] Tool execution: add_study_note(topic='{topic}', timestamp='{timestamp}', create_new={create_new}, note='{note_content}')")
+            webapp_ctx = getattr(self.client, "active_webapp_context", {}) or {}
+
+            # Resolve timestamp: if provided explicitly by user/model use it, else fallback to active video timestamp
+            final_time_sec = float(webapp_ctx.get("timestampSeconds", 0.0) or 0.0)
+            final_time_fmt = webapp_ctx.get("timestampFormatted", "00:00") or "00:00"
+
+            if timestamp and timestamp.strip():
+                t_str = timestamp.strip()
+                try:
+                    parts = [int(p) for p in t_str.split(":") if p.isdigit()]
+                    if len(parts) == 2:
+                        final_time_sec = float(parts[0] * 60 + parts[1])
+                        final_time_fmt = f"{parts[0]:02d}:{parts[1]:02d}"
+                    elif len(parts) == 3:
+                        final_time_sec = float(parts[0] * 3600 + parts[1] * 60 + parts[2])
+                        final_time_fmt = f"{parts[0]:02d}:{parts[1]:02d}:{parts[2]:02d}"
+                    elif t_str.replace(".", "", 1).isdigit():
+                        final_time_sec = float(t_str)
+                        mins = int(final_time_sec) // 60
+                        secs = int(final_time_sec) % 60
+                        final_time_fmt = f"{mins:02d}:{secs:02d}"
+                except Exception as ex:
+                    print(f"[GeminiLiveWorker] Note timestamp parse warning: {ex}")
+
+            # Check if user explicitly asked for a brand new note
+            is_explicit_new = bool(create_new or any(phrase in note_content.lower() for phrase in ["in a new note", "as a new note", "start a new note", "create a new note", "separate note"]))
+
+            mm = MemoryManager()
+            note_id, is_updated, combined_text, note_data = mm.append_or_create_notebook_note(
+                note_text=note_content,
+                course_id=webapp_ctx.get("courseId", ""),
+                course_title=webapp_ctx.get("courseTitle", ""),
+                chapter_title=webapp_ctx.get("chapterTitle", ""),
+                lesson_id=webapp_ctx.get("lessonId", ""),
+                lesson_title=webapp_ctx.get("lessonTitle", ""),
+                video_id=webapp_ctx.get("videoId", ""),
+                timestamp_seconds=final_time_sec,
+                timestamp_formatted=final_time_fmt,
+                topic=topic or webapp_ctx.get("topic", "") or webapp_ctx.get("lessonTitle", ""),
+                source="vedika_voice",
+                create_new=is_explicit_new
+            )
+
+            msg_type = "STUDY_NOTE_UPDATED" if is_updated else "STUDY_NOTE_ADDED"
+            # Safely broadcast to webapp via Qt signal to Main Thread
+            if hasattr(self.client, "broadcast_webapp_requested"):
+                self.client.broadcast_webapp_requested.emit({
+                    "type": msg_type,
+                    "payload": note_data
+                })
+            else:
+                main_app = getattr(self.client, "main_app", None) or getattr(self.client, "app", None)
+                if main_app and hasattr(main_app, "broadcast_to_webapp"):
+                    main_app.broadcast_to_webapp({
+                        "type": msg_type,
+                        "payload": note_data
+                    })
+
+            # Voice & visual confirmation on Desktop Pet
+            bubble_text = f"Updated note at {final_time_fmt} with new point! 📝" if is_updated else f"Added note at {final_time_fmt} to your personal notes! 📝"
+            if hasattr(self.client, "say_requested"):
+                self.client.say_requested.emit(bubble_text, 3.0)
+
+            return {
+                "status": "success",
+                "is_updated": is_updated,
+                "note_id": note_id,
+                "saved_note": combined_text,
+                "timestamp": final_time_fmt,
+                "lesson": webapp_ctx.get("lessonTitle", "")
+            }
+        except Exception as e:
+            print(f"[GeminiLiveWorker] Error in execute_add_study_note: {e}")
+            return {
+                "status": "error",
+                "message": str(e)
+            }
+
     async def _main(self):
         api_key = self.client.gemini_keys[self.client.current_key_index]
         client = genai.Client(api_key=api_key, http_options={"api_version": "v1alpha"})
@@ -425,6 +507,14 @@ class GeminiLiveWorker(QThread):
             mins = max(1, int(duration_seconds) // 60)
             return {"status": "success", "timer_started": f"{mins} minutes for {label}"}
 
+        def add_study_note(note_content: str, topic: str = "", timestamp: str = "", create_new: bool = False) -> dict:
+            """Adds a key insight, formula, summary point, or takeaway to the student's personal study notebook with the exact video timestamp and course context.
+            CRITICAL RULES:
+            - ACCUMULATE POINTS: Unless the student explicitly says 'new note', 'start a new note', or 'create another note', ALWAYS leave create_new=False so all points are compiled cleanly as bullet points into the single active note!
+            - Set create_new=True ONLY when the student explicitly demands a new or separate note.
+            """
+            return self.execute_add_study_note(note_content=note_content, topic=topic, timestamp=timestamp, create_new=create_new)
+
         # Construct dynamic Academic Voice Tutor system instruction matching voice-server.js
         tutor_lang = getattr(self.client, "tutor_language", "all")
         tutor_subj = getattr(self.client, "tutor_subject", "all")
@@ -479,6 +569,14 @@ class GeminiLiveWorker(QThread):
         else:
             sys_inst += "SUBJECT FOCUS: You are ready to tutor on any academic school subject: math, science, history, geography, languages, or reading. "
 
+        # Real-time Multilingual & Instant Language Adaptation Directive (Requirement 5)
+        sys_inst += (
+            "\n\nCRITICAL REAL-TIME MULTILINGUAL SWITCHING RULE:\n"
+            "- You are 100% multilingual in English, Hindi, and Telugu, as well as conversational Hinglish and Teluglish.\n"
+            "- INSTANT RECOGNITION: The moment the student switches language (for example, speaks in Hindi, Telugu, or switches back to English), you MUST IMMEDIATELY switch your response language to match their spoken language in that very same response turn!\n"
+            "- Never delay, hesitate, or ask for confirmation ('Shall I explain in Hindi?'). Directly speak in the student's chosen language with natural, warm conversational fluency.\n"
+        )
+
         # Dynamic User Profile Context Injection
         student_name = "there"
         try:
@@ -519,6 +617,16 @@ class GeminiLiveWorker(QThread):
                 sys_inst += f"- Student's Current Code Attempt:\n```python\n{webapp_ctx.get('codeSnippet')[:400]}\n```\n"
             if webapp_ctx.get("labTitle"):
                 sys_inst += f"- Active Virtual Lab Experiment: '{webapp_ctx.get('labTitle')}'\n"
+            if webapp_ctx.get("lessonTitle") or webapp_ctx.get("videoTopic"):
+                sys_inst += f"- Active Video Lesson: '{webapp_ctx.get('lessonTitle', 'Lesson')}' in Course: '{webapp_ctx.get('courseTitle', 'Course')}' (Chapter: '{webapp_ctx.get('chapterTitle', '')}')\n"
+                sys_inst += f"- Paused Video Moment: at {webapp_ctx.get('timestampFormatted', '00:00')} ({webapp_ctx.get('timestampSeconds', 0)} seconds)\n"
+                if webapp_ctx.get("topic"):
+                    sys_inst += f"- Topic Being Taught At This Moment: '{webapp_ctx.get('topic')}'\n"
+                if webapp_ctx.get("overview"):
+                    sys_inst += f"- Lesson Concept Overview: {webapp_ctx.get('overview')}\n"
+                if webapp_ctx.get("transcriptSnippet"):
+                    sys_inst += f"- Video Audio / Transcript at this point:\n\"{webapp_ctx.get('transcriptSnippet')[:600]}\"\n"
+                sys_inst += "- VIDEO EXPLAINER PROTOCOL: The student just paused the video because they need help understanding this exact moment. Initiate with a warm, encouraging diagnostic question (e.g., 'I see you paused at [time] on [topic]. What part feels tricky or confusing?'), then listen carefully to break it down simply and Socratically!\n"
 
         route_instructions = load_routes_for_prompt()
         sys_inst += (
@@ -532,11 +640,12 @@ class GeminiLiveWorker(QThread):
             "5. If the user asks for Vyomanta portal, call 'navigate_webapp' with '/' or 'open_website' with 'https://vyomanta.vercel.app/'.\n"
             "6. If the user asks to stop or pause voice chat, call 'stop_voice_chat' immediately.\n"
             "7. You can also trigger pet visual animations on yourself ('wave', 'jump', 'failed', 'waiting', 'review', 'idle').\n"
-            "8. SCREEN VISION: When the user asks 'What is on my screen?', 'Can you see what I am doing?', 'Explain what is on my screen', or asks a visual question about their active computer screen: IMMEDIATELY call 'capture_user_screen' tool function on your VERY FIRST turn. Once the image is received, describe and assist with what is visible clearly and concisely. ALWAYS base your visual response strictly on the VERY LATEST image frame received in the current turn. Ignore any older image frames from earlier turns.\n"
+            "8. SCREEN VISION: When the user asks 'What is on my screen?', 'Can you see what I am doing?', 'Explain what is on my screen', or asks a visual question about their active computer screen: IMMEDIATELY call 'capture_user_screen' tool function on your VERY FIRST turn. Once the image is received, describe and assist with what is visible clearly and concisely. CRITICAL: When the student is asking about an active video lesson moment, do NOT capture the desktop screen; explain the lesson concepts being taught directly!\n"
             "9. VISUAL POINTING & LASER HIGHLIGHT: When explaining code errors, UI buttons, syntax mistakes, or specific elements on the user's screen: IMMEDIATELY call 'point_to_screen_location(x, y, label)' with normalized coordinates (x: 0.0 to 1.0, y: 0.0 to 1.0) to highlight the exact position with a glowing laser pointer and sonar pulse for the student.\n"
             "10. RECALL PREVIOUS QUESTIONS & MEMORY SEARCH: Call 'recall_previous_questions(limit)' when the student asks what was previously asked, or 'search_learning_memory(query, category)' to search stored academic insights and past discussions.\n"
             "11. LEARNING MEMORY & PROFILE: Call 'save_student_memory(category, subject, topic, note)' to remember struggles/masteries, 'update_student_profile(name, stage, field_of_study, hobbies, favorite_topics)' to remember student details, or 'clear_student_memory' to clear history.\n"
-            "12. STUDY TIMER: Call 'set_study_timer(duration_seconds, label)' when the student asks to set a timer, reminder, or study countdown (e.g. 'set a 10 min timer', 'remind me in 5 minutes')."
+            "12. STUDY TIMER: Call 'set_study_timer(duration_seconds, label)' when the student asks to set a timer, reminder, or study countdown (e.g. 'set a 10 min timer', 'remind me in 5 minutes').\n"
+            "13. PERSONAL STUDY NOTEPAD: Call 'add_study_note(note_content, topic, timestamp, create_new)' whenever the student asks to 'note this down', 'take a note', 'save this point', 'add to my notebook', or asks to note down points on a topic. ACCUMULATION RULE: Always compile and append points into the single active note unless the student explicitly says 'create a new note' or 'in a new note' (only then set create_new=True)."
         )
 
         config = types.LiveConnectConfig(
@@ -560,7 +669,7 @@ class GeminiLiveWorker(QThread):
                 play_animation, open_website, play_music, stop_voice_chat, navigate_webapp,
                 trigger_puzzle_hint, trigger_pet_action, capture_user_screen, point_to_screen_location,
                 recall_previous_questions, search_learning_memory, update_student_profile,
-                save_student_memory, clear_student_memory, set_study_timer
+                save_student_memory, clear_student_memory, set_study_timer, add_study_note
             ]
         )
 
@@ -597,29 +706,40 @@ class GeminiLiveWorker(QThread):
                 print("[GeminiLiveWorker] Connected successfully.")
                 self.client.connection_established.emit()
                 
-                # Fetch most recent student question to enable natural follow-up reconnect greeting
-                prev_questions = MemoryManager().get_previous_student_questions(limit=1)
-                prev_q = prev_questions[0].get("text", "") if prev_questions else ""
-                # Filter out trivial greetings/control commands
-                is_meaningful_prev_q = (
-                    bool(prev_q) and len(prev_q.split()) >= 2 and
-                    not any(w in prev_q.lower() for w in ["bye", "stop", "pause", "hello", "hi vedika", "what was my previous", "what did i ask"])
-                )
-
-                if is_meaningful_prev_q and student_name and student_name.lower() != "there":
-                    clean_q = prev_q.strip().rstrip("?").strip()
-                    greeting_text = (
-                        f"Speak this exact sentence warmly out loud: 'Hi {student_name}! Vedika here. Last time you asked about {clean_q} - did that make sense, or should we review it? What are we studying today?' and wave to me."
-                    )
-                elif is_meaningful_prev_q:
-                    clean_q = prev_q.strip().rstrip("?").strip()
-                    greeting_text = (
-                        f"Speak this exact sentence warmly out loud: 'Hi there! Vedika here. Last time we talked about {clean_q} - how is that going? What are we exploring today?' and wave to me."
-                    )
-                elif student_name and student_name.lower() != "there":
-                    greeting_text = f"Speak this exact sentence warmly out loud: 'Hi {student_name}, I am Vedika! What are we exploring today?' and wave to me."
+                # Check for scoped initial prompt (Requirement 6):
+                # Scenario 1: Proactive video moment prompt triggered by "Ask Vedika at [timestamp]" button
+                if getattr(self.client, "pending_initial_prompt", None):
+                    greeting_text = self.client.pending_initial_prompt
+                    self.client.pending_initial_prompt = None
+                    print(f"[GeminiLiveWorker] Using proactive video moment prompt: {greeting_text}")
                 else:
-                    greeting_text = "Speak this exact sentence warmly out loud: 'Hi, I am Vedika! What are we exploring today?' and wave to me."
+                    # Check if student is actively inside the LMS Course/Lesson page
+                    webapp_ctx = getattr(self.client, "active_webapp_context", {}) or {}
+                    c_title = webapp_ctx.get("courseTitle", "")
+                    l_title = webapp_ctx.get("lessonTitle", "")
+                    route = str(webapp_ctx.get("route", ""))
+                    is_in_course = bool(c_title or l_title or "/lesson" in route or "/courses" in route)
+
+                    if is_in_course:
+                        # Scenario 2: Active on course page
+                        display_name = student_name if (student_name and student_name.lower() != "there") else ""
+                        name_part = f" {display_name}" if display_name else ""
+                        if l_title and c_title:
+                            greeting_text = (
+                                f"Speak this exact sentence warmly out loud: 'Hi{name_part}! Ready to continue {l_title} in {c_title}?' and wave to me."
+                            )
+                        elif c_title:
+                            greeting_text = (
+                                f"Speak this exact sentence warmly out loud: 'Hi{name_part}! Ready to explore {c_title}?' and wave to me."
+                            )
+                        else:
+                            greeting_text = (
+                                f"Speak this exact sentence warmly out loud: 'Hi{name_part}! Ready to dive into your lesson?' and wave to me."
+                            )
+                    else:
+                        # Scenario 3: Standard / Normal talk everywhere else (matching previous implementation!)
+                        # No repeating old questions from SQLite database!
+                        greeting_text = "Greet me warmly by saying: 'Hey! What are we exploring today?' and wave to me."
 
                 print(f"[GeminiLiveWorker] Initial greeting prompt: {greeting_text}")
                 await session.send_realtime_input(text=greeting_text)
@@ -662,6 +782,16 @@ class GeminiLiveWorker(QThread):
             if chunk is None:
                 break
                 
+            if isinstance(chunk, dict) and "text" in chunk:
+                text_val = chunk["text"]
+                print(f"[SEND] Dispatching realtime text prompt to Gemini Live API: {text_val}")
+                if self.session and self.client.is_active:
+                    try:
+                        await self.session.send_realtime_input(text=text_val)
+                    except Exception as e:
+                        print(f"[GeminiLiveWorker] Error sending realtime text prompt: {e}")
+                continue
+
             if chunk == "END_OF_SPEECH":
                 print("[SEND] Sent audio_stream_end=True to Gemini Live API.")
                 if self.session and self.client.is_active:
@@ -1026,6 +1156,19 @@ class GeminiLiveWorker(QThread):
                                         response={"status": "success", "hint_level": hint_level}
                                     )
                                 )
+                            elif func_name == "trigger_pet_action":
+                                action = str(args.get("action", ""))
+                                target = str(args.get("target", ""))
+                                print(f"[GeminiLiveWorker] Executing tool trigger_pet_action: action='{action}', target='{target}'")
+                                if hasattr(self.client, "trigger_action_requested"):
+                                    self.client.trigger_action_requested.emit(action, target)
+                                function_responses.append(
+                                    types.FunctionResponse(
+                                        name=func_name,
+                                        id=fc.id,
+                                        response={"status": "success", "action": action, "target": target}
+                                    )
+                                )
                             elif func_name == "capture_user_screen":
                                 print("[GeminiLiveWorker] Executing tool capture_user_screen via main-thread bridge...")
                                 self.client.tool_executing = True
@@ -1195,6 +1338,20 @@ class GeminiLiveWorker(QThread):
                                         response={"status": "success", "timer_started": f"{mins} minutes for {lbl}"}
                                     )
                                 )
+                            elif func_name == "add_study_note":
+                                note_content = str(args.get("note_content", "") or args.get("note", "")).strip()
+                                topic = str(args.get("topic", "")).strip()
+                                timestamp = str(args.get("timestamp", "")).strip()
+                                create_new = bool(args.get("create_new", False))
+                                print(f"[GeminiLiveWorker] Executing tool add_study_note: topic='{topic}', timestamp='{timestamp}', create_new={create_new}, note='{note_content[:60]}...'")
+                                res = self.execute_add_study_note(note_content=note_content, topic=topic, timestamp=timestamp, create_new=create_new)
+                                function_responses.append(
+                                    types.FunctionResponse(
+                                        name=func_name,
+                                        id=fc.id,
+                                        response=res
+                                    )
+                                )
                         
                         if function_responses and self.session and self.client.is_active:
                             try:
@@ -1224,6 +1381,7 @@ class GeminiLiveClient(QObject):
     screen_capture_requested = Signal(object, object)  # future, loop
     point_location_requested = Signal(float, float, str, str)  # x, y, label, action
     timer_requested = Signal(int, str)  # duration_seconds, label
+    broadcast_webapp_requested = Signal(dict)  # message dictionary for webapp WebSocket broadcast
     session_activated = Signal()
     speaking_started = Signal()
     speaking_stopped = Signal()
@@ -1400,6 +1558,20 @@ class GeminiLiveClient(QObject):
             print("[GeminiLiveClient] Session resumed (Unmuted).")
         return self.is_paused
 
+    def send_realtime_text_prompt(self, prompt_text: str):
+        """Dispatches a text instruction into the active Gemini Live session to speak immediately."""
+        if not prompt_text:
+            return
+        w = self.worker_thread
+        if w and getattr(w, "loop", None) and w.loop.is_running() and getattr(w, "async_queue", None) and self.status == "connected":
+            w.loop.call_soon_threadsafe(w.async_queue.put_nowait, {"text": prompt_text})
+            print(f"[GeminiLiveClient] Dispatched realtime text prompt to active session: {prompt_text}")
+        else:
+            self.pending_initial_prompt = prompt_text
+            print(f"[GeminiLiveClient] Queued pending initial prompt for startup: {prompt_text}")
+            if self.status in ("disconnected", "error"):
+                self.start()
+
     @Slot()
     def stop(self):
         if getattr(self, "_is_stopping", False):
@@ -1485,8 +1657,8 @@ class GeminiLiveClient(QObject):
     @Slot(str)
     def on_connection_failed(self, error_message):
         print(f"[GeminiLive] Connection failed: {error_message}")
-        # Dynamically rotate key randomly (excluding the failed key) and retry if connecting fails
-        if self.status == "connecting" and self.gemini_keys and len(self.gemini_keys) > 1:
+        # Dynamically rotate key randomly (excluding the failed key) and retry if connecting fails or disconnects
+        if self.status in ["connecting", "connected"] and self.gemini_keys and len(self.gemini_keys) > 1:
             old_index = self.current_key_index
             import random
             available_indices = [i for i in range(len(self.gemini_keys)) if i != old_index]

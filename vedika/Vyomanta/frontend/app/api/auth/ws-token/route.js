@@ -3,10 +3,22 @@ import { verifyJwt } from '@/lib/auth';
 import { Redis } from '@upstash/redis';
 import crypto from 'crypto';
 
-const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN
-});
+function getRedis() {
+  if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
+    try {
+      return new Redis({
+        url: process.env.UPSTASH_REDIS_REST_URL,
+        token: process.env.UPSTASH_REDIS_REST_TOKEN
+      });
+    } catch (e) {
+      console.warn('[WS Auth] Redis init failed:', e.message);
+    }
+  }
+  return null;
+}
+
+const memoryTickets = global.__memoryTickets || new Map();
+global.__memoryTickets = memoryTickets;
 
 export async function GET(request) {
   try {
@@ -34,8 +46,18 @@ export async function GET(request) {
       course_id: courseId
     };
     
-    // Store ticket in Redis with a 60-second TTL
-    await redis.set(`ws_ticket:${ticketId}`, JSON.stringify(ticketPayload), { ex: 60 });
+    // Store ticket in Redis with a 60-second TTL, or fallback to in-memory store
+    const redis = getRedis();
+    if (redis) {
+      try {
+        await redis.set(`ws_ticket:${ticketId}`, JSON.stringify(ticketPayload), { ex: 60 });
+      } catch (redisErr) {
+        console.warn('[WS Auth] Redis set failed, falling back to memory:', redisErr.message);
+        memoryTickets.set(`ws_ticket:${ticketId}`, { payload: ticketPayload, expiresAt: Date.now() + 60000 });
+      }
+    } else {
+      memoryTickets.set(`ws_ticket:${ticketId}`, { payload: ticketPayload, expiresAt: Date.now() + 60000 });
+    }
     
     console.warn(`[WS Auth] Issued single-use ticket ${ticketId} for user ${payload.user_id}`);
     
